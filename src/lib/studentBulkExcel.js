@@ -3,8 +3,10 @@ const ExcelJS = require("exceljs");
 const {
   SHEET_NAME,
   COLUMNS,
+  REQUIRED_HEADERS,
   GENDERS,
   DATE_DISPLAY_FORMAT,
+  DEFAULT_VERIFICATION_DATES,
 } = require("../constants/studentBulkUpload");
 const { CHECKLISTS, CATEGORIES } = require("../config/checklists");
 const { cellStr } = require("./studentBulkValidator");
@@ -22,6 +24,8 @@ const SAMPLE_ROWS = [
     batch: "2026",
     category: "General",
     orientation_date: "10-06-2026",
+    verification_date: "20-07-2026",
+    verification_batch: "1",
     email: "aarav@example.com",
     phone: "9000000001",
   },
@@ -37,6 +41,8 @@ const SAMPLE_ROWS = [
     batch: "2026",
     category: "General",
     orientation_date: "10-06-2026",
+    verification_date: "21-07-2026",
+    verification_batch: "2",
     email: "priya@example.com",
     phone: "9000000002",
   },
@@ -67,6 +73,8 @@ async function buildTemplateBuffer() {
   const profileCol = COLUMNS.indexOf("profile") + 1;
   const categoryCol = COLUMNS.indexOf("category") + 1;
 
+  const verificationDateCol = COLUMNS.indexOf("verification_date") + 1;
+
   for (let r = 2; r <= 5002; r++) {
     ws.getCell(r, genderCol).dataValidation = {
       type: "list",
@@ -92,6 +100,17 @@ async function buildTemplateBuffer() {
       errorTitle: "Invalid category",
       error: "Choose a category from the list (optional).",
     };
+    ws.getCell(r, verificationDateCol).dataValidation = {
+      type: "list",
+      allowBlank: true,
+      formulae: [`"${DEFAULT_VERIFICATION_DATES.map((d) => {
+        const [y, m, day] = d.split("-");
+        return `${day}-${m}-${y}`;
+      }).join(",")}"`],
+      showErrorMessage: true,
+      errorTitle: "Invalid verification date",
+      error: "Choose an orientation-week verification day (optional).",
+    };
   }
 
   for (const sample of SAMPLE_ROWS) {
@@ -99,7 +118,7 @@ async function buildTemplateBuffer() {
   }
 
   const noteRow = ws.addRow([]);
-  noteRow.getCell(1).value = `Required: application_number, full_name, date_of_birth, gender, profile, program. Date format: ${DATE_DISPLAY_FORMAT}. File type: .xlsx only.`;
+  noteRow.getCell(1).value = `Required: application_number, full_name, date_of_birth, gender, profile, program, verification_date (dd-mm-yyyy, e.g. 20-07-2026). verification_batch (1–4) is optional and auto-filled from the date when omitted. Date format: ${DATE_DISPLAY_FORMAT}. File type: .xlsx only.`;
   noteRow.getCell(1).font = { italic: true, color: { argb: "FF64748B" } };
   ws.mergeCells(noteRow.number, 1, noteRow.number, COLUMNS.length);
 
@@ -129,7 +148,7 @@ async function parseWorkbookBuffer(buffer) {
     if (key) headerMap[col] = key;
   });
 
-  const missing = COLUMNS.filter((c) => !Object.values(headerMap).includes(c));
+  const missing = REQUIRED_HEADERS.filter((c) => !Object.values(headerMap).includes(c));
   if (missing.length) {
     throw new Error(`Missing required column(s): ${missing.join(", ")}. Download the template and use those headers.`);
   }

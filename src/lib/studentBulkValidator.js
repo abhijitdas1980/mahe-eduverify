@@ -6,6 +6,7 @@ const {
   DATE_REGEX,
   DATE_DISPLAY_FORMAT,
   FIELD_LIMITS,
+  DEFAULT_VERIFICATION_DATES,
 } = require("../constants/studentBulkUpload");
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -66,6 +67,8 @@ function validateRow(row, ctx) {
     batch: null,
     category: null,
     orientation_date: null,
+    verification_date: null,
+    verification_batch: null,
     email: null,
     phone: null,
   };
@@ -160,6 +163,24 @@ function validateRow(row, ctx) {
     const iso = parseDateToIso(r.orientation_date);
     if (!iso) errors.push("orientation_date must be in dd-mm-yyyy format.");
     else normalized.orientation_date = iso;
+  }
+  if (r.verification_date) {
+    const iso = parseDateToIso(r.verification_date);
+    if (!iso) errors.push("verification_date must be in dd-mm-yyyy format.");
+    else {
+      normalized.verification_date = iso;
+      if (r.verification_batch) {
+        const batch = parseInt(r.verification_batch, 10);
+        if (!Number.isInteger(batch) || batch < 1) {
+          errors.push("verification_batch must be a positive integer (e.g. 1 for day 1).");
+        } else normalized.verification_batch = batch;
+      } else {
+        const idx = DEFAULT_VERIFICATION_DATES.indexOf(iso);
+        if (idx >= 0) normalized.verification_batch = idx + 1;
+      }
+    }
+  } else if (r.verification_batch) {
+    errors.push("verification_batch requires verification_date.");
   }
   if (r.email) {
     if (r.email.length > FIELD_LIMITS.email) {

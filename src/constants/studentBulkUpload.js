@@ -15,9 +15,16 @@ const COLUMNS = [
   "batch",
   "category",
   "orientation_date",
+  "verification_date",
+  "verification_batch",
   "email",
   "phone",
 ];
+
+/** Headers that may be omitted in older templates. */
+const OPTIONAL_COLUMNS = ["verification_batch"];
+
+const REQUIRED_HEADERS = COLUMNS.filter((c) => !OPTIONAL_COLUMNS.includes(c));
 
 const REQUIRED_FIELDS = [
   "application_number",
@@ -26,6 +33,7 @@ const REQUIRED_FIELDS = [
   "gender",
   "profile",
   "program",
+  "verification_date",
 ];
 
 const GENDERS = ["Male", "Female", "Other"];
@@ -46,14 +54,20 @@ const FIELD_LIMITS = {
 
 const SESSION_TTL_MS = 30 * 60 * 1000;
 
+/** Default orientation-week verification days (batch 1–4). */
+const DEFAULT_VERIFICATION_DATES = ["2026-07-20", "2026-07-21", "2026-07-22", "2026-07-23"];
+
 module.exports = {
   SHEET_NAME,
   TEMPLATE_FILENAME,
   COLUMNS,
+  REQUIRED_HEADERS,
+  OPTIONAL_COLUMNS,
   REQUIRED_FIELDS,
   GENDERS,
   DATE_DISPLAY_FORMAT,
   DATE_REGEX,
   FIELD_LIMITS,
   SESSION_TTL_MS,
+  DEFAULT_VERIFICATION_DATES,
 };

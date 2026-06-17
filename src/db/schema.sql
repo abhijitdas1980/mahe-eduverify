@@ -180,14 +180,6 @@ ALTER TABLE students ADD COLUMN IF NOT EXISTS gender VARCHAR(10);
 CREATE INDEX IF NOT EXISTS idx_students_assigned_date    ON students(assigned_verification_date);
 CREATE INDEX IF NOT EXISTS idx_students_upload_completed ON students(upload_completed_at);
 
--- ====== v15: backfill assigned_verification_date for legacy students ======
--- Any student lacking a pre-assigned date defaults to day 1 (20 July 2026)
--- so the dynamic allocator can engage. Re-running is a no-op.
-UPDATE students
-   SET assigned_verification_date = DATE '2026-07-20',
-       assigned_batch = 1
- WHERE assigned_verification_date IS NULL;
-
 -- ====== v27: heal stale students.verify_schedule_id references ======
 -- A pre-v26 reassign would leave students.verify_schedule_id pointing at the
 -- old (now-reassigned) verify_schedule row, while the new target row carried

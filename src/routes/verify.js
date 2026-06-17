@@ -24,27 +24,19 @@ const { audit } = require("../lib/audit");
 const router = express.Router();
 router.use(requireAdmin);
 
-/* ---- Defaults matching the spec ---- */
-const DEFAULT_DATES = ["2026-07-20", "2026-07-21", "2026-07-22", "2026-07-23"];
-const DEFAULT_ROOMS = Array.from({ length: 15 }, (_, i) =>
-  "AB4-" + String(101 + i)
-);
-const DEFAULT_START_MINUTES = 13 * 60;   // 1:00 PM
-const DEFAULT_SLOT_MINUTES = 10;
-const DEFAULT_SLOTS_PER_ROOM = 32;
+const {
+  DEFAULT_DATES,
+  DEFAULT_ROOMS,
+  DEFAULT_START_MINUTES,
+  DEFAULT_SLOT_MINUTES,
+  DEFAULT_SLOTS_PER_ROOM,
+  generateEmptySchedule,
+} = require("../lib/verifySchedule");
 
 const STATUSES = ["open", "booked", "pending", "verified", "absent", "reassigned"];
 
 /* ---- Helpers ---- */
 const isDate = (v) => /^\d{4}-\d{2}-\d{2}$/.test(v || "");
-
-function minsToLabel(m) {
-  const h24 = Math.floor(m / 60) % 24;
-  const mm = String(m % 60).padStart(2, "0");
-  const ap = h24 < 12 ? "AM" : "PM";
-  const h12 = ((h24 % 12) === 0) ? 12 : (h24 % 12);
-  return `${h12}:${mm} ${ap}`;
-}
 
 function csvEscape(v) {
   if (v == null) return "";
@@ -103,26 +95,13 @@ router.post("/generate", requireSupervisor, async (req, res, next) => {
     if (slotMinutes < 1 || slotMinutes > 240) return res.status(400).json({ error: "Slot duration must be 1–240 minutes." });
     if (slotsPerRoom < 1 || slotsPerRoom > 500) return res.status(400).json({ error: "Slots per room must be 1–500." });
 
-    let inserted = 0;
     const client = await pool.connect();
+    let result;
     try {
       await client.query("BEGIN");
-      for (const date of dates) {
-        for (const room of rooms) {
-          for (let n = 1; n <= slotsPerRoom; n++) {
-            const st = startMinutes + (n - 1) * slotMinutes;
-            const et = st + slotMinutes;
-            const r = await client.query(
-              `INSERT INTO verify_schedule (schedule_date, room, slot_no, start_time, end_time, status)
-               VALUES ($1,$2,$3,$4,$5,'open')
-               ON CONFLICT (schedule_date, room, slot_no) DO NOTHING
-               RETURNING id`,
-              [date, room, n, minsToLabel(st), minsToLabel(et)]
-            );
-            inserted += r.rowCount;
-          }
-        }
-      }
+      result = await generateEmptySchedule(client, {
+        dates, rooms, startMinutes, slotMinutes, slotsPerRoom,
+      });
       await client.query("COMMIT");
     } catch (e) {
       await client.query("ROLLBACK").catch(() => {});
@@ -132,75 +111,8 @@ router.post("/generate", requireSupervisor, async (req, res, next) => {
     }
 
     await audit(req, "admin", req.admin.staffId, "VERIFY_SCHEDULE_GENERATED",
-      `dates=${dates.length} rooms=${rooms.length} slots/room=${slotsPerRoom} inserted=${inserted}`);
-    res.json({
-      ok: true, inserted,
-      capacity: dates.length * rooms.length * slotsPerRoom,
-      dates, rooms, slotMinutes, slotsPerRoom,
-    });
-  } catch (e) { next(e); }
-});
-
-/* ============================================================================
-   v14 ALLOCATE — batch FCFS allocation respecting assigned_verification_date.
-   Order: students with upload_completed_at NOT NULL come first, ordered by
-   that timestamp ascending. Students without a completion timestamp are
-   considered after, ordered by app_no. Each student is allocated to the
-   earliest open slot ON THEIR ASSIGNED VERIFICATION DATE ONLY.
-   ============================================================================ */
-router.post("/allocate", requireSupervisor, async (req, res, next) => {
-  try {
-    const studentRows = await pool.query(
-      `SELECT s.id, s.assigned_verification_date
-         FROM students s
-         WHERE s.assigned_verification_date IS NOT NULL
-           AND s.verify_schedule_id IS NULL
-         ORDER BY s.upload_completed_at NULLS LAST, s.app_no`
-    );
-    const students = studentRows.rows;
-
-    let assigned = 0;
-    const noSlot = [];
-    const client = await pool.connect();
-    try {
-      await client.query("BEGIN");
-      for (const stu of students) {
-        const lockR = await client.query(
-          "SELECT id, verify_schedule_id FROM students WHERE id=$1 FOR UPDATE",
-          [stu.id]
-        );
-        const locked = lockR.rows[0];
-        if (!locked || locked.verify_schedule_id) continue;
-        const slotR = await client.query(
-          `SELECT id FROM verify_schedule
-            WHERE schedule_date=$1 AND status='open' AND student_id IS NULL
-            ORDER BY slot_no ASC, room ASC
-            LIMIT 1 FOR UPDATE SKIP LOCKED`,
-          [stu.assigned_verification_date]
-        );
-        if (!slotR.rows.length) { noSlot.push(stu.id); continue; }
-        const slotId = slotR.rows[0].id;
-        await client.query(
-          `UPDATE verify_schedule SET student_id=$1, status='booked', updated_at=now() WHERE id=$2`,
-          [stu.id, slotId]
-        );
-        await client.query(
-          `UPDATE students SET verify_schedule_id=$1 WHERE id=$2`,
-          [slotId, stu.id]
-        );
-        assigned++;
-      }
-      await client.query("COMMIT");
-    } catch (e) {
-      await client.query("ROLLBACK").catch(() => {});
-      throw e;
-    } finally {
-      client.release();
-    }
-
-    await audit(req, "admin", req.admin.staffId, "VERIFY_ALLOCATED",
-      `assigned=${assigned} noSlot=${noSlot.length} skipped=${students.length - assigned - noSlot.length}`);
-    res.json({ ok: true, assigned, noSlot: noSlot.length, totalConsidered: students.length });
+      `dates=${dates.length} rooms=${rooms.length} slots/room=${slotsPerRoom} inserted=${result.inserted}`);
+    res.json({ ok: true, ...result });
   } catch (e) { next(e); }
 });
 
@@ -587,31 +499,6 @@ router.post("/assignment/:id/reassign", requireSupervisor, async (req, res, next
 });
 
 /* ============================================================================
-   RESET — delete all schedule rows. Supervisor only, must pass confirm:"YES".
-   ============================================================================ */
-router.post("/reset", requireSupervisor, async (req, res, next) => {
-  try {
-    if (req.body?.confirm !== "YES") {
-      return res.status(400).json({ error: "Pass {\"confirm\":\"YES\"} to wipe the verification schedule." });
-    }
-    const client = await pool.connect();
-    try {
-      await client.query("BEGIN");
-      const r = await client.query("DELETE FROM verify_schedule RETURNING id");
-      await client.query("UPDATE students SET verify_schedule_id = NULL WHERE verify_schedule_id IS NOT NULL");
-      await client.query("COMMIT");
-      await audit(req, "admin", req.admin.staffId, "VERIFY_RESET", `deleted=${r.rowCount}`);
-      res.json({ ok: true, deleted: r.rowCount });
-    } catch (e) {
-      await client.query("ROLLBACK").catch(() => {});
-      throw e;
-    } finally {
-      client.release();
-    }
-  } catch (e) { next(e); }
-});
-
-/* ============================================================================
    ROOMS / DATES META — used by the frontend for dropdowns.
    ============================================================================ */
 router.get("/meta", async (_req, res, next) => {
@@ -629,317 +516,6 @@ router.get("/meta", async (_req, res, next) => {
       startMinutes: DEFAULT_START_MINUTES,
     });
   } catch (e) { next(e); }
-});
-
-
-/* ============================================================================
-   v14 SEED DUMMY STUDENTS — supervisor only.
-   Creates exactly 1,920 students with FIXED date/batch mapping:
-       APP0001..APP0480  -> 20 July 2026  (batch 1)
-       APP0481..APP0960  -> 21 July 2026  (batch 2)
-       APP0961..APP1440  -> 22 July 2026  (batch 3)
-       APP1441..APP1920  -> 23 July 2026  (batch 4)
-   Body: { perDay?: 480, dates?: ["YYYY-MM-DD", ...], profile?: "UG-Indian" }
-   Idempotent: ON CONFLICT(app_no) DO NOTHING.
-   ============================================================================ */
-router.post("/seed-students", requireSupervisor, async (req, res, next) => {
-  try {
-    const { CHECKLISTS, checklistFor } = require("../config/checklists");
-    const b = req.body || {};
-    const perDay = Math.min(Math.max(parseInt(b.perDay, 10) || 480, 1), 2000);
-    const dates = Array.isArray(b.dates) && b.dates.length
-      ? b.dates.filter(isDate)
-      : DEFAULT_DATES;
-    const profile = b.profile && CHECKLISTS[b.profile] ? b.profile : "UG-Indian";
-    if (!dates.length) return res.status(400).json({ error: "Provide at least one valid date." });
-
-    const FIRST = ["Aarav","Vihaan","Aditya","Vivaan","Arjun","Sai","Reyansh","Ayaan","Krishna","Ishaan","Atharv","Rudra","Kabir","Aryan","Veer","Yash","Dhruv","Kartik","Rohan","Ansh","Saanvi","Aanya","Aadhya","Aaradhya","Anaya","Pari","Ananya","Diya","Anvi","Myra","Riya","Ira","Tara","Nisha","Sneha","Priya","Maya","Kiara","Avni","Pihu"];
-    const LAST  = ["Sharma","Verma","Gupta","Singh","Kumar","Iyer","Patel","Rao","Reddy","Mehta","Joshi","Pillai","Nair","Kapoor","Bose","Chatterjee","Mukherjee","Roy","Bhat","Kulkarni","Naidu","Choudhary","Sinha","Mishra","Tiwari"];
-    const CATS  = ["General","NRI","NRI Sponsored","Foreign","OCI","AICTE"];
-
-    let inserted = 0;
-    const BATCH = 50;
-    const client = await pool.connect();
-    try {
-      await client.query("BEGIN");
-      for (let di = 0; di < dates.length; di++) {
-        const date = dates[di];
-        const batchNo = di + 1;
-        for (let i = 0; i < perDay; i += BATCH) {
-          const upper = Math.min(i + BATCH, perDay);
-          const rows = [];
-          const params = [];
-          for (let n = i; n < upper; n++) {
-            const globalN = di * perDay + n + 1;
-            const appNo  = "APP" + String(globalN).padStart(4, "0");
-            const fn = FIRST[(n + di * 7) % FIRST.length];
-            const ln = LAST[(n * 13 + di * 5) % LAST.length];
-            const dobYear  = 2005 + ((n + di) % 4);
-            const dobMonth = String(((n + 1) % 12) + 1).padStart(2, "0");
-            const dobDay   = String(((n + 1) % 28) + 1).padStart(2, "0");
-            const dob   = `${dobYear}-${dobMonth}-${dobDay}`;
-            const cat   = CATS[n % CATS.length];
-            const program = "B.E. Computer Science";
-            const dept    = "Computer Science";
-            const section = String.fromCharCode(65 + (n % 4));
-            const idx = rows.length * 12;
-            params.push(
-              appNo, `${fn} ${ln}`, dob, program, dept, "2026",
-              cat, section, profile, date,
-              date, batchNo
-            );
-            rows.push(
-              `($${idx+1},$${idx+2},$${idx+3},$${idx+4},$${idx+5},$${idx+6},` +
-              `$${idx+7},$${idx+8},$${idx+9},$${idx+10},` +
-              `$${idx+11},$${idx+12})`
-            );
-          }
-          const sql = `INSERT INTO students
-              (app_no, name, dob, program, department, batch, category, section,
-               profile, orientation_date,
-               assigned_verification_date, assigned_batch)
-            VALUES ${rows.join(",")}
-            ON CONFLICT (app_no) DO NOTHING
-            RETURNING id, profile`;
-          const r = await client.query(sql, params);
-          for (const row of r.rows) {
-            for (const code of checklistFor(row.profile)) {
-              await client.query(
-                `INSERT INTO documents (student_id, doc_code) VALUES ($1,$2)
-                 ON CONFLICT (student_id, doc_code) DO NOTHING`,
-                [row.id, code]
-              );
-            }
-          }
-          inserted += r.rowCount;
-        }
-      }
-      await client.query("COMMIT");
-    } catch (e) {
-      await client.query("ROLLBACK").catch(() => {});
-      throw e;
-    } finally {
-      client.release();
-    }
-    await audit(req, "admin", req.admin.staffId, "VERIFY_SEED_STUDENTS",
-      `inserted=${inserted} dates=${dates.length} perDay=${perDay} profile=${profile}`);
-    res.json({
-      ok: true, inserted,
-      perDay, dates, profile,
-      total: perDay * dates.length,
-      sample: "APP0001..APP" + String(perDay * dates.length).padStart(4, "0"),
-      mapping: dates.map((d, i) => ({
-        date: d, batch: i + 1,
-        appNoFrom: "APP" + String(i * perDay + 1).padStart(4, "0"),
-        appNoTo:   "APP" + String((i + 1) * perDay).padStart(4, "0"),
-      })),
-      note: inserted === 0
-        ? "All dummy students already exist."
-        : "Seed succeeded. Each student now has a fixed assigned_verification_date.",
-    });
-  } catch (e) { next(e); }
-});
-
-
-/* v15 — Backfill assigned_verification_date for any student missing one.
-   Round-robin assigns NULL-date students across the default 4 days.
-   Idempotent. */
-router.post("/backfill-dates", requireSupervisor, async (req, res, next) => {
-  try {
-    const dates = Array.isArray(req.body?.dates) && req.body.dates.length
-      ? req.body.dates.filter(isDate)
-      : DEFAULT_DATES;
-    if (!dates.length) return res.status(400).json({ error: "Provide at least one valid date." });
-    const r = await pool.query(
-      `WITH ranked AS (
-         SELECT id, ROW_NUMBER() OVER (ORDER BY app_no) AS rn
-           FROM students
-          WHERE assigned_verification_date IS NULL
-       )
-       UPDATE students s
-          SET assigned_verification_date = ($2::date[])[((ranked.rn - 1) % $1) + 1],
-              assigned_batch             = ((ranked.rn - 1) % $1) + 1
-         FROM ranked
-        WHERE s.id = ranked.id
-        RETURNING s.id`,
-      [dates.length, dates]
-    );
-    await audit(req, "admin", req.admin.staffId, "VERIFY_BACKFILL_DATES",
-      `updated=${r.rowCount} dates=${dates.length}`);
-    res.json({ ok: true, updated: r.rowCount, dates });
-  } catch (e) { next(e); }
-});
-
-
-/* ============================================================================
-   v16 RESET & RESEED — supervisor only, destructive.
-   Body MUST include { "confirm": "RESET" }.
-   Sequence in a single transaction:
-     1. DELETE FROM verify_schedule
-     2. DELETE FROM flagged_cases
-     3. DELETE FROM documents
-     4. DELETE FROM students
-     5. INSERT 1,920 empty verify_schedule slots (4 days × 15 rooms × 32)
-     6. INSERT 1,920 students APP0001..APP1920 with fixed date/batch mapping
-     7. INSERT their checklist documents (status='pending')
-   Returns deleted + inserted counts.
-   ============================================================================ */
-router.post("/reset-and-reseed", requireSupervisor, async (req, res, next) => {
-  if (req.body?.confirm !== "RESET") {
-    return res.status(400).json({
-      error: "Pass {\"confirm\":\"RESET\"} to wipe the existing students/documents/schedule and reseed 1,920 fresh records.",
-    });
-  }
-  /* v32 — defence in depth: require a typed verification phrase in addition
-     to the confirm token, so a copy-pasted curl one-liner can't accidentally
-     wipe production. The exact phrase is also shown in the UI modal. */
-  if (req.body?.phrase !== "DELETE 1920 STUDENTS") {
-    return res.status(400).json({
-      error: "Missing or wrong verification phrase. Send {\"confirm\":\"RESET\",\"phrase\":\"DELETE 1920 STUDENTS\"}.",
-    });
-  }
-  const { CHECKLISTS, checklistFor } = require("../config/checklists");
-  const profile = (req.body && CHECKLISTS[req.body.profile]) ? req.body.profile : "UG-Indian";
-  const PER_DAY = 480;
-  const DATES = ["2026-07-20", "2026-07-21", "2026-07-22", "2026-07-23"];
-  const ROOMS = Array.from({ length: 15 }, (_, i) => "AB4-" + String(101 + i));
-  const SLOTS_PER_ROOM = 32;
-  const START_MIN = 13 * 60;        // 1:00 PM
-  const SLOT_MIN  = 10;
-
-  const FIRST = ["Aarav","Vihaan","Aditya","Vivaan","Arjun","Sai","Reyansh","Ayaan","Krishna","Ishaan","Atharv","Rudra","Kabir","Aryan","Veer","Yash","Dhruv","Kartik","Rohan","Ansh","Saanvi","Aanya","Aadhya","Aaradhya","Anaya","Pari","Ananya","Diya","Anvi","Myra","Riya","Ira","Tara","Nisha","Sneha","Priya","Maya","Kiara","Avni","Pihu"];
-  const LAST  = ["Sharma","Verma","Gupta","Singh","Kumar","Iyer","Patel","Rao","Reddy","Mehta","Joshi","Pillai","Nair","Kapoor","Bose","Chatterjee","Mukherjee","Roy","Bhat","Kulkarni","Naidu","Choudhary","Sinha","Mishra","Tiwari"];
-  const CATS  = ["General","NRI","NRI Sponsored","Foreign","OCI","AICTE"];
-
-  const client = await pool.connect();
-  let wipe = {};
-  let slotsCreated = 0;
-  let studentsInserted = 0;
-  try {
-    await client.query("BEGIN");
-
-    /* 1-4: wipe in FK-safe order. */
-    const w1 = await client.query("DELETE FROM verify_schedule");
-    const w2 = await client.query("DELETE FROM flagged_cases");
-    const w3 = await client.query("DELETE FROM documents");
-    const w4 = await client.query("DELETE FROM students");
-    wipe = {
-      verifySchedule: w1.rowCount,
-      flaggedCases: w2.rowCount,
-      documents: w3.rowCount,
-      students: w4.rowCount,
-    };
-
-    /* 5: regenerate empty schedule (1,920 slots) using batched VALUES. */
-    {
-      const BATCH = 100;
-      const rows = [];
-      const params = [];
-      const flush = async () => {
-        if (!rows.length) return;
-        await client.query(
-          `INSERT INTO verify_schedule (schedule_date, room, slot_no, start_time, end_time, status)
-           VALUES ${rows.join(",")}`,
-          params
-        );
-        slotsCreated += rows.length;
-        rows.length = 0;
-        params.length = 0;
-      };
-      for (const date of DATES) {
-        for (const room of ROOMS) {
-          for (let n = 1; n <= SLOTS_PER_ROOM; n++) {
-            const st = START_MIN + (n - 1) * SLOT_MIN;
-            const et = st + SLOT_MIN;
-            const idx = rows.length * 6;
-            params.push(date, room, n, minsToLabel(st), minsToLabel(et), "open");
-            rows.push(`($${idx+1},$${idx+2},$${idx+3},$${idx+4},$${idx+5},$${idx+6})`);
-            if (rows.length >= BATCH) await flush();
-          }
-        }
-      }
-      await flush();
-    }
-
-    /* 6-7: 1,920 students + their checklist documents. */
-    {
-      const BATCH = 50;
-      for (let di = 0; di < DATES.length; di++) {
-        const date = DATES[di];
-        const batchNo = di + 1;
-        for (let i = 0; i < PER_DAY; i += BATCH) {
-          const upper = Math.min(i + BATCH, PER_DAY);
-          const rows = [];
-          const params = [];
-          for (let n = i; n < upper; n++) {
-            const globalN = di * PER_DAY + n + 1;
-            const appNo  = "APP" + String(globalN).padStart(4, "0");
-            const fn = FIRST[(n + di * 7) % FIRST.length];
-            const ln = LAST[(n * 13 + di * 5) % LAST.length];
-            const dobYear  = 2005 + ((n + di) % 4);
-            const dobMonth = String(((n + 1) % 12) + 1).padStart(2, "0");
-            const dobDay   = String(((n + 1) % 28) + 1).padStart(2, "0");
-            const dob = `${dobYear}-${dobMonth}-${dobDay}`;
-            const cat = CATS[n % CATS.length];
-            const section = String.fromCharCode(65 + (n % 4));
-            const idx = rows.length * 12;
-            params.push(
-              appNo, `${fn} ${ln}`, dob, "B.E. Computer Science", "Computer Science", "2026",
-              cat, section, profile, date,
-              date, batchNo
-            );
-            rows.push(
-              `($${idx+1},$${idx+2},$${idx+3},$${idx+4},$${idx+5},$${idx+6},` +
-              `$${idx+7},$${idx+8},$${idx+9},$${idx+10},` +
-              `$${idx+11},$${idx+12})`
-            );
-          }
-          const ins = await client.query(
-            `INSERT INTO students
-                (app_no, name, dob, program, department, batch, category, section,
-                 profile, orientation_date,
-                 assigned_verification_date, assigned_batch)
-              VALUES ${rows.join(",")}
-              RETURNING id, profile`,
-            params
-          );
-          for (const row of ins.rows) {
-            for (const code of checklistFor(row.profile)) {
-              await client.query(
-                `INSERT INTO documents (student_id, doc_code) VALUES ($1,$2)`,
-                [row.id, code]
-              );
-            }
-          }
-          studentsInserted += ins.rowCount;
-        }
-      }
-    }
-
-    await client.query("COMMIT");
-  } catch (e) {
-    await client.query("ROLLBACK").catch(() => {});
-    return next(e);
-  } finally {
-    client.release();
-  }
-
-  await audit(req, "admin", req.admin.staffId, "VERIFY_RESET_AND_RESEED",
-    `wiped=${JSON.stringify(wipe)} slotsCreated=${slotsCreated} studentsInserted=${studentsInserted}`);
-
-  res.json({
-    ok: true,
-    deleted: wipe,
-    inserted: { students: studentsInserted, slots: slotsCreated },
-    profile,
-    mapping: DATES.map((d, i) => ({
-      date: d, batch: i + 1,
-      appNoFrom: "APP" + String(i * PER_DAY + 1).padStart(4, "0"),
-      appNoTo:   "APP" + String((i + 1) * PER_DAY).padStart(4, "0"),
-      count: PER_DAY,
-    })),
-    note: "Dataset replaced. Students now appear with PENDING document status. Slots will be allocated dynamically on FCFS basis when each student completes mandatory uploads.",
-  });
 });
 
 module.exports = router;
