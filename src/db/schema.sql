@@ -176,6 +176,7 @@ ALTER TABLE students ADD COLUMN IF NOT EXISTS assigned_verification_date DATE;
 ALTER TABLE students ADD COLUMN IF NOT EXISTS assigned_batch INT;
 ALTER TABLE students ADD COLUMN IF NOT EXISTS upload_completed_at TIMESTAMPTZ;
 ALTER TABLE students ADD COLUMN IF NOT EXISTS verify_schedule_id INT;
+ALTER TABLE students ADD COLUMN IF NOT EXISTS gender VARCHAR(10);
 CREATE INDEX IF NOT EXISTS idx_students_assigned_date    ON students(assigned_verification_date);
 CREATE INDEX IF NOT EXISTS idx_students_upload_completed ON students(upload_completed_at);
 

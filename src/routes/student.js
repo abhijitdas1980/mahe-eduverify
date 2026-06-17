@@ -307,7 +307,7 @@ router.post("/slot", async (req, res, next) => {
       return res.status(409).json({ error: "That slot is now full. Please pick another." });
     }
     if (s.slot_id && s.slot_id !== slot.id) await client.query("UPDATE slots SET booked=GREATEST(booked-1,0) WHERE id=$1", [s.slot_id]);
-    if (s.slot_id !== slot.id) await client.query("UPDATE slots SET booked=booked+1 WHERE id=$1", [slot.id]);
+    if (s.slot_id !== slot.id || s.slot_rejected) await client.query("UPDATE slots SET booked=booked+1 WHERE id=$1", [slot.id]);
     await client.query(
       "UPDATE students SET slot_id=$1, slot_confirmed=true, slot_rejected=false, slot_reject_reason=NULL WHERE id=$2",
       [slot.id, s.id]

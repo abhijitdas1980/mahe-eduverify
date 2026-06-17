@@ -165,6 +165,12 @@ router.post("/allocate", requireSupervisor, async (req, res, next) => {
     try {
       await client.query("BEGIN");
       for (const stu of students) {
+        const lockR = await client.query(
+          "SELECT id, verify_schedule_id FROM students WHERE id=$1 FOR UPDATE",
+          [stu.id]
+        );
+        const locked = lockR.rows[0];
+        if (!locked || locked.verify_schedule_id) continue;
         const slotR = await client.query(
           `SELECT id FROM verify_schedule
             WHERE schedule_date=$1 AND status='open' AND student_id IS NULL
@@ -454,6 +460,23 @@ router.patch("/assignment/:id", async (req, res, next) => {
       params
     );
 
+    if (b.status === "open") {
+      if (row.student_id) {
+        await pool.query(
+          `UPDATE students SET verify_schedule_id = NULL,
+                               physical_reporting_completed = false,
+                               physical_reporting_at = NULL
+            WHERE id = $1 OR verify_schedule_id = $2`,
+          [row.student_id, id]
+        );
+      } else {
+        await pool.query(
+          "UPDATE students SET verify_schedule_id = NULL WHERE verify_schedule_id = $1",
+          [id]
+        );
+      }
+    }
+
     /* v26 — keep students.physical_reporting_* in sync with verify_schedule.status. */
     if (b.status === "verified" && row.student_id) {
       await pool.query(
@@ -571,9 +594,20 @@ router.post("/reset", requireSupervisor, async (req, res, next) => {
     if (req.body?.confirm !== "YES") {
       return res.status(400).json({ error: "Pass {\"confirm\":\"YES\"} to wipe the verification schedule." });
     }
-    const r = await pool.query("DELETE FROM verify_schedule RETURNING id");
-    await audit(req, "admin", req.admin.staffId, "VERIFY_RESET", `deleted=${r.rowCount}`);
-    res.json({ ok: true, deleted: r.rowCount });
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+      const r = await client.query("DELETE FROM verify_schedule RETURNING id");
+      await client.query("UPDATE students SET verify_schedule_id = NULL WHERE verify_schedule_id IS NOT NULL");
+      await client.query("COMMIT");
+      await audit(req, "admin", req.admin.staffId, "VERIFY_RESET", `deleted=${r.rowCount}`);
+      res.json({ ok: true, deleted: r.rowCount });
+    } catch (e) {
+      await client.query("ROLLBACK").catch(() => {});
+      throw e;
+    } finally {
+      client.release();
+    }
   } catch (e) { next(e); }
 });
 

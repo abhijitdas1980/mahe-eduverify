@@ -25,8 +25,11 @@ const {
 const { fetchAssetBuffer } = require("../config/cloudinary");
 const { normalize } = require("../lib/blacklist");
 
+const studentBulkRoutes = require("./studentBulk");
+
 const router = express.Router();
 router.use(requireAdmin);
+router.use("/students/bulk-upload", studentBulkRoutes);
 
 const isDate = (v) => /^\d{4}-\d{2}-\d{2}$/.test(v || "");
 const SLOT_STATUSES = ["open", "hidden", "closed"];
@@ -616,7 +619,7 @@ router.post("/students/:appNo/reject-slot", async (req, res, next) => {
     if (!s.slot_id) return res.status(400).json({ error: "The student has not booked a slot to reject." });
     await pool.query("UPDATE slots SET booked=GREATEST(booked-1,0) WHERE id=$1", [s.slot_id]);
     await pool.query(
-      `UPDATE students SET slot_confirmed=false, slot_rejected=true, slot_reject_reason=$1 WHERE id=$2`,
+      `UPDATE students SET slot_id=NULL, slot_confirmed=false, slot_rejected=true, slot_reject_reason=$1 WHERE id=$2`,
       [reason || "Slot booking rejected by the verification cell. Please choose another.", s.id]
     );
     await audit(req, "admin", req.admin.staffId, "SLOT_REJECTED", `${s.app_no}: ${reason || ""}`);
