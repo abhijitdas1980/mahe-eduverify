@@ -1,0 +1,114 @@
+/* Shared helpers for working with the documents table (v9).
+   v9 — single confirmation per document replaces v7's six-checkbox flow.
+   Backward compatible: a record with all six legacy keys true still counts.
+*/
+const { pool } = require("../config/db");
+const {
+  checklistFor, fullDocSetFor, DOC_META,
+  isLegacyCode, isOptionalCode,
+} = require("../config/checklists");
+const { signedUrl } = require("../config/cloudinary");
+
+/* v9 — the new single confirmation key. */
+const CONFIRM_KEY = "confirmed";
+/* Legacy six-key flow from v7 — still honoured for old self_verify payloads. */
+const LEGACY_VERIFY_KEYS = ["clarity", "complete", "name", "signature", "date", "authentic"];
+
+async function ensureDocuments(studentId, profile) {
+  for (const code of fullDocSetFor(profile)) {
+    await pool.query(
+      `INSERT INTO documents (student_id, doc_code) VALUES ($1,$2)
+       ON CONFLICT (student_id, doc_code) DO NOTHING`,
+      [studentId, code]
+    );
+  }
+}
+
+/* Hide v8-removed doc codes from listings (backward compat: rows are kept). */
+function filterVisible(docRows) {
+  return (docRows || []).filter((d) => !isLegacyCode(d.doc_code));
+}
+
+/* v9 — true if the student has confirmed the document via the new single
+   checkbox, OR via the legacy six checkboxes. */
+function isConfirmed(selfVerify) {
+  if (!selfVerify || typeof selfVerify !== "object") return false;
+  if (selfVerify[CONFIRM_KEY] === true) return true;
+  return LEGACY_VERIFY_KEYS.every((k) => selfVerify[k] === true);
+}
+
+function serializeDoc(d) {
+  const sv = d.self_verify || {};
+  return {
+    docCode: d.doc_code,
+    name: DOC_META[d.doc_code]?.name || d.doc_code,
+    original: !!DOC_META[d.doc_code]?.original,
+    needsInstitution: !!DOC_META[d.doc_code]?.needsInstitution,
+    optional: !!DOC_META[d.doc_code]?.optional || isOptionalCode(d.doc_code),
+    hasFile: !!d.file_public_id,
+    fileName: d.file_name || null,
+    fileUrl: d.file_public_id ? signedUrl(d, false) : null,
+    institutionName: d.institution_name || "",
+    flagged: !!d.flagged,
+    flagMatch: d.flag_match || null,
+    flagRemarks: d.flag_remarks || null,
+    selfVerify: sv,
+    /* v9 — expose the boolean directly so the frontend doesn't have to know
+       the legacy keys. */
+    confirmed: isConfirmed(sv),
+    studentStatus: d.student_status,
+    issueNote: d.issue_note || null,
+    staffStatus: d.staff_status,
+    staffNote: d.staff_note || null,
+    verifiedByStaffId: d.verifier_staff_id || null,
+    verifiedByName: d.verifier_name || null,
+    verifiedAt: d.verified_at || null,
+  };
+}
+
+function serializeDocAdmin(d) {
+  const sv = d.self_verify || {};
+  return {
+    id: d.id,
+    docCode: d.doc_code,
+    name: DOC_META[d.doc_code]?.name || d.doc_code,
+    original: !!DOC_META[d.doc_code]?.original,
+    needsInstitution: !!DOC_META[d.doc_code]?.needsInstitution,
+    optional: !!DOC_META[d.doc_code]?.optional || isOptionalCode(d.doc_code),
+    hasFile: !!d.file_public_id,
+    fileName: d.file_name || null,
+    fileSize: d.file_size || null,
+    viewUrl: d.file_public_id ? signedUrl(d, false) : null,
+    downloadUrl: d.file_public_id ? signedUrl(d, true) : null,
+    institutionName: d.institution_name || "",
+    flagged: !!d.flagged,
+    flagMatch: d.flag_match || null,
+    flagRemarks: d.flag_remarks || null,
+    flaggedAt: d.flagged_at || null,
+    selfVerify: sv,
+    confirmed: isConfirmed(sv),
+    studentStatus: d.student_status,
+    issueNote: d.issue_note || null,
+    staffStatus: d.staff_status,
+    staffNote: d.staff_note || null,
+    verifiedByStaffId: d.verifier_staff_id || null,
+    verifiedByName: d.verifier_name || null,
+    verifiedAt: d.verified_at || null,
+  };
+}
+
+/** SELECT clause + JOIN that includes the verifier's name + staff ID. */
+const DOC_SELECT_WITH_VERIFIER =
+  "d.*, a.name AS verifier_name, a.staff_id AS verifier_staff_id";
+const DOC_JOIN_VERIFIER = "LEFT JOIN admins a ON a.id = d.verified_by";
+
+module.exports = {
+  /* v9 names */
+  CONFIRM_KEY, LEGACY_VERIFY_KEYS, isConfirmed,
+  /* legacy alias so older callers don't break — same semantics now */
+  allChecksTrue: isConfirmed,
+  VERIFY_KEYS: LEGACY_VERIFY_KEYS,
+  ensureDocuments, filterVisible,
+  serializeDoc, serializeDocAdmin,
+  DOC_SELECT_WITH_VERIFIER, DOC_JOIN_VERIFIER,
+};

@@ -1,0 +1,1052 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>EduVerify — Guided Digital Pre-Verification Portal</title>
+<script src="https://unpkg.com/react@18.2.0/umd/react.production.min.js"></script>
+<script src="https://unpkg.com/react-dom@18.2.0/umd/react-dom.production.min.js"></script>
+<script src="https://unpkg.com/@babel/standalone@7.22.20/babel.min.js"></script>
+<script src="https://unpkg.com/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
+<script src="https://cdn.tailwindcss.com/3.4.3"></script>
+<style>
+  body { font-family:'Inter',system-ui,-apple-system,sans-serif; background:#f7f8fc; }
+  .fade-in { animation: fadeIn .35s ease-in; }
+  @keyframes fadeIn { from{opacity:0;transform:translateY(6px)} to{opacity:1;transform:translateY(0)} }
+  .traffic-light { display:inline-block;width:10px;height:10px;border-radius:9999px;margin-right:6px; }
+  .blink { animation: blink 1.6s infinite; }
+  @keyframes blink { 0%,100%{opacity:1} 50%{opacity:.4} }
+  ::-webkit-scrollbar { width:8px;height:8px; }
+  ::-webkit-scrollbar-thumb { background:#cbd5e1;border-radius:8px; }
+  .spin { animation: spin 1s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .ev-input{width:100%;border:1px solid #cbd5e1;border-radius:.5rem;padding:.5rem .75rem;outline:none;font-size:.875rem}
+  .ev-input:focus{box-shadow:0 0 0 3px #c7d2fe}
+  textarea.ev-input{min-height:60px}
+  .mand-star{color:#e11d48;margin-left:2px;font-weight:bold}
+  .opt-badge{display:inline-block;font-size:9px;font-weight:700;color:#0369a1;background:#e0f2fe;border:1px solid #bae6fd;border-radius:9999px;padding:1px 7px;margin-left:6px;letter-spacing:.04em;text-transform:uppercase;vertical-align:middle}
+  /* v28 — visible focus rings */
+  button:focus-visible, a:focus-visible, select:focus-visible, input:focus-visible, textarea:focus-visible { outline:2px solid #4f46e5; outline-offset:2px; border-radius:4px; }
+  .skip-link { position:absolute; left:-9999px; top:0; background:#4f46e5; color:#fff; padding:.5rem 1rem; z-index:9999; }
+  .skip-link:focus { left:1rem; top:1rem; }
+  .toast-region { position:fixed; bottom:1.5rem; right:1.5rem; z-index:9999; display:flex; flex-direction:column; gap:.5rem; pointer-events:none; }
+  .toast { background:#fff; border-radius:.75rem; padding:.75rem 1rem; box-shadow:0 8px 24px rgba(15,23,42,.18); border-left:4px solid #475569; pointer-events:auto; max-width:380px; font-size:.875rem; animation:toast-in .25s ease-out; }
+  .toast-success { border-left-color:#16a34a; }
+  .toast-error   { border-left-color:#e11d48; }
+  .toast-info    { border-left-color:#4f46e5; }
+  @keyframes toast-in { from { transform:translateY(8px); opacity:0; } to { transform:none; opacity:1; } }
+  .slot-pop { animation:slot-pop .6s ease-out; }
+  @keyframes slot-pop { 0% { transform:scale(.98); box-shadow:0 0 0 0 rgba(16,185,129,.35); } 60% { box-shadow:0 0 0 18px rgba(16,185,129,0); } 100% { transform:none; box-shadow:0 0 0 0 rgba(16,185,129,0); } }
+</style>
+</head>
+<body>
+<div id="root"></div>
+
+<script type="text/babel" data-presets="env,react">
+const { useState, useEffect, useCallback, useMemo, useRef } = React;
+
+/* ============================================================ API ============================================================ */
+const API = {
+  token: null,
+  async req(method, path, body, isForm) {
+    const headers = {};
+    if (API.token) headers["Authorization"] = "Bearer " + API.token;
+    let payload;
+    if (isForm) payload = body;
+    else if (body !== undefined) { headers["Content-Type"] = "application/json"; payload = JSON.stringify(body); }
+    const res = await fetch(path, { method, headers, body: payload });
+    let data = {}; try { data = await res.json(); } catch (e) {}
+    if (!res.ok) throw new Error(data.error || ("Request failed (" + res.status + ")"));
+    return data;
+  },
+  get(p){return API.req("GET",p);}, post(p,b){return API.req("POST",p,b);},
+  patch(p,b){return API.req("PATCH",p,b);}, del(p){return API.req("DELETE",p);},
+  upload(p,file){const fd=new FormData(); fd.append("file",file); return API.req("POST",p,fd,true);},
+  async blob(path){const headers={};if(API.token)headers["Authorization"]="Bearer "+API.token;const res=await fetch(path,{headers});if(!res.ok){let d={};try{d=await res.json();}catch(e){}throw new Error(d.error||("Download failed ("+res.status+")"));}return res.blob();},
+};
+
+const AUTH_KEY = "ev_auth";
+function loadAuth() { try { const a = JSON.parse(localStorage.getItem(AUTH_KEY) || "null"); if (a && a.token) { API.token = a.token; return a; } } catch (e) {} return null; }
+function saveAuth(a) { if (a) { localStorage.setItem(AUTH_KEY, JSON.stringify(a)); API.token = a.token; } else { localStorage.removeItem(AUTH_KEY); API.token = null; } }
+
+/* ============================================================ STATIC CONFIG ============================================================ */
+/* v8 — removed: PAN, BANK, CASTE, MEDICAL. MIGRATION + TC are now Optional. */
+const DOC_CATALOG = {
+  AADHAAR:    { copies:2, formats:"PDF, JPG, PNG (max 6MB)", mistakes:["Photo edges cropped","Aadhaar number not visible","Name mismatch with college record"] },
+  PAN_PARENT: { copies:1, formats:"PDF, JPG (max 6MB)",      mistakes:["Wrong parent's PAN uploaded","Blurred PAN number","Cropped corners"] },
+  APAAR:      { copies:1, formats:"PDF (max 6MB)",           mistakes:["Old non-APAAR ID submitted","Wrong DOB on APAAR"] },
+  SSLC:       { copies:2, formats:"PDF, JPG (max 6MB)",      mistakes:["Photocopy faded","Reverse side missing","Stamp not visible"] },
+  PUC:        { copies:2, formats:"PDF, JPG (max 6MB)",      mistakes:["Provisional marks card uploaded","Missing principal signature"] },
+  UG_DEGREE:  { copies:2, formats:"PDF (max 6MB)",           mistakes:["Convocation certificate not yet issued — provisional accepted","Photo missing"] },
+  UG_MARKS:   { copies:2, formats:"PDF (max 6MB)",           mistakes:["Semester-wise instead of consolidated","CGPA conversion certificate missing"] },
+  DIPLOMA:    { copies:2, formats:"PDF (max 6MB)",           mistakes:["All semester marks not combined","Diploma certificate missing seal"] },
+  TC:         { copies:1, formats:"PDF (max 6MB) · OPTIONAL", mistakes:["TC from earlier school instead of last institution studied","Issued over 6 months ago without validity","Date of leaving missing"] },
+  MIGRATION:  { copies:1, formats:"PDF (max 6MB) · OPTIONAL", mistakes:["Migration from wrong board/university","Migration from an earlier institution instead of the last","Original not provided"] },
+  CHAR_CERT:  { copies:1, formats:"PDF (max 6MB)",           mistakes:["Older than 6 months","No school/college letterhead","From earlier institution, not the last one studied"] },
+  PHOTOS:     { copies:6, formats:"JPG or PNG only · 3.5×4.5 cm · WHITE background only", mistakes:["Selfies submitted","Any non-white background (blue/red/grey not allowed)","Sunglasses or hats","Old photo (over 6 months)","Uploading a PDF instead of an image"] },
+  ANTI_RAG_S: { copies:1, formats:"PDF (max 6MB) · standard template (see Standard Templates)", mistakes:["Not e-signed on antiragging.in","Wrong year selected","Not on the prescribed format"] },
+  ANTI_RAG_P: { copies:1, formats:"PDF (max 6MB) · standard template (see Standard Templates)", mistakes:["Parent name mismatch with Aadhaar","Not e-signed on antiragging.in","Wrong format"] },
+  ANTI_SUB:   { copies:1, formats:"PDF (max 6MB) · standard template (see Standard Templates)", mistakes:["Form unsigned","Wrong year","Not on the prescribed format"] },
+  INCOME:     { copies:1, formats:"PDF (max 6MB)",           mistakes:["ITR for wrong assessment year","Acknowledgment page missing","Not in parent/guardian name"] },
+  PASSPORT:   { copies:1, formats:"PDF (max 6MB)",           mistakes:["Only front page uploaded","Expired passport"] },
+  VISA:       { copies:1, formats:"PDF (max 6MB)",           mistakes:["Tourist visa uploaded","Visa expiry before course end"] },
+  EQUIV:      { copies:1, formats:"PDF (max 6MB)",           mistakes:["Provisional letter uploaded instead","Not on AIU letterhead"] },
+  ENGLISH:    { copies:1, formats:"PDF (max 6MB)",           mistakes:["Score expired","Score report image not official"] },
+};
+const catalog = (code) => DOC_CATALOG[code] || { copies:1, formats:"PDF, JPG (max 6MB)", mistakes:[] };
+
+/* v9 — single confirmation per document (replaces v7's six-checkbox flow).
+   Server still accepts legacy 6-key payloads as confirmed for backward compat. */
+const CONFIRM_KEY = "confirmed";
+const CONFIRM_QUESTION = "I have reviewed this document and confirm that it is clear, complete, and belongs to me.";
+const CONFIRM_NOTE_LINES = [
+  "All pages are uploaded.",
+  "The document is clearly visible and readable.",
+  "The details match your application.",
+  "Original documents will be verified during campus reporting.",
+];
+
+const ISSUE_REASONS = [
+  "Final Marks Card Awaited",
+  "TC Not Yet Issued",
+  "Migration Certificate Pending",
+  "Conduct Certificate Pending",
+  "Other",
+];
+
+/* v8 — extended category dropdown (was: General / NRI / AICTE). */
+const CATEGORIES = ["General", "NRI", "NRI Sponsored", "Foreign", "OCI", "AICTE"];
+
+const FAQ = [
+  { q:"My 12th marks card is not yet issued — what should I do?", a:"Upload your provisional marks card with the school's confirmation letter, then use 'Report Issue' on that document and pick the matching reason from the dropdown." },
+  { q:"How do I get the Anti-Ragging and Anti-Substance Abuse forms?", a:"Open 'Standard Templates' on your dashboard and click 'Download PDF' next to the form you need." },
+  { q:"I don't have an APAAR ID yet — can I proceed?", a:"Generate it free at apaar.education.gov.in using your Aadhaar, then upload it." },
+  { q:"I forgot my password — how do I get back in?", a:"On the login screen click 'Forgot password?'. Re-confirm your application number and date of birth, and set a new password immediately." },
+  { q:"Why am I not seeing all the reporting dates?", a:"Reporting dates are released in batches by the admissions office. As more dates open up, you'll see them appear in the Book Reporting Slot section." },
+  { q:"Why is my photograph being rejected?", a:"Photographs must be JPG or PNG (NOT PDF), on a WHITE background, passport-size 3.5×4.5 cm, recent (under 6 months), and not a selfie or filtered. The system blocks the upload if these rules are not met." },
+  { q:"A document was rejected — what next?", a:"Open the document, read the staff rejection note, then upload the corrected file (the Replace option re-enables only after rejection)." },
+];
+
+const SUPPORT = { phone:"+91-80-4567-8900", email:"admissions@eduverify.ac.in", whatsapp:"+91-98765-43210", hours:"Mon–Sat, 9 AM – 6 PM" };
+
+const TEMPLATES = [
+  { key:"REG", name:"College Registration Form", content:
+`COLLEGE REGISTRATION FORM — ADMISSION 2026
+==========================================
+
+A. CANDIDATE DETAILS
+   Application No.   : __________________________________
+   Full Name         : __________________________________
+   Date of Birth     : ____ / ____ / __________
+   Gender            : __________________________________
+   Programme         : __________________________________
+   Section / Branch  : __________________________________
+   Category          : General / NRI / NRI Sponsored / Foreign / OCI / AICTE
+   Blood Group       : __________________________________
+
+B. PARENT / GUARDIAN DETAILS
+   Father's Name     : __________________________________
+   Mother's Name     : __________________________________
+   Address           : __________________________________
+   Mobile (parent)   : __________________________________
+   Email (parent)    : __________________________________
+
+C. DECLARATION
+   I confirm that all the information provided above is true to
+   the best of my knowledge.
+
+   Candidate signature : __________________     Date: __________
+   Parent signature    : __________________     Date: __________
+` },
+  { key:"ANTI_RAG_S", name:"Anti-Ragging Undertaking — Student", content:
+`ANTI-RAGGING UNDERTAKING — STUDENT
+====================================
+
+I, _______________________________ , son/daughter of _______________________________ ,
+holding application number ________________ , solemnly affirm and declare that:
+
+1. I have read and understood the UGC Regulations on Curbing the Menace of Ragging in
+   Higher Educational Institutions, 2009.
+2. I shall not indulge in any behaviour or act that may be construed as ragging — direct
+   or indirect, on or off the campus.
+3. I shall not participate in or abet/propagate ragging in any form.
+4. I am aware that ragging is a punishable offence under the regulations and the law.
+
+Signature of student : ______________________________
+Name (block letters) : ______________________________
+Date  : ____ / ____ / __________     Place : __________
+` },
+  { key:"ANTI_RAG_P", name:"Anti-Ragging Undertaking — Parent", content:
+`ANTI-RAGGING UNDERTAKING — PARENT / GUARDIAN
+=============================================
+
+I, _______________________________ , parent/guardian of _______________________________ ,
+holding application number ________________ , solemnly declare that:
+
+1. I have read and understood the UGC Regulations on Curbing the Menace of Ragging.
+2. My ward shall not indulge in ragging in any form on or off the campus.
+3. I understand that ragging is a punishable offence and that the institution shall take
+   action against my ward if he/she is found guilty.
+
+Signature of parent / guardian : ______________________________
+Name (block letters) : ______________________________
+Date  : ____ / ____ / __________     Place : __________
+` },
+  { key:"ANTI_SUB", name:"Anti-Substance Abuse Declaration", content:
+`ANTI-SUBSTANCE ABUSE DECLARATION
+==================================
+
+I, _______________________________ , son/daughter of _______________________________ ,
+holding application number ________________ , solemnly declare that:
+
+1. I shall not consume, possess, distribute or be in any way involved with prohibited
+   substances (alcohol, narcotic drugs, tobacco, or any banned chemical substance) on
+   the campus, hostel, or during any institute activity.
+2. I will not encourage, participate in, or assist any other student in such activities.
+3. I understand that any violation will lead to immediate disciplinary action including
+   cancellation of admission and may invite legal action.
+
+Signature of student : ______________________________
+Name (block letters) : ______________________________
+Parent signature     : ______________________________
+Date  : ____ / ____ / __________     Place : __________
+` },
+];
+
+const lightColor = (s) => s==="ready"||s==="verified" ? "bg-green-500" : s==="pending" ? "bg-yellow-400" : s==="issue"||s==="rejected" ? "bg-red-500" : "bg-slate-300";
+const lightLabel = (s) => s==="ready" ? "Ready" : s==="pending" ? "Pending Review" : s==="issue" ? "Needs Attention" : s==="verified" ? "Verified" : s==="rejected" ? "Rejected" : "Not Started";
+const fmtDate = (d) => d ? String(d).slice(0,10) : "—";
+const isPdfName = (n) => /\.pdf$/i.test(n || "");
+const downloadText = (filename, text) => { const blob = new Blob([text], { type:"text/plain" }); const url = URL.createObjectURL(blob); const a = document.createElement("a"); a.href = url; a.download = filename; document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url); };
+const downloadBlob = (filename, blob) => { const url = URL.createObjectURL(blob); const a = document.createElement("a"); a.href = url; a.download = filename; document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url); };
+
+/** v7 — render a template as a PDF (via jsPDF) and trigger download. */
+function downloadTemplatePdf(template) {
+  if (!window.jspdf) { downloadText(`${template.key}-template.txt`, template.content); return; }
+  const { jsPDF } = window.jspdf;
+  const pdf = new jsPDF({ unit: "pt", format: "a4" });
+  pdf.setFont("courier", "normal"); pdf.setFontSize(10);
+  const margin = 40, maxWidth = 515, pageHeight = 800;
+  const lines = pdf.splitTextToSize(template.content, maxWidth);
+  let y = margin;
+  for (const line of lines) {
+    if (y > pageHeight) { pdf.addPage(); y = margin; }
+    pdf.text(line, margin, y);
+    y += 14;
+  }
+  pdf.save(`${template.key}-template.pdf`);
+}
+
+/* ============================================================ ROOT ============================================================ */
+function App() {
+  const [auth, setAuth] = useState(loadAuth);
+  const onAuth = (a) => { saveAuth(a); setAuth(a); };
+  const logout = () => { saveAuth(null); setAuth(null); };
+  const tree = !auth ? <AuthScreen onAuth={onAuth} />
+                     : auth.role === "admin" ? <AdminApp auth={auth} logout={logout} />
+                                              : <StudentApp auth={auth} logout={logout} />;
+  return (<>
+    <a href="#main" className="skip-link">Skip to main content</a>
+    {tree}
+    <ToastRegion />
+  </>);
+}
+
+function TopBar({ subtitle, right }) {
+  return (<header className="bg-white border-b border-slate-200 sticky top-0 z-30"><div className="max-w-7xl mx-auto px-4 sm:px-6 py-3 flex items-center justify-between"><div className="flex items-center gap-3"><div className="w-10 h-10 rounded-xl bg-gradient-to-br from-indigo-600 to-blue-500 grid place-content-center text-white font-bold">EV</div><div><div className="font-bold text-slate-800 leading-tight">EduVerify</div><div className="text-[11px] text-slate-500 -mt-0.5">{subtitle || "Pre-Verification Portal"}</div></div></div><div className="flex items-center gap-3 text-sm">{right}</div></div></header>);
+}
+function Footer() { return (<footer className="border-t border-slate-200 bg-white mt-auto"><div className="max-w-7xl mx-auto px-6 py-4 text-xs text-slate-500 flex flex-col sm:flex-row sm:justify-between gap-2"><div>© 2026 EduVerify · Guided Digital Pre-Verification Portal</div><div>Helpdesk: {SUPPORT.phone} · {SUPPORT.email}</div></div></footer>); }
+function Spinner({ label }) { return (<div className="grid place-items-center py-20 text-slate-500"><div className="w-8 h-8 border-4 border-slate-200 border-t-indigo-600 rounded-full spin"></div><div className="mt-3 text-sm">{label || "Loading…"}</div></div>); }
+function ErrorNote({ msg }) { if (!msg) return null; return <div className="text-xs text-red-700 bg-red-50 border border-red-200 rounded-md p-2 mt-2">{msg}</div>; }
+function OkNote({ msg }) { if (!msg) return null; return <div className="text-xs text-green-700 bg-green-50 border border-green-200 rounded-md p-2 mt-2">{msg}</div>; }
+function Field({ label, children }) { return (<div><label className="text-xs font-medium text-slate-600">{label}</label><div className="mt-1">{children}</div></div>); }
+function PrimaryBtn({ busy, children }) { return <button className="w-full bg-indigo-600 text-white font-semibold py-2.5 rounded-lg hover:bg-indigo-700 disabled:opacity-60" disabled={busy}>{busy?"Please wait…":children}</button>; }
+const MandStar = () => <span className="mand-star" title="Mandatory">*</span>;
+
+/* v28 — minimal toast system. window.evToast(kind, message). */
+const toastQueue = [];
+const toastListeners = new Set();
+/* v30 — evToast(kind, message, options?) — options may include
+   { undo: async () => void, undoLabel?: string, duration?: number }.
+   When `undo` is provided the toast renders an Undo button and stays
+   visible 8 seconds (vs 4.2 s for plain toasts). */
+function evToast(kind, message, options) {
+  const id = Date.now() + Math.random();
+  const hasUndo = options && typeof options.undo === "function";
+  const duration = (options && options.duration) || (hasUndo ? 8000 : 4200);
+  const entry = {
+    id, kind, message,
+    undo: hasUndo ? options.undo : null,
+    undoLabel: (options && options.undoLabel) || "Undo",
+  };
+  /* expose dismiss so the action button can clear the toast immediately */
+  entry.dismiss = () => {
+    if (entry._cleared) return;
+    entry._cleared = true;
+    clearTimeout(entry._t);
+    const i = toastQueue.findIndex(t => t.id === id);
+    if (i >= 0) toastQueue.splice(i, 1);
+    toastListeners.forEach(l => l([...toastQueue]));
+  };
+  toastQueue.push(entry);
+  toastListeners.forEach(l => l([...toastQueue]));
+  entry._t = setTimeout(entry.dismiss, duration);
+}
+if (typeof window !== "undefined") window.evToast = evToast;
+function ToastRegion() {
+  const [queue, setQueue] = useState([]);
+  useEffect(() => { toastListeners.add(setQueue); return () => toastListeners.delete(setQueue); }, []);
+  /* v30 — keyboard shortcut: Ctrl/Cmd+Z fires the most recent toast's undo
+     (unless focus is in an editable field, where the browser's own undo wins). */
+  useEffect(() => {
+    const onKey = (e) => {
+      if (!((e.metaKey || e.ctrlKey) && e.key && e.key.toLowerCase() === "z") || e.shiftKey) return;
+      const ae = document.activeElement;
+      const editable = ae && (ae.tagName === "INPUT" || ae.tagName === "TEXTAREA" || ae.isContentEditable);
+      if (editable) return;
+      const undoable = [...toastQueue].reverse().find(t => t.undo);
+      if (undoable) {
+        e.preventDefault();
+        try { undoable.undo(); } catch (err) {}
+        undoable.dismiss && undoable.dismiss();
+      }
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, []);
+  return (<div className="toast-region" role="status" aria-live="polite" aria-atomic="false">
+    {queue.map(t => (
+      <div key={t.id} className={`toast toast-${t.kind || "info"} flex items-center gap-3`}>
+        <span className="flex-1">{t.message}</span>
+        {t.undo && (
+          <button
+            type="button"
+            onClick={() => { try { t.undo(); } catch (e) {} t.dismiss && t.dismiss(); }}
+            className="text-xs font-semibold text-indigo-700 hover:text-indigo-900 px-2.5 py-1 rounded border border-indigo-300 hover:bg-indigo-50"
+            aria-label={`${t.undoLabel} — Ctrl+Z`}
+            title="Ctrl+Z">
+            ↶ {t.undoLabel}
+          </button>
+        )}
+        <button
+          type="button"
+          onClick={() => t.dismiss && t.dismiss()}
+          className="text-slate-400 hover:text-slate-700 text-lg leading-none"
+          aria-label="Dismiss notification">×</button>
+      </div>
+    ))}
+  </div>);
+}
+/* v8 — Optional doc badge. Use instead of MandStar when doc.optional === true. */
+const OptionalBadge = () => <span className="opt-badge" title="Optional — not required to submit the application">Optional</span>;
+/* v8 — pick the right marker for a doc tile/header. */
+const DocBadge = ({ doc }) => doc && doc.optional ? <OptionalBadge /> : <MandStar />;
+
+/* v29 — modal focus trap hook.
+   Apply trapRef to the modal's outer container, call useFocusTrap(true, close).
+   - Initial focus moves to the first focusable element (skipping the × button).
+   - Tab / Shift+Tab cycle inside the modal.
+   - Escape calls the onEscape callback.
+   - Background nodes outside the modal are marked aria-hidden + inert.
+   - Focus restores to the previously-focused element on close. */
+function useFocusTrap(active, onEscape) {
+  const ref = useRef(null);
+  useEffect(() => {
+    if (!active) return undefined;
+    const node = ref.current;
+    if (!node) return undefined;
+    const prev = (typeof document !== "undefined") ? document.activeElement : null;
+    const SELECTOR = [
+      'a[href]','area[href]','button:not([disabled])','textarea:not([disabled])',
+      'input:not([disabled]):not([type="hidden"])','select:not([disabled])',
+      'iframe','[tabindex]:not([tabindex="-1"])','[contenteditable="true"]'
+    ].join(',');
+    const isVisible = (el) => !!(el.offsetWidth || el.offsetHeight || el.getClientRects().length);
+    const getFocusables = () => Array.from(node.querySelectorAll(SELECTOR)).filter(isVisible);
+    /* Initial focus — skip the × close button so the user lands somewhere meaningful. */
+    const initial = getFocusables();
+    const meaningful = initial.find((el) => !/^[\u00D7\u2715xX]$/.test((el.textContent || "").trim())) || initial[0] || node;
+    const initId = setTimeout(() => { try { meaningful.focus(); } catch (e) {} }, 0);
+    const onKey = (e) => {
+      if (e.key === "Escape" && typeof onEscape === "function") {
+        e.preventDefault(); onEscape(); return;
+      }
+      if (e.key !== "Tab") return;
+      const items = getFocusables();
+      if (!items.length) { e.preventDefault(); return; }
+      const first = items[0], last = items[items.length - 1];
+      if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+      else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+      else if (!node.contains(document.activeElement)) { e.preventDefault(); first.focus(); }
+    };
+    document.addEventListener("keydown", onKey);
+    /* Make background inert. Modal sits inside #root, so we mark every direct
+       child of #root that doesn't contain the modal. */
+    const root = document.getElementById("root");
+    const targets = root
+      ? Array.from(root.children).filter((c) => c !== node && !c.contains(node))
+      : [];
+    targets.forEach((el) => {
+      if (!el.hasAttribute("aria-hidden")) el.dataset.evHidWasAbsent = "1";
+      el.setAttribute("aria-hidden", "true");
+      try { el.inert = true; } catch (e) {}
+    });
+    return () => {
+      clearTimeout(initId);
+      document.removeEventListener("keydown", onKey);
+      targets.forEach((el) => {
+        if (el.dataset.evHidWasAbsent === "1") { el.removeAttribute("aria-hidden"); delete el.dataset.evHidWasAbsent; }
+        try { el.inert = false; } catch (e) {}
+      });
+      if (prev && typeof prev.focus === "function") {
+        setTimeout(() => { try { prev.focus(); } catch (e) {} }, 0);
+      }
+    };
+  }, [active, onEscape]);
+  return ref;
+}
+
+
+/* ============================================================ AUTH ============================================================ */
+function AuthScreen({ onAuth }) {
+  const [mode, setMode] = useState("home");
+  return (<div className="min-h-screen flex flex-col"><TopBar /><main id="main" className="flex-1">{mode === "home" && <Landing go={setMode} />}{mode === "student" && <StudentLogin onAuth={onAuth} back={() => setMode("home")} />}{mode === "admin" && <AdminLogin onAuth={onAuth} back={() => setMode("home")} />}</main><Footer /></div>);
+}
+
+function Landing({ go }) {
+  return (<div className="fade-in"><section className="bg-gradient-to-br from-indigo-700 via-blue-600 to-cyan-500 text-white"><div className="max-w-7xl mx-auto px-6 py-16 grid md:grid-cols-2 gap-10 items-center"><div><span className="inline-block px-3 py-1 bg-white/15 rounded-full text-xs uppercase tracking-wider">Guided · Real-time · Secure</span><h1 className="text-4xl md:text-5xl font-bold mt-4 leading-tight">Verify before you visit.<br/>Walk in. Walk out. Done.</h1><p className="mt-4 text-white/90 max-w-lg">Validate your admission, upload your documents securely, complete a guided self-check, and book a reporting slot — all online, before campus reporting day.</p><div className="mt-6 flex flex-wrap gap-3"><button onClick={() => go("student")} className="bg-white text-indigo-700 font-semibold px-5 py-3 rounded-xl shadow hover:shadow-lg">Student Login →</button><button onClick={() => go("admin")} className="bg-white/10 border border-white/30 text-white font-semibold px-5 py-3 rounded-xl hover:bg-white/20">Verification Cell Login</button></div></div><div className="grid grid-cols-2 gap-3">{[["01","Validate","Confirm admission & program"],["02","Checklist","Personalised document list"],["03","Upload","Secure, encrypted uploads"],["04","Confirm","One-tick review per document"],["05","Slot","Auto-allocated on FCFS"],["06","Walk-in","Originals matched in minutes"]].map(x=>(<div key={x[0]} className="bg-white/10 backdrop-blur rounded-xl p-4 border border-white/20"><div className="text-2xl font-bold text-white/80">{x[0]}</div><div className="font-semibold mt-1">{x[1]}</div><div className="text-xs text-white/80 mt-1">{x[2]}</div></div>))}</div></div></section></div>);
+}
+
+function StudentLogin({ onAuth, back }) {
+  const [step, setStep] = useState("identify"); const [appNo, setAppNo] = useState(""); const [dob, setDob] = useState(""); const [name, setName] = useState(""); const [pwd, setPwd] = useState(""); const [pwd2, setPwd2] = useState(""); const [err, setErr] = useState(""); const [busy, setBusy] = useState(false);
+  const check = async (e) => { e.preventDefault(); setErr(""); setBusy(true); try { const r = await API.post("/api/auth/student/check", { appNo, dob }); setName(r.name); setStep(r.firstLogin ? "setPwd" : "login"); } catch (ex) { setErr(ex.message); } setBusy(false); };
+  const register = async (e) => { e.preventDefault(); setErr(""); if (pwd.length < 6) { setErr("Password must be at least 6 characters."); return; } if (pwd !== pwd2) { setErr("The two passwords do not match."); return; } setBusy(true); try { const r = await API.post("/api/auth/student/register", { appNo, dob, password: pwd }); onAuth({ token:r.token, role:"student", name:r.student.name, appNo:r.student.appNo }); } catch (ex) { setErr(ex.message); } setBusy(false); };
+  const login = async (e) => { e.preventDefault(); setErr(""); setBusy(true); try { const r = await API.post("/api/auth/student/login", { appNo, password: pwd }); onAuth({ token:r.token, role:"student", name:r.student.name, appNo:r.student.appNo }); } catch (ex) { setErr(ex.message); } setBusy(false); };
+  const reset = async (e) => { e.preventDefault(); setErr(""); if (pwd.length < 6) { setErr("New password must be at least 6 characters."); return; } if (pwd !== pwd2) { setErr("The two passwords do not match."); return; } setBusy(true); try { const r = await API.post("/api/auth/student/reset-password", { appNo, dob, password: pwd }); onAuth({ token:r.token, role:"student", name:r.student.name, appNo:r.student.appNo }); } catch (ex) { setErr(ex.message); } setBusy(false); };
+  return (<div className="max-w-md mx-auto px-6 py-12 fade-in"><div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6"><h2 className="text-2xl font-bold text-slate-800">Student Login</h2><p className="text-sm text-slate-500 mt-1">{step==="identify" && "Enter your application number and date of birth."}{step==="setPwd" && `Welcome, ${name}. Set a password for your account.`}{step==="login" && `Welcome back, ${name}. Enter your password.`}{step==="forgot" && `Reset the password for ${appNo}.`}</p>{step==="identify" && (<form onSubmit={check} className="mt-5 space-y-4"><Field label="Application Number"><input value={appNo} onChange={e=>setAppNo(e.target.value)} placeholder="e.g. CSE2026001" required className="ev-input" /></Field><Field label="Date of Birth"><input type="date" value={dob} onChange={e=>setDob(e.target.value)} required className="ev-input" /></Field><ErrorNote msg={err} /><PrimaryBtn busy={busy}>Continue →</PrimaryBtn></form>)}{step==="setPwd" && (<form onSubmit={register} className="mt-5 space-y-4"><Field label="Create Password (min 6 characters)"><input type="password" value={pwd} onChange={e=>setPwd(e.target.value)} required className="ev-input" /></Field><Field label="Confirm Password"><input type="password" value={pwd2} onChange={e=>setPwd2(e.target.value)} required className="ev-input" /></Field><ErrorNote msg={err} /><PrimaryBtn busy={busy}>Create account & continue →</PrimaryBtn></form>)}{step==="login" && (<form onSubmit={login} className="mt-5 space-y-4"><Field label="Password"><input type="password" value={pwd} onChange={e=>setPwd(e.target.value)} required className="ev-input" autoFocus /></Field><ErrorNote msg={err} /><PrimaryBtn busy={busy}>Sign in →</PrimaryBtn><div className="flex justify-between text-sm"><button type="button" onClick={()=>{setStep("forgot");setErr("");setPwd("");setPwd2("");}} className="text-indigo-600 hover:underline">Forgot password?</button><button type="button" onClick={()=>{setStep("identify");setErr("");setPwd("");}} className="text-slate-500 hover:text-slate-800">Different application no.</button></div></form>)}{step==="forgot" && (<form onSubmit={reset} className="mt-5 space-y-4"><div className="text-xs text-slate-600 bg-blue-50 border border-blue-200 rounded-md p-2">Your identity is confirmed by your application number and date of birth.</div><Field label="New Password (min 6 characters)"><input type="password" value={pwd} onChange={e=>setPwd(e.target.value)} required className="ev-input" autoFocus /></Field><Field label="Confirm New Password"><input type="password" value={pwd2} onChange={e=>setPwd2(e.target.value)} required className="ev-input" /></Field><ErrorNote msg={err} /><PrimaryBtn busy={busy}>Reset password & sign in →</PrimaryBtn><button type="button" onClick={()=>{setStep("login");setErr("");setPwd("");setPwd2("");}} className="w-full text-slate-500 text-sm hover:text-slate-800">← Back to login</button></form>)}{step==="identify" && <button type="button" onClick={back} className="w-full text-slate-400 text-sm hover:text-slate-700 mt-4">← Back</button>}</div><p className="text-center text-xs text-slate-400 mt-4">Trouble logging in? Call {SUPPORT.phone}</p></div>);
+}
+
+function AdminLogin({ onAuth, back }) {
+  const [staffId, setStaffId] = useState(""); const [pwd, setPwd] = useState(""); const [err, setErr] = useState(""); const [busy, setBusy] = useState(false);
+  const submit = async (e) => { e.preventDefault(); setErr(""); setBusy(true); try { const r = await API.post("/api/auth/admin/login", { staffId, password: pwd }); onAuth({ token:r.token, role:"admin", name:r.admin.name, staffId:r.admin.staffId, adminRole:r.admin.role }); } catch (ex) { setErr(ex.message); } setBusy(false); };
+  return (<div className="max-w-md mx-auto px-6 py-12 fade-in"><div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6"><h2 className="text-2xl font-bold text-slate-800">Verification Cell Login</h2><p className="text-sm text-slate-500 mt-1">For admission verification staff only.</p><form onSubmit={submit} className="mt-5 space-y-4"><Field label="Staff ID"><input value={staffId} onChange={e=>setStaffId(e.target.value)} placeholder="e.g. ADM-001" required className="ev-input" /></Field><Field label="Password"><input type="password" value={pwd} onChange={e=>setPwd(e.target.value)} required className="ev-input" /></Field><ErrorNote msg={err} /><button className="w-full bg-slate-800 text-white font-semibold py-2.5 rounded-lg hover:bg-slate-900 disabled:opacity-60" disabled={busy}>{busy?"Signing in…":"Sign in →"}</button><button type="button" onClick={back} className="w-full text-slate-400 text-sm hover:text-slate-700">← Back</button></form></div></div>);
+}
+
+/* ============================================================ STUDENT APP ============================================================ */
+function StudentApp({ auth, logout }) {
+  const [screen, setScreen] = useState("dashboard");
+  const [data, setData] = useState(null); const [err, setErr] = useState(""); const [loading, setLoading] = useState(true);
+  const [showTemplates, setShowTemplates] = useState(false);
+  const reload = useCallback(async () => { try { const d = await API.get("/api/student/me"); setData(d); setErr(""); } catch (ex) { setErr(ex.message); if (/log in/i.test(ex.message)) logout(); } setLoading(false); }, [logout]);
+  useEffect(() => { reload(); }, [reload]);
+  const right = (<><div className="hidden sm:flex items-center gap-2 bg-slate-100 px-3 py-1.5 rounded-lg"><span className="w-2 h-2 rounded-full bg-green-500"></span><span className="text-slate-700">{auth.name}</span><span className="text-slate-400">·</span><span className="text-slate-500">{auth.appNo}</span></div><button onClick={()=>setShowTemplates(true)} className="text-indigo-600 hover:underline text-sm">📄 Templates</button><button onClick={logout} className="text-slate-500 hover:text-slate-800">Logout</button></>);
+  let body;
+  if (loading) body = <Spinner label="Loading your portal…" />;
+  else if (!data) body = <div className="max-w-md mx-auto py-16 text-center"><ErrorNote msg={err || "Could not load your data."} /><button onClick={reload} className="mt-3 text-indigo-600 text-sm">Retry</button></div>;
+  else if (screen==="dashboard") body = <SDashboard data={data} go={setScreen} openTemplates={()=>setShowTemplates(true)} />;
+  else if (screen==="checklist") body = <SChecklist data={data} reload={reload} go={setScreen} openTemplates={()=>setShowTemplates(true)} />;
+  else if (screen==="declare")   body = <SDeclaration data={data} reload={reload} go={setScreen} />;
+  else if (screen==="slot")      body = <SSlot data={data} reload={reload} go={setScreen} />;
+  else if (screen==="summary")   body = <SSummary data={data} go={setScreen} />;
+  else if (screen==="faq")       body = <SFaq go={setScreen} />;
+  return (<div className="min-h-screen flex flex-col"><TopBar subtitle="Student Portal" right={right} /><main id="main" className="flex-1">{body}</main><Footer />{showTemplates && <TemplatesModal close={()=>setShowTemplates(false)} />}</div>);
+}
+
+/* v8 — gating uses MANDATORY docs only. Optional docs (MIGRATION, TC) are
+   reported separately and don't block declaration or slot booking. */
+function docStats(documents) {
+  const mand = documents.filter(d => !d.optional);
+  const opt  = documents.filter(d =>  d.optional);
+  const total   = mand.length;
+  const ready   = mand.filter(d=>d.studentStatus==="ready").length;
+  const issue   = mand.filter(d=>d.studentStatus==="issue").length;
+  const pending = mand.filter(d=>d.studentStatus==="pending").length;
+  const flagged = documents.filter(d=>d.flagged).length;
+  const optTotal    = opt.length;
+  const optUploaded = opt.filter(d=>d.hasFile).length;
+  const optReady    = opt.filter(d=>d.studentStatus==="ready").length;
+  return { total, ready, issue, pending, flagged, optTotal, optUploaded, optReady, allReady: total>0 && ready===total };
+}
+
+function StageNav({ steps }) {
+  return (<div className="flex items-center gap-2 flex-wrap text-sm">{steps.map((s, i) => (<React.Fragment key={i}>{i > 0 && <span className="text-slate-300">›</span>}{s.onClick ? <button onClick={s.onClick} className={`hover:underline ${s.active?'text-indigo-700 font-semibold':'text-slate-600'}`}>{s.label}</button> : <span className={s.active?'text-indigo-700 font-semibold':'text-slate-500'}>{s.label}</span>}</React.Fragment>))}</div>);
+}
+
+function SDashboard({ data, go, openTemplates }) {
+  const { student, documents, slot } = data;
+  const st = docStats(documents);
+  const pct = Math.round((st.ready/Math.max(st.total,1))*100);
+  const pending = student.pendingDocs || student.submissionDeadline;
+  const slotRej = student.slotRejected;
+  return (<div className="max-w-7xl mx-auto px-6 py-8 fade-in"><h2 className="text-2xl font-bold text-slate-800">Welcome, {student.name.split(" ")[0]}</h2><p className="text-sm text-slate-500">Here is your admission and verification progress.</p>{pending && (<div className="bg-amber-50 border border-amber-300 rounded-2xl p-4 mt-5 fade-in"><div className="font-semibold text-amber-900">⚠ Pending items recorded by the verification cell</div>{student.pendingDocs && <div className="mt-1 text-sm text-amber-800 whitespace-pre-line">{student.pendingDocs}</div>}{student.submissionDeadline && <div className="mt-1 text-xs text-amber-700">Please submit by <b>{fmtDate(student.submissionDeadline)}</b>.</div>}</div>)}{slotRej && (<div className="bg-rose-50 border border-rose-300 rounded-2xl p-4 mt-5 fade-in"><div className="font-semibold text-rose-900">⚠ Reporting slot rejected by the verification cell</div>{student.slotRejectReason && <div className="mt-1 text-sm text-rose-800">{student.slotRejectReason}</div>}<button onClick={()=>go("slot")} className="mt-2 text-sm bg-rose-600 text-white px-3 py-1.5 rounded-md hover:bg-rose-700">Pick a new slot →</button></div>)}<div className="grid md:grid-cols-3 gap-5 mt-6"><div className="md:col-span-2 bg-white p-5 rounded-2xl border border-slate-200"><div className="flex items-start justify-between"><div><div className="text-xs text-slate-500">Admission Status</div><div className="mt-1 inline-flex items-center gap-2 bg-amber-50 text-amber-800 border border-amber-200 px-3 py-1 rounded-full text-sm font-medium"><span className="w-2 h-2 rounded-full bg-amber-500 blink"></span> Provisionally Admitted</div></div><div className="text-right"><div className="text-xs text-slate-500">Application No.</div><div className="font-mono text-slate-700 text-sm">{student.appNo}</div></div></div><div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mt-5 text-sm"><Info label="Program" value={student.program} /><Info label="Category" value={student.category} /><Info label="Section" value={student.section} /><Info label="Orientation" value={fmtDate(student.orientationDate)} /></div></div><div className="bg-white p-5 rounded-2xl border border-slate-200"><div className="text-xs text-slate-500">Document Readiness</div><div className="mt-1 text-3xl font-bold text-slate-800">{pct}%</div><div className="w-full bg-slate-100 rounded-full h-2 mt-2 overflow-hidden"><div className={`h-2 ${pct===100?'bg-green-500':pct>0?'bg-yellow-400':'bg-slate-300'}`} style={{width:`${pct}%`}}></div></div><div className="mt-3 flex items-center text-xs gap-3 flex-wrap"><span><span className={`traffic-light ${lightColor("ready")}`}></span>{st.ready} ready</span><span><span className={`traffic-light ${lightColor("pending")}`}></span>{st.pending} pending</span><span><span className={`traffic-light ${lightColor("issue")}`}></span>{st.issue} issue</span>{st.flagged>0 && <span className="text-rose-700">⚑ {st.flagged} flagged</span>}</div></div></div>{(() => {
+        const key = `ev_slot_seen_${student.appNo}`;
+        const seen = typeof window !== "undefined" ? localStorage.getItem(key) : null;
+        if (data.verifySlot && !seen && typeof window !== "undefined") {
+          localStorage.setItem(key, "1");
+          try { window.evToast && window.evToast("success", `Slot allocated: ${data.verifySlot.room} · ${data.verifySlot.startTime} on ${fmtDate(data.verifySlot.date)}`); } catch (e) {}
+        }
+        return null;
+      })()}
+      <VerifySlotPanel student={student} verifySlot={data.verifySlot} /><div className="bg-white border border-slate-200 rounded-2xl p-5 mt-5"><div className="grid sm:grid-cols-3 gap-4"><StepCard n="1" t="Document Checklist" d={`${st.ready}/${st.total} mandatory ready${st.optTotal>0 ? ` · ${st.optUploaded}/${st.optTotal} optional uploaded` : ""}`} done={st.allReady} cta="Open Checklist" onClick={()=>go("checklist")} /><StepCard n="2" t="Verification Slot (auto-allocated)" d={data.verifySlot ? `${data.verifySlot.room} · slot #${data.verifySlot.slotNo} · ${data.verifySlot.startTime}` : (st.allReady ? "Allocating…" : "Waiting for mandatory docs to be confirmed")} done={!!data.verifySlot} cta={data.verifySlot ? "View Slot" : "Open Checklist"} onClick={()=>go(data.verifySlot ? "slot" : "checklist")} disabled={false} /><StepCard n="3" t="Original Document Verification" d={data.verifySlot ? (data.verifySlot.status==="verified" ? "Verified at campus" : "Report on assigned day/time") : "After slot allocation"} done={data.verifySlot && data.verifySlot.status==="verified"} cta="View Verification" onClick={()=>go("summary")} disabled={!data.verifySlot} hint="Slot will be auto-allocated after you confirm all mandatory documents" /></div></div><div className="mt-5 grid md:grid-cols-3 gap-5"><div className="md:col-span-2 bg-amber-50 border border-amber-200 rounded-2xl p-5 text-sm text-amber-800"><div className="font-semibold text-amber-900">Tip — finish in one sitting (~15 mins)</div>Keep your documents ready as PDFs or JPGs under 6 MB. For marks cards and certificates also enter the issuing board / university so we can pre-verify it.<div className="mt-2 flex flex-wrap gap-2"><button onClick={openTemplates} className="text-amber-900 underline">📄 Download Standard Templates</button><span className="text-amber-700">·</span><button onClick={()=>go("faq")} className="text-amber-900 underline">Read the FAQ</button></div></div><SupportCard /></div></div>);
+}
+function Info({ label, value }) { return <div><div className="text-xs text-slate-500">{label}</div><div className="font-medium text-slate-800">{value || "—"}</div></div>; }
+/* v14 — Verification slot panel for the student dashboard. */
+function VerifySlotPanel({ student, verifySlot }) {
+  const hasDate = !!student.assignedVerificationDate;
+  const hasSlot = !!verifySlot;
+  return (<div className={`bg-white border border-emerald-200 rounded-2xl p-5 mt-5 ${verifySlot ? "slot-pop" : ""}`}>
+    <div className="flex items-start justify-between flex-wrap gap-3">
+      <div>
+        <div className="text-xs uppercase tracking-wider text-emerald-700 font-semibold">Document Verification — Orientation Week</div>
+        <div className="text-lg font-bold text-slate-800 mt-1">Your Verification Slot</div>
+      </div>
+      <span className={`text-[11px] font-semibold px-2 py-0.5 rounded ${hasSlot && verifySlot.status==="verified" ? "bg-green-100 text-green-700" : hasSlot ? "bg-blue-100 text-blue-700" : "bg-slate-100 text-slate-600"}`}>
+        {hasSlot ? (verifySlot.status === "verified" ? "✓ Verified" : "Allocated") : "Pending allocation"}
+      </span>
+    </div>
+    <div className="grid sm:grid-cols-2 md:grid-cols-3 gap-3 mt-4 text-sm">
+      <Info label="Student name" value={student.name} />
+      <Info label="Application no" value={student.appNo} />
+      <Info label="Assigned verification date" value={hasDate ? fmtDate(student.assignedVerificationDate) : "—"} />
+      <Info label="Allocated room" value={hasSlot ? verifySlot.room : "—"} />
+      <Info label="Slot number" value={hasSlot ? `#${verifySlot.slotNo}` : "—"} />
+      <Info label="Start time" value={hasSlot ? verifySlot.startTime : "—"} />
+      <Info label="End time" value={hasSlot ? verifySlot.endTime : "—"} />
+      <Info label="Verification status" value={hasSlot ? verifySlot.status : "—"} />
+      <Info label="Upload completed at" value={student.uploadCompletedAt ? new Date(student.uploadCompletedAt).toLocaleString() : "—"} />
+    </div>
+    {hasSlot && (<div className="mt-3 text-sm text-emerald-800 bg-emerald-50 border border-emerald-200 rounded-lg p-3">
+      📍 Please report to <b>{verifySlot.room}</b> on <b>{fmtDate(verifySlot.date)}</b> at <b>{verifySlot.startTime}</b> with your original documents.
+    </div>)}
+    {!hasSlot && hasDate && (<div className="mt-3 text-sm text-amber-800 bg-amber-50 border border-amber-200 rounded-lg p-3">
+      Your slot will be auto-generated the moment you confirm every mandatory document. Your fixed orientation date is <b>{fmtDate(student.assignedVerificationDate)}</b>.
+    </div>)}
+    {!hasDate && (<div className="mt-3 text-sm text-slate-700 bg-slate-50 border border-slate-200 rounded-lg p-3">
+      A verification date has not been assigned to your record yet. Please contact the verification cell.
+    </div>)}
+    <div className="mt-3 text-[11px] text-slate-500">
+      Your document-verification slot is automatically generated after successful upload of all mandatory documents. Slots are assigned on FCFS basis within your pre-assigned orientation date.
+    </div>
+  </div>);
+}
+
+function StepCard({ n, t, d, done, cta, onClick, disabled, hint }) {
+  return (<div className={`rounded-xl border p-4 ${done?'bg-green-50 border-green-200':'bg-slate-50 border-slate-200'}`}><div className="flex items-center gap-2"><div className={`w-7 h-7 grid place-content-center rounded-full text-xs font-bold ${done?'bg-green-500 text-white':'bg-slate-300 text-slate-700'}`}>{done?'✓':n}</div><div className="font-semibold text-slate-800 text-sm">{t}</div></div><div className="text-xs text-slate-600 mt-2">{d}</div><button disabled={disabled} onClick={onClick} className={`mt-3 w-full text-sm font-medium px-3 py-2 rounded-lg ${disabled?'bg-slate-200 text-slate-400 cursor-not-allowed':'bg-indigo-600 text-white hover:bg-indigo-700'}`}>{cta}</button>{disabled && hint && <div className="text-[10px] text-slate-500 mt-1">{hint}</div>}</div>);
+}
+function SupportCard() {
+  return (<div className="bg-white border border-slate-200 rounded-2xl p-5"><div className="font-semibold text-slate-800">Need help?</div><div className="text-xs text-slate-500">Admission Support Cell</div><ul className="text-sm mt-3 space-y-1.5 text-slate-700"><li>Phone: {SUPPORT.phone}</li><li>Email: {SUPPORT.email}</li><li>WhatsApp: {SUPPORT.whatsapp}</li><li>Hours: {SUPPORT.hours}</li></ul></div>);
+}
+
+function SChecklist({ data, reload, go, openTemplates }) {
+  const { documents, student } = data;
+  const [openCode, setOpenCode] = useState(null);
+  const st = docStats(documents);
+  const openDoc = documents.find(d=>d.docCode===openCode);
+  /* v9 — list pending mandatory docs for a precise message. */
+  const pendingMand = documents.filter(d => !d.optional && d.studentStatus !== "ready");
+  const pct = Math.round((st.ready/Math.max(st.total,1))*100);
+  return (<div className="max-w-7xl mx-auto px-6 py-8 fade-in"><StageNav steps={[{label:"Dashboard",onClick:()=>go("dashboard")},{label:"Document Checklist",active:true},{label:"Self-Declaration",onClick:st.allReady?()=>go("declare"):null}]} /><div className="flex items-end justify-between flex-wrap gap-3 mt-3"><div><h2 className="text-2xl font-bold text-slate-800">Your Document Checklist</h2><p className="text-sm text-slate-500">Profile: <b>{student.profile.replace(/-/g,' · ')}</b> · {st.total} mandatory · {st.ready} ready{st.optTotal>0 && <span> · {st.optTotal} optional ({st.optUploaded} uploaded)</span>}{st.flagged>0 && <span className="text-rose-700"> · ⚑ {st.flagged} flagged</span>}</p><p className="text-[11px] text-slate-500 mt-1"><MandStar/> Mandatory · <OptionalBadge/> can be submitted later without blocking your application.</p></div><button onClick={openTemplates} className="text-sm bg-white border border-indigo-300 text-indigo-700 px-3 py-2 rounded-lg hover:bg-indigo-50">📄 Standard Templates</button></div>{/* v9 — mandatory progress bar + status banner */}<div className="bg-white border border-slate-200 rounded-2xl p-4 mt-4"><div className="flex items-center justify-between flex-wrap gap-2"><div className="text-sm font-semibold text-slate-800">Mandatory progress</div><div className="text-xs text-slate-500">{st.ready} of {st.total} confirmed ({pct}%)</div></div><div className="w-full bg-slate-100 rounded-full h-2 mt-2 overflow-hidden"><div className={`h-2 ${st.allReady?'bg-green-500':pct>0?'bg-yellow-400':'bg-slate-300'}`} style={{width:`${pct}%`}}></div></div>{st.allReady ? (<div className="mt-3 text-sm text-green-800 bg-green-50 border border-green-200 rounded-lg p-3">✓ <b>All mandatory documents completed.</b> You may proceed to Self Declaration.</div>) : (<div className="mt-3 text-sm text-amber-800 bg-amber-50 border border-amber-200 rounded-lg p-3"><b>Pending mandatory documents:</b><ul className="list-disc list-inside mt-1">{pendingMand.map(d=>(<li key={d.docCode}>{d.name} <span className="text-[11px] text-amber-700">— {lightLabel(d.studentStatus)}</span></li>))}</ul></div>)}</div><div className="mt-5 grid sm:grid-cols-2 lg:grid-cols-3 gap-4">{documents.map(d => (<button key={d.docCode} onClick={()=>setOpenCode(d.docCode)} className={`text-left bg-white border rounded-2xl p-4 hover:shadow-md transition ${d.flagged?'border-rose-300 hover:border-rose-400':d.optional?'border-sky-200 hover:border-sky-300 bg-sky-50/30':'border-slate-200 hover:border-indigo-300'}`}><div className="flex items-start justify-between gap-2"><div className="font-semibold text-slate-800 text-sm">{d.name}<DocBadge doc={d}/></div><span className={`text-[10px] uppercase tracking-wider px-2 py-0.5 rounded-full ${d.original?'bg-rose-50 text-rose-700':'bg-emerald-50 text-emerald-700'}`}>{d.original?'Original':'Photocopy'}</span></div><div className="text-xs text-slate-500 mt-1">{catalog(d.docCode).formats}</div><div className="mt-3 flex items-center justify-between"><span className="text-xs flex items-center"><span className={`traffic-light ${lightColor(d.studentStatus)}`}></span>{d.studentStatus==="ready" ? <span className="text-green-700 font-medium">✓ Uploaded · ✓ Verified by Student</span> : lightLabel(d.studentStatus)}{d.optional && d.studentStatus!=="ready" ? <span className="ml-1 text-sky-700">— optional</span> : null}</span>{d.hasFile && <span className="text-[11px] text-slate-500 truncate max-w-[110px]">{d.fileName}</span>}</div>{d.flagged && <div className="mt-1 text-[11px] text-rose-700">⚑ Flagged — institution under review</div>}{d.staffStatus==="rejected" && <div className="mt-1 text-[11px] text-rose-600">Rejected — open to re-upload</div>}{d.staffStatus==="verified" && <div className="mt-1 text-[11px] text-green-600">Verified by staff ✓{d.verifiedByStaffId?` (${d.verifiedByStaffId})`:""}</div>}</button>))}</div><div className="mt-6 flex justify-end gap-3 items-center">{!st.allReady && <span className="text-xs text-amber-700">Upload &amp; confirm every mandatory document to unlock Self Declaration.</span>}<button disabled={!st.allReady || student.declared} onClick={()=>go("declare")} className={`px-4 py-2 rounded-lg font-semibold ${(!st.allReady||student.declared)?'bg-slate-200 text-slate-400 cursor-not-allowed':'bg-indigo-600 text-white hover:bg-indigo-700'}`}>Continue to Self-Declaration →</button></div>{openDoc && <DocModal doc={openDoc} reload={reload} close={()=>setOpenCode(null)} openTemplates={openTemplates} />}</div>);
+}
+
+/* v7 PHOTOS validation: enforce image-only + dimension/size pre-check on frontend. */
+async function validatePhotoFile(f) {
+  if (!["image/jpeg", "image/png"].includes(f.type)) {
+    return "Photographs must be JPG or PNG only — PDFs and other formats are not accepted.";
+  }
+  if (f.size > 6 * 1024 * 1024) return "Photograph file is too large (max 6 MB).";
+  // Probe image dimensions
+  return await new Promise((resolve) => {
+    const url = URL.createObjectURL(f);
+    const img = new Image();
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      const w = img.naturalWidth, h = img.naturalHeight;
+      // v17 — relaxed limits so modern phone photos pass.
+      // Min stays at 200×250 (clearly too small / thumbnail). Max raised to
+      // 8000×8000 (12+ MP phones). Orientation no longer enforced — staff
+      // can still reject a non-portrait shot during verification.
+      if (w < 200 || h < 250) return resolve(`Photograph must be at least 200×250 pixels — yours is ${w}×${h}. Use a passport-size photo with WHITE background.`);
+      if (w > 8000 || h > 8000) return resolve(`Photograph is too large (${w}×${h}). Maximum is 8000×8000 px — try saving at a lower resolution.`);
+      resolve(null);
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); resolve("Could not read that image — please choose a valid JPG/PNG photograph."); };
+    img.src = url;
+  });
+}
+
+function DocModal({ doc, reload, close, openTemplates }) {
+  const trapRef = useFocusTrap(true, close);
+  const code = doc.docCode;
+  const cat = catalog(code);
+  const [tab, setTab] = useState(doc.hasFile ? "verify" : "upload");
+  /* v9 — single confirmation checkbox; pre-populate from server flag. */
+  const [confirmed, setConfirmed] = useState(!!doc.confirmed);
+  const [institution, setInstitution] = useState(doc.institutionName || "");
+  const [reasonChoice, setReasonChoice] = useState(""); const [otherReason, setOtherReason] = useState("");
+  const [busy, setBusy] = useState(false); const [err, setErr] = useState("");
+  const [preview, setPreview] = useState(false);
+  const needsInst = doc.needsInstitution;
+  const isReady = doc.studentStatus === "ready";
+  const isVerified = doc.staffStatus === "verified";
+  const isRejected = doc.staffStatus === "rejected";
+  const canUpload = !doc.hasFile || isRejected;
+  const isPhotosDoc = code === "PHOTOS";
+  const hasTemplate = ["ANTI_RAG_S","ANTI_RAG_P","ANTI_SUB"].includes(code);
+
+  const doUpload = async (e) => {
+    const f = e.target.files?.[0]; if (!f) return;
+    setErr("");
+    setBusy(true);
+    try { await API.upload(`/api/student/documents/${code}/upload`, f); await reload(); setTab("verify"); }
+    catch (ex) { setErr(ex.message); }
+    setBusy(false);
+  };
+  /* v9 — Confirm & Save Document. Sends `confirmed:boolean` shorthand. */
+  const confirmAndSave = async () => {
+    if (!confirmed) { setErr("Please tick the confirmation before saving."); return; }
+    if (needsInst && !institution.trim()) { setErr("Enter the issuing institution / board first."); return; }
+    setErr(""); setBusy(true);
+    try { await API.patch(`/api/student/documents/${code}`, { confirmed:true, status:"ready", institutionName: institution }); await reload(); close(); }
+    catch (ex) { setErr(ex.message); }
+    setBusy(false);
+  };
+  const reportIssue = async () => {
+    const computedIssue = reasonChoice === "Other" ? otherReason.trim() : reasonChoice;
+    if (!computedIssue) { setErr("Pick a reason or type one in the Other field."); return; }
+    setErr(""); setBusy(true);
+    try { await API.patch(`/api/student/documents/${code}`, { confirmed:false, status:"issue", issueNote: computedIssue, institutionName: institution }); await reload(); close(); }
+    catch (ex) { setErr(ex.message); }
+    setBusy(false);
+  };
+  const saveInstitution = async () => { if (institution === (doc.institutionName || "")) return; setBusy(true); try { await API.patch(`/api/student/documents/${code}`, { institutionName: institution }); await reload(); } catch (ex) { setErr(ex.message); } setBusy(false); };
+
+  return (<div ref={trapRef} className="fixed inset-0 z-50 bg-black/40 grid place-items-center p-4"><div className="bg-white rounded-2xl max-w-3xl w-full max-h-[92vh] overflow-hidden flex flex-col"><div className="p-5 border-b border-slate-200 flex items-start justify-between"><div><div className="text-xs text-slate-500">{doc.optional ? "Optional Document" : "Mandatory Document"}</div><div className="font-semibold text-slate-800">{doc.name}<DocBadge doc={doc}/></div>{doc.optional && (<div className="text-[11px] text-sky-800 bg-sky-50 border border-sky-200 rounded mt-1 px-2 py-1 inline-block">This document is <b>optional</b> — you can submit your application without uploading it.</div>)}<div className="text-xs text-slate-500 mt-1"><span className={`inline-block px-2 py-0.5 rounded ${doc.original?'bg-rose-50 text-rose-700':'bg-emerald-50 text-emerald-700'}`}>{doc.original?'Original required at campus':'Photocopy acceptable'}</span>{" · "}{cat.copies} copy/copies · {cat.formats}</div>{hasTemplate && <div className="mt-1 text-[11px]"><button onClick={openTemplates} className="text-indigo-600 hover:underline">📄 Download the standard template for this form</button></div>}</div><button onClick={close} className="text-slate-400 hover:text-slate-700 text-2xl leading-none">×</button></div>{doc.flagged && (<div className="mx-5 mt-3 text-sm bg-rose-50 border border-rose-200 text-rose-800 rounded-lg p-3"><b>⚑ Flagged — Verification Required.</b> The institution you entered ({doc.institutionName}) matches our list of non-recognised institutions: <b>{doc.flagMatch}</b>.</div>)}{isRejected && doc.issueNote && (<div className="mx-5 mt-3 text-sm bg-rose-50 border border-rose-200 text-rose-800 rounded-lg p-3"><b>Rejected by verification staff:</b> {doc.issueNote} — please upload a corrected file.</div>)}{isVerified && (<div className="mx-5 mt-3 text-sm bg-green-50 border border-green-200 text-green-800 rounded-lg p-3">✓ This document has been verified by the verification cell{doc.verifiedByStaffId?<span> by <b>{doc.verifiedByStaffId}{doc.verifiedByName?` (${doc.verifiedByName})`:""}</b></span>:null}{doc.verifiedAt?<span> on <b>{fmtDate(doc.verifiedAt)}</b></span>:null}.</div>)}<div className="border-b border-slate-200 px-5"><div className="flex gap-4 text-sm">{[["upload","1 · Upload"],["sample","2 · Sample & Mistakes"],["verify","3 · Self-Verify"],["issue","4 · Report Issue"]].map(t=>(<button key={t[0]} onClick={()=>setTab(t[0])} className={`py-3 border-b-2 ${tab===t[0]?'border-indigo-600 text-indigo-700 font-semibold':'border-transparent text-slate-500'}`}>{t[1]}</button>))}</div></div><div className="p-5 overflow-y-auto">
+    {tab==="upload" && (<div>
+      <div className="border-2 border-dashed border-slate-300 rounded-xl p-6 text-center bg-slate-50">
+        <div className="text-3xl">⤴</div><div className="font-semibold mt-2 text-slate-700">Upload scanned copy</div><div className="text-xs text-slate-500">Accepted: {cat.formats}</div>
+        {canUpload ? (<label className={`mt-3 inline-block px-4 py-2 rounded-lg cursor-pointer ${busy?'bg-slate-300 text-slate-500':'bg-indigo-600 text-white hover:bg-indigo-700'}`}>{busy?"Uploading…":(doc.hasFile?"Replace file":"Choose file")}<input type="file" className="hidden" accept={isPhotosDoc ? ".jpg,.jpeg,.png" : ".pdf,.jpg,.jpeg,.png"} disabled={busy} onChange={doUpload} /></label>) : (<div className="mt-3 inline-block bg-slate-200 text-slate-600 px-4 py-2 rounded-lg text-sm">🔒 Locked — replacement allowed only after staff rejection</div>)}
+        {doc.hasFile && (<div className="mt-3 text-sm text-slate-700 flex items-center justify-center gap-2 flex-wrap">Current file: <b>{doc.fileName}</b><button onClick={()=>setPreview(true)} className="text-xs px-2 py-1 rounded-md border border-indigo-300 text-indigo-700 hover:bg-indigo-50">👁 Preview my upload</button></div>)}
+      </div>
+      {isPhotosDoc && (<div className="mt-4 text-xs text-blue-700 bg-blue-50 border border-blue-200 rounded-lg p-3"><b>Photograph tips:</b><ul className="list-disc list-inside mt-1 space-y-0.5"><li>Plain <b>white background</b> if possible.</li><li>Passport-size, recent (under 6 months), no selfies, sunglasses or hats.</li><li>JPG or PNG only (no PDF), ≤ 6 MB.</li></ul></div>)}
+      <div className="mt-4 text-xs text-slate-600 bg-blue-50 border border-blue-200 rounded-lg p-3">Your file is sent over HTTPS and stored as a private, encrypted asset.</div>
+      <ErrorNote msg={err} />
+    </div>)}
+    {tab==="sample" && (<div><div className="bg-slate-100 rounded-xl p-4"><div className="text-xs text-slate-500">Sample preview (illustration)</div><SampleDoc title={doc.name} /></div><div className="mt-4"><div className="font-semibold text-slate-800 text-sm">Common mistakes to avoid</div><ul className="mt-2 text-sm text-slate-700 list-disc list-inside space-y-1">{cat.mistakes.map((m,i)=><li key={i}>{m}</li>)}</ul></div></div>)}
+    {tab==="verify" && (<div>{/* v9 — Document Status block */}<div className="bg-slate-50 border border-slate-200 rounded-xl p-3 text-sm space-y-1"><div className="font-semibold text-slate-800">Document Status</div><div className="flex items-center gap-2 text-slate-700"><span className={doc.hasFile?"text-green-600":"text-slate-400"}>{doc.hasFile?"✓":"○"}</span> Uploaded {doc.hasFile ? "Successfully" : "— pending"}</div><div className="flex items-center gap-2 text-slate-700"><span className={doc.hasFile?"text-green-600":"text-slate-400"}>{doc.hasFile?"✓":"○"}</span> Preview {doc.hasFile ? "Available" : "— upload first"}{doc.hasFile && <button onClick={()=>setPreview(true)} className="ml-1 text-xs text-indigo-600 hover:underline">view</button>}</div><div className="flex items-center gap-2 text-slate-700"><span className="text-green-600">✓</span> {doc.optional ? "Optional Document" : "Mandatory Document"}</div></div>{needsInst && (<div className="mt-4"><label className="text-xs font-medium text-slate-600">Issuing institution / board <MandStar/></label><input value={institution} onChange={e=>setInstitution(e.target.value)} onBlur={saveInstitution} placeholder="e.g. Karnataka Secondary Education Examination Board" className="ev-input mt-1" /><div className="text-[11px] text-slate-500 mt-1">The system auto-checks this against a list of non-recognised institutions.</div></div>)}{/* v9 — Single confirmation checkbox */}<label className="mt-4 flex items-start gap-2 p-3 rounded-lg border border-slate-200 hover:bg-slate-50 cursor-pointer"><input type="checkbox" disabled={isReady||isVerified} checked={confirmed} onChange={e=>setConfirmed(e.target.checked)} className="mt-1 w-4 h-4 accent-indigo-600" /><span className="text-sm text-slate-800"><b>Student Confirmation.</b> {CONFIRM_QUESTION}</span></label>{/* v9 — Information note */}<div className="mt-3 bg-blue-50 border border-blue-200 rounded-lg p-3 text-xs text-blue-900"><div className="font-semibold">Information note — please ensure:</div><ul className="list-disc list-inside mt-1 space-y-0.5">{CONFIRM_NOTE_LINES.map((l,i)=><li key={i}>{l}</li>)}</ul></div><ErrorNote msg={err} /><div className="mt-4 flex flex-wrap gap-2 items-center">{isVerified ? (<span className="text-sm font-semibold bg-green-100 text-green-700 px-3 py-1.5 rounded-md">✓ Verified by the verification cell</span>) : isReady ? (<span className="text-sm font-semibold bg-green-100 text-green-700 px-3 py-1.5 rounded-md">✓ Uploaded · ✓ Verified by Student — awaiting staff verification</span>) : (<><button disabled={!doc.hasFile||!confirmed||busy||(needsInst&&!institution.trim())} onClick={confirmAndSave} className={`px-4 py-2 rounded-lg font-semibold ${(!doc.hasFile||!confirmed||busy||(needsInst&&!institution.trim()))?'bg-slate-200 text-slate-400 cursor-not-allowed':'bg-green-600 text-white hover:bg-green-700'}`}>{busy?"Saving…":"✓ Confirm & Save Document"}</button>{!doc.hasFile && <span className="text-xs text-slate-500">Upload the file first.</span>}{doc.hasFile && !confirmed && <span className="text-xs text-slate-500">Tick the confirmation to enable saving.</span>}</>)}</div></div>)}
+    {tab==="issue" && (<div>
+      <div className="text-sm text-slate-700">If the document is unavailable, damaged, pending or incorrect, pick the reason:</div>
+      <Field label="Reason"><select value={reasonChoice} onChange={e=>setReasonChoice(e.target.value)} className="ev-input"><option value="">Select…</option>{ISSUE_REASONS.map(r=><option key={r} value={r}>{r}</option>)}</select></Field>
+      {reasonChoice === "Other" && (<div className="mt-3"><Field label="Describe the issue"><textarea value={otherReason} onChange={e=>setOtherReason(e.target.value)} rows="3" placeholder="e.g. Original is with the previous college — release pending." className="ev-input" /></Field></div>)}
+      <div className="mt-3 text-xs text-slate-600 bg-blue-50 border border-blue-200 rounded-lg p-2">Your declaration acceptance, expected submission date and slot booking eligibility remain unchanged. The verification cell will see your pending item.</div>
+      <ErrorNote msg={err} />
+      <button disabled={busy||isVerified} onClick={reportIssue} className="mt-3 bg-rose-600 text-white px-4 py-2 rounded-lg font-semibold hover:bg-rose-700 disabled:opacity-60">{busy?"Saving…":"⚠ Report Issue & Pause"}</button>
+      {isVerified && <div className="text-[11px] text-slate-500 mt-2">This document is already verified — you cannot report an issue.</div>}
+    </div>)}
+  </div></div>{preview && <PreviewOverlay name={doc.name} fileName={doc.fileName} viewUrl={doc.fileUrl} downloadUrl={doc.fileUrl} close={()=>setPreview(false)} />}</div>);
+}
+
+function SampleDoc({ title }) {
+  return (<svg viewBox="0 0 400 200" className="w-full h-40"><rect x="0" y="0" width="400" height="200" rx="6" fill="#ffffff" stroke="#cbd5e1" /><rect x="15" y="15" width="110" height="36" fill="#e2e8f0"/><text x="70" y="37" fontSize="10" textAnchor="middle" fill="#475569">Emblem / Seal</text><text x="200" y="33" fontSize="13" textAnchor="middle" fontWeight="bold" fill="#1e293b">{title}</text><line x1="15" y1="62" x2="385" y2="62" stroke="#e2e8f0"/><text x="20" y="92" fontSize="10" fill="#64748b">Name / Reg No. / Date of Issue</text><text x="20" y="112" fontSize="10" fill="#64748b">Photograph + Signature block</text><rect x="290" y="135" width="80" height="46" fill="#e2e8f0"/><text x="330" y="162" fontSize="9" textAnchor="middle" fill="#475569">Signature & Seal</text></svg>);
+}
+
+function SDeclaration({ data, reload, go }) {
+  const { student, documents } = data;
+  /* v9 — guard: declaration screen requires all mandatory ready. */
+  const st = docStats(documents);
+  const pendingMand = documents.filter(d => !d.optional && d.studentStatus !== "ready");
+  const [agree, setAgree] = useState(false); const [busy, setBusy] = useState(false); const [err, setErr] = useState("");
+  const submit = async () => { if (!st.allReady) { setErr("Upload and confirm every mandatory document first."); return; } setBusy(true); setErr(""); try { await API.post("/api/student/declare"); await reload(); go("slot"); } catch (ex) { setErr(ex.message); } setBusy(false); };
+  return (<div className="max-w-3xl mx-auto px-6 py-8 fade-in"><StageNav steps={[{label:"Dashboard",onClick:()=>go("dashboard")},{label:"Document Checklist",onClick:()=>go("checklist")},{label:"Self-Declaration",active:true},{label:"Slot Booking"}]} /><h2 className="text-2xl font-bold text-slate-800 mt-3">Self-Declaration</h2>{!st.allReady && (<div className="mt-3 bg-amber-50 border border-amber-300 rounded-2xl p-4 text-sm text-amber-900"><div className="font-semibold">Self Declaration is locked.</div><div className="mt-1">Please complete the following mandatory documents first:</div><ul className="list-disc list-inside mt-1">{pendingMand.map(d=><li key={d.docCode}>{d.name} — {lightLabel(d.studentStatus)}</li>)}</ul><button onClick={()=>go("checklist")} className="mt-2 text-sm bg-amber-600 text-white px-3 py-1.5 rounded-md hover:bg-amber-700">Open Document Checklist →</button></div>)}<div className="bg-white border border-slate-200 rounded-2xl p-5 mt-4 text-sm text-slate-700 leading-relaxed"><p>I, <b>{student.name}</b>, holding application number <b>{student.appNo}</b>, hereby declare that:</p><ol className="list-decimal list-inside mt-3 space-y-1"><li>All documents uploaded by me are true, original or true photocopies, and have not been edited, forged or fabricated.</li><li>I have personally verified each document for clarity, completeness, name match, signature, validity and authenticity.</li><li>I understand that submission of false documents will lead to immediate cancellation of admission and may invite legal action.</li><li>I will produce the corresponding originals at the campus verification counter on my booked reporting date.</li><li>I have read and accept the college Anti-Ragging and Anti-Substance-Abuse undertakings and the Code of Conduct.</li></ol><label className="flex items-start gap-2 mt-5 p-3 bg-slate-50 rounded-lg border border-slate-200"><input type="checkbox" className="mt-1 w-4 h-4 accent-indigo-600" checked={agree} onChange={e=>setAgree(e.target.checked)} /><span>I agree to the above declaration and confirm my acceptance, using my account login as a digital signature.</span></label><ErrorNote msg={err} /><button disabled={!agree||busy||!st.allReady} onClick={submit} className={`mt-4 px-5 py-2.5 rounded-lg font-semibold ${(agree&&!busy&&st.allReady)?'bg-indigo-600 text-white hover:bg-indigo-700':'bg-slate-200 text-slate-400 cursor-not-allowed'}`}>{busy?"Submitting…":"✓ Sign & Continue to Slot Booking →"}</button></div></div>);
+}
+
+function SSlot({ data, reload, go }) {
+  const v = data.verifySlot;
+  const student = data.student;
+  return (<div className="max-w-3xl mx-auto px-6 py-8 fade-in">
+    <StageNav steps={[{label:"Dashboard",onClick:()=>go("dashboard")},{label:"Document Checklist",onClick:()=>go("checklist")},{label:"Verification Slot",active:true}]} />
+    <h2 className="text-2xl font-bold text-slate-800 mt-3">Your Verification Slot</h2>
+    {!v && (<div className="mt-4 bg-amber-50 border border-amber-300 rounded-2xl p-5 text-sm text-amber-900">
+      <div className="font-semibold">Slot not yet allocated.</div>
+      <div className="mt-1">Slots are auto-allocated on FCFS basis the moment you confirm every mandatory document. Your fixed orientation date is <b>{fmtDate(student.assignedVerificationDate)}</b>.</div>
+      <button onClick={()=>go("checklist")} className="mt-2 text-sm bg-indigo-600 text-white px-3 py-1.5 rounded-md">Open Document Checklist →</button>
+    </div>)}
+    {v && (<div className="mt-4 bg-white border border-emerald-200 rounded-2xl p-6">
+      <div className="text-xs uppercase tracking-wider text-emerald-700 font-semibold">Document Verification — Orientation Week</div>
+      <div className="text-xl font-bold text-slate-800 mt-1">{v.room} · Slot #{v.slotNo}</div>
+      <div className="text-sm text-slate-600 mt-1">{fmtDate(v.date)} · {v.startTime} – {v.endTime} (10 min)</div>
+      <div className="mt-4 grid sm:grid-cols-2 gap-3 text-sm">
+        <Info label="Application no" value={student.appNo} />
+        <Info label="Name"           value={student.name} />
+        <Info label="Status"         value={v.status} />
+        <Info label="Allocated at"   value={student.uploadCompletedAt ? new Date(student.uploadCompletedAt).toLocaleString() : "—"} />
+      </div>
+      <div className="mt-4 text-sm bg-emerald-50 border border-emerald-200 rounded-lg p-3 text-emerald-800">
+        📍 Please report to <b>{v.room}</b> on <b>{fmtDate(v.date)}</b> at <b>{v.startTime}</b> with your original documents.
+      </div>
+      <div className="mt-3 text-[11px] text-slate-500">
+        Your document-verification slot is automatically generated after successful upload of all mandatory documents. Slots are assigned on FCFS basis within your pre-assigned orientation date.
+      </div>
+    </div>)}
+  </div>);
+}
+
+
+function SSummary({ data, go }) {
+  const { student, documents, slot } = data;
+  const download = () => {
+    const line = (s)=>documents.filter(d=>d.studentStatus===s).map(d=>d.name).join(", ")||"—";
+    const txt = `EDUVERIFY — ORIGINAL DOCUMENT VERIFICATION
+============================================
+
+Student      : ${student.name}
+Application  : ${student.appNo}
+Program      : ${student.program}
+Category     : ${student.category}    Section: ${student.section}
+Profile      : ${student.profile}
+Orientation  : ${fmtDate(student.orientationDate)}
+
+REPORTING APPOINTMENT
+---------------------
+Date : ${slot?fmtDate(slot.date):"—"}
+Time : ${slot?slot.time:"—"}
+Duration : ${slot && slot.durationMinutes ? slot.durationMinutes+' min' : '—'}
+Status : ${student.slotConfirmed?"Documents Submitted for Physical Verification":"Pending campus verification"}
+
+Support: ${SUPPORT.phone} · ${SUPPORT.email}`;
+    downloadText(`Verification-${student.appNo}.txt`, txt);
+  };
+  return (<div className="max-w-4xl mx-auto px-6 py-8 fade-in"><StageNav steps={[{label:"Dashboard",onClick:()=>go("dashboard")},{label:"Document Checklist",onClick:()=>go("checklist")},{label:"Self-Declaration",onClick:()=>go("declare")},{label:"Slot Booking",onClick:()=>go("slot")},{label:"Verification",active:true}]} /><h2 className="text-2xl font-bold text-slate-800 mt-3">Original Document Verification</h2><div className="bg-white border border-slate-200 rounded-2xl p-6 mt-4"><div className="flex items-center justify-between border-b border-dashed pb-4 flex-wrap gap-3"><div><div className="text-xs text-slate-500">Appointment Slip</div><div className="text-xl font-bold text-slate-800">{student.name}</div><div className="text-sm text-slate-500 font-mono">{student.appNo}</div></div><div className="text-right"><div className="text-xs text-slate-500">Reporting</div><div className="text-lg font-bold text-indigo-700">{slot?fmtDate(slot.date):"—"}</div><div className="text-sm text-slate-700">{slot?slot.time:"—"}{slot && slot.durationMinutes ? ` · ${slot.durationMinutes} min` : ""}</div></div></div><div className={`mt-3 text-sm px-3 py-2 rounded-lg inline-block ${student.slotConfirmed?'bg-green-50 text-green-700 border border-green-200':'bg-amber-50 text-amber-700 border border-amber-200'}`}>{student.slotConfirmed?"✓ Documents Submitted for Physical Verification":"Slot booked — awaiting staff confirmation"}</div><div className="grid sm:grid-cols-2 gap-4 mt-4 text-sm"><div><span className="text-slate-500">Program: </span><b>{student.program}</b></div><div><span className="text-slate-500">Section: </span><b>{student.section}</b></div><div><span className="text-slate-500">Category: </span><b>{student.category}</b></div><div><span className="text-slate-500">Orientation: </span><b>{fmtDate(student.orientationDate)}</b></div></div><div className="mt-5"><div className="font-semibold text-slate-800">Document checklist</div><div className="mt-2 grid sm:grid-cols-2 gap-y-1 text-sm">{documents.map(d=>(<div key={d.docCode} className="flex items-center"><span className={`traffic-light ${lightColor(d.studentStatus)}`}></span>{d.name}<DocBadge doc={d}/><span className="ml-1 text-xs text-slate-500">— {d.staffStatus==="verified"?"Verified":lightLabel(d.studentStatus)}</span>{d.flagged && <span className="ml-1 text-[10px] text-rose-700">⚑</span>}</div>))}</div></div><div className="flex gap-3 mt-5 flex-wrap"><button onClick={download} className="bg-indigo-600 text-white px-4 py-2 rounded-lg font-semibold hover:bg-indigo-700">Download Verification (.txt)</button><button onClick={()=>window.print()} className="bg-white border border-slate-300 px-4 py-2 rounded-lg font-medium hover:bg-slate-50">Print</button><button onClick={()=>go("checklist")} className="bg-white border border-indigo-300 text-indigo-700 px-4 py-2 rounded-lg font-medium hover:bg-indigo-50">📋 Open Document Checklist</button><button onClick={()=>go("dashboard")} className="bg-white border border-slate-300 px-4 py-2 rounded-lg font-medium hover:bg-slate-50">← Back to Dashboard</button></div></div></div>);
+}
+
+function SFaq({ go }) {
+  const [open, setOpen] = useState(-1);
+  return (<div className="max-w-3xl mx-auto px-6 py-8 fade-in"><button onClick={()=>go("dashboard")} className="text-sm text-indigo-700 hover:underline">← Back to dashboard</button><h2 className="text-2xl font-bold text-slate-800 mt-3">Frequently Asked Questions</h2><div className="mt-4 bg-white rounded-2xl border border-slate-200 divide-y">{FAQ.map((f,i)=>(<div key={i}><button className="w-full text-left px-4 py-3 flex justify-between items-center" onClick={()=>setOpen(open===i?-1:i)}><span className="font-medium text-slate-800">{f.q}</span><span className="text-slate-400">{open===i?'−':'+'}</span></button>{open===i && <div className="px-4 pb-4 text-sm text-slate-600">{f.a}</div>}</div>))}</div><div className="mt-5"><SupportCard /></div></div>);
+}
+
+function TemplatesModal({ close }) {
+  const trapRef = useFocusTrap(true, close);
+  return (<div ref={trapRef} className="fixed inset-0 z-50 bg-black/40 grid place-items-center p-4"><div className="bg-white rounded-2xl max-w-2xl w-full max-h-[92vh] overflow-hidden flex flex-col"><div className="p-5 border-b border-slate-200 flex items-start justify-between"><div><div className="text-xs text-slate-500">Standard Templates</div><div className="font-bold text-slate-800 text-lg">Download standard forms</div><div className="text-xs text-slate-500 mt-1">Download as PDF (or text), print, fill, sign, scan, and upload through your document checklist.</div></div><button onClick={close} className="text-slate-400 hover:text-slate-700 text-2xl leading-none">×</button></div><div className="p-5 overflow-y-auto space-y-3">{TEMPLATES.map(t => (<div key={t.key} className="border border-slate-200 rounded-lg p-3 flex items-center justify-between gap-2 flex-wrap"><div><div className="font-semibold text-slate-800 text-sm">{t.name}</div><div className="text-[11px] text-slate-500">Available as PDF and plain text</div></div><div className="flex gap-2"><button onClick={()=>downloadTemplatePdf(t)} className="text-xs bg-rose-600 text-white px-3 py-1.5 rounded-md hover:bg-rose-700">Download PDF</button><button onClick={()=>downloadText(`${t.key}-template.txt`, t.content)} className="text-xs bg-white border border-slate-300 px-3 py-1.5 rounded-md hover:bg-slate-50">Text</button></div></div>))}</div><div className="p-4 border-t border-slate-200 flex justify-end"><button onClick={close} className="text-sm bg-slate-800 text-white px-4 py-2 rounded-lg hover:bg-slate-900">Close</button></div></div></div>);
+}
+
+/* ============================================================ ADMIN APP ============================================================ */
+/* v28 — single source of truth: verify_schedule.status */
+function pipelineStatus(r) {
+  if (r.flagged > 0) return "Flagged";
+  if (r.verifyStatus === "verified")   return "Verified";
+  if (r.verifyStatus === "absent")     return "Absent";
+  if (r.verifyStatus === "reassigned") return "Reassigned";
+  if (r.verifyStatus === "booked" || r.verifyStatus === "pending") return "Slot Assigned";
+  if (r.issues > 0) return "Needs Attention";
+  if (r.ready === r.total && r.total > 0) return "Docs Ready";
+  return "In Progress";
+}
+function statusPill(label) {
+  const map = {
+    "Flagged":         "bg-rose-100 text-rose-800 border border-rose-300",
+    "Verified":        "bg-green-100 text-green-700",
+    "Absent":          "bg-rose-100 text-rose-700",
+    "Reassigned":      "bg-purple-100 text-purple-700",
+    "Slot Assigned":   "bg-blue-100 text-blue-700",
+    "Needs Attention": "bg-amber-100 text-amber-800",
+    "Docs Ready":      "bg-emerald-100 text-emerald-700",
+    "In Progress":     "bg-slate-100 text-slate-600",
+  };
+  return map[label] || "bg-slate-100 text-slate-600";
+}
+
+function AdminApp({ auth, logout }) {
+  const [stats, setStats] = useState(null);
+  const [students, setStudents] = useState(null);
+  const [meta, setMeta] = useState({ departments:[], sections:[], batches:[], profiles:[], categories: CATEGORIES });
+  const [filters, setFilters] = useState({ department:"", section:"", batch:"", status:"", q:"" });
+  const [selected, setSelected] = useState(null);
+  const [showAdd, setShowAdd] = useState(false);
+  const [showStaff, setShowStaff] = useState(false);
+  const [showBlacklist, setShowBlacklist] = useState(false);
+  const [showSlots, setShowSlots] = useState(false);
+  const [err, setErr] = useState("");
+  const isSupervisor = auth.adminRole === "supervisor";
+  const loadAll = useCallback(async () => { try { const [s, l, m] = await Promise.all([API.get("/api/admin/stats"), API.get("/api/admin/students"), API.get("/api/admin/meta")]); setStats(s); setStudents(l.students); setMeta({ ...m, categories: m.categories || CATEGORIES }); setErr(""); } catch (ex) { setErr(ex.message); if (/log in/i.test(ex.message)) logout(); } }, [logout]);
+  useEffect(() => { loadAll(); }, [loadAll]);
+  const rows = (students || []).filter(r => {
+    if (filters.department && r.department !== filters.department) return false;
+    if (filters.section && r.section !== filters.section) return false;
+    if (filters.batch && r.batch !== filters.batch) return false;
+    if (filters.status && pipelineStatus(r) !== filters.status) return false;
+    if (filters.q) { const q = filters.q.toLowerCase(); if (!(r.name.toLowerCase().includes(q) || r.appNo.toLowerCase().includes(q) || (r.program||"").toLowerCase().includes(q))) return false; }
+    return true;
+  });
+  const right = (<><div className="hidden sm:flex items-center gap-2 bg-indigo-50 text-indigo-700 px-3 py-1.5 rounded-lg"><span className="w-2 h-2 rounded-full bg-indigo-500"></span>{auth.name} · {auth.staffId}<span className="text-[10px] uppercase bg-indigo-200 px-1.5 py-0.5 rounded">{auth.adminRole}</span></div><button onClick={logout} className="text-slate-500 hover:text-slate-800">Logout</button></>);
+  const setF = (k, v) => setFilters(f => ({ ...f, [k]: v }));
+  return (<div className="min-h-screen flex flex-col"><TopBar subtitle="Verification Cell" right={right} /><main id="main" className="flex-1"><div className="max-w-7xl mx-auto px-6 py-8 fade-in"><div className="flex items-center justify-between flex-wrap gap-3"><h2 className="text-2xl font-bold text-slate-800">Verification Cell — Live Dashboard</h2><div className="flex gap-2 flex-wrap">{isSupervisor && <button onClick={()=>setShowAdd(true)} className="text-sm bg-indigo-600 text-white px-3 py-2 rounded-lg hover:bg-indigo-700">+ Add Student</button>}<a href="/verify.html" className="text-sm bg-emerald-600 text-white px-3 py-2 rounded-lg hover:bg-emerald-700">📅 Verification Dashboard</a><button onClick={()=>setShowBlacklist(true)} className="text-sm bg-white border border-rose-300 text-rose-700 px-3 py-2 rounded-lg hover:bg-rose-50">⚑ Non-recognised Institutions</button>{isSupervisor && <button onClick={()=>setShowStaff(true)} className="text-sm bg-white border border-slate-300 px-3 py-2 rounded-lg hover:bg-slate-50">Manage Staff</button>}</div></div><ErrorNote msg={err} /><div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-7 gap-3 mt-5"><Stat label="Students" value={stats?stats.total:"…"} color="bg-slate-100 text-slate-800" /><Stat label="Docs Ready" value={stats?stats.docsReady:"…"} color="bg-emerald-100 text-emerald-800" /><Stat label="Open Issues" value={stats?stats.openIssues:"…"} color="bg-amber-100 text-amber-800" /><Stat label="Slots Booked" value={stats?stats.booked:"…"} color="bg-yellow-100 text-yellow-800" /><Stat label="Cleared" value={stats?stats.cleared:"…"} color="bg-green-100 text-green-800" /><Stat label="Reported" value={stats?stats.reported:"…"} color="bg-indigo-100 text-indigo-800" /><Stat label="⚑ Flagged" value={stats?stats.flagged:"…"} color="bg-rose-100 text-rose-800" /></div><div className="mt-5 bg-white border border-slate-200 rounded-2xl p-3 flex flex-wrap gap-2 items-center"><span className="text-xs font-semibold text-slate-500 uppercase tracking-wide px-1">Filter</span><select value={filters.department} onChange={e=>setF("department",e.target.value)} className="ev-input w-auto"><option value="">All Departments</option>{meta.departments.map(d=><option key={d} value={d}>{d}</option>)}</select><select value={filters.section} onChange={e=>setF("section",e.target.value)} className="ev-input w-auto"><option value="">All Sections</option>{meta.sections.map(s=><option key={s} value={s}>Section {s}</option>)}</select><select value={filters.batch} onChange={e=>setF("batch",e.target.value)} className="ev-input w-auto"><option value="">All Batches</option>{meta.batches.map(b=><option key={b} value={b}>Batch {b}</option>)}</select><select value={filters.status} onChange={e=>setF("status",e.target.value)} className="ev-input w-auto"><option value="">All Statuses</option>{["In Progress","Docs Ready","Needs Attention","Slot Assigned","Verified","Absent","Reassigned","Flagged"].map(s=><option key={s} value={s}>{s}</option>)}</select><input value={filters.q} onChange={e=>setF("q",e.target.value)} placeholder="Search name / app no" className="ev-input w-auto flex-1 min-w-[160px]" />{(filters.department||filters.section||filters.batch||filters.status||filters.q) && <button onClick={()=>setFilters({department:"",section:"",batch:"",status:"",q:""})} className="text-xs text-slate-500 hover:text-slate-800 px-2">Clear</button>}</div><div className="mt-4 bg-white border border-slate-200 rounded-2xl overflow-hidden"><div className="px-5 py-3 border-b border-slate-200 flex items-center justify-between"><div className="font-semibold text-slate-800">Student Pipeline</div><div className="text-xs text-slate-500">{rows.length} of {students?students.length:0} shown</div></div><div className="hidden md:block overflow-x-auto"><table className="min-w-full text-sm"><thead className="bg-slate-50 text-slate-600 text-xs uppercase tracking-wider"><tr><th className="text-left px-4 py-3">Application</th><th className="text-left px-4 py-3">Name</th><th className="text-left px-4 py-3">Program / Dept</th><th className="text-left px-4 py-3">Section</th><th className="text-left px-4 py-3">Uploaded</th><th className="text-left px-4 py-3">Verified</th><th className="text-left px-4 py-3">Status</th><th className="text-left px-4 py-3">Verification</th><th className="text-left px-4 py-3">Action</th></tr></thead><tbody>{!students && <tr><td colSpan="9" className="px-4 py-10 text-center text-slate-500"><div className="font-medium">Loading students…</div><div className="text-xs mt-1">Fetching the latest pipeline data.</div></td></tr>}{students && rows.length===0 && <tr><td colSpan="9" className="px-4 py-10 text-center text-slate-500"><div className="font-medium">No students match these filters.</div><div className="text-xs mt-1">Try clearing one filter or use the search box.</div></td></tr>}{rows.map(r=>{const label = pipelineStatus(r); return (<tr key={r.appNo} className={`border-t border-slate-100 hover:bg-slate-50 cursor-pointer ${r.flagged>0?'bg-rose-50/40':''}`} onClick={()=>setSelected(r.appNo)}><td className="px-4 py-3 font-mono text-xs">{r.appNo}</td><td className="px-4 py-3 font-medium text-slate-800">{r.flagged>0 && <span className="text-rose-600 mr-1">⚑</span>}{r.name}</td><td className="px-4 py-3 text-slate-600">{r.program}<div className="text-[11px] text-slate-400">{r.department||"—"}</div></td><td className="px-4 py-3 text-slate-600">{r.section||"—"}</td><td className="px-4 py-3 text-xs text-slate-600">{r.uploaded}/{r.total}</td><td className="px-4 py-3"><div className="flex items-center gap-2"><div className="w-16 h-1.5 bg-slate-100 rounded-full overflow-hidden"><div className={`h-full ${r.verified===r.total&&r.total>0?'bg-green-500':r.rejected>0?'bg-red-500':'bg-yellow-400'}`} style={{width:`${(r.verified/Math.max(r.total,1))*100}%`}}></div></div><span className="text-xs text-slate-500">{r.verified}/{r.total}</span></div></td><td className="px-4 py-3"><span className={`text-xs font-semibold px-2 py-1 rounded ${statusPill(label)}`}>{label}</span></td><td className="px-4 py-3 text-xs">{r.assignedVerificationDate ? <div><div className="text-slate-700">{fmtDate(r.assignedVerificationDate)}</div><div className={`inline-block mt-0.5 text-[10px] px-1.5 py-0.5 rounded ${r.verifyStatus==="verified"?"bg-green-100 text-green-700":r.verifyStatus==="booked"?"bg-blue-100 text-blue-700":r.verifyStatus==="absent"?"bg-rose-100 text-rose-700":r.verifyStatus==="reassigned"?"bg-purple-100 text-purple-700":"bg-slate-100 text-slate-500"}`}>{r.verifyStatus || "awaiting upload"}</div></div> : <span className="text-slate-300">—</span>}</td><td className="px-4 py-3"><button onClick={(e)=>{e.stopPropagation();setSelected(r.appNo);}} className="text-xs bg-indigo-600 text-white px-3 py-1.5 rounded-md hover:bg-indigo-700 whitespace-nowrap">Open &amp; Verify</button></td></tr>);})}</tbody></table></div><div className="md:hidden p-3 space-y-3">{!students && <div className="text-center py-10 text-slate-500"><div className="font-medium">Loading students…</div><div className="text-xs mt-1">Fetching the latest pipeline data.</div></div>}{students && rows.length===0 && <div className="text-center py-10 text-slate-500"><div className="font-medium">No students match these filters.</div><div className="text-xs mt-1">Try clearing one filter or use the search box.</div></div>}{students && rows.map(r=>{const label = pipelineStatus(r); return (<button key={r.appNo} onClick={()=>setSelected(r.appNo)} className={`w-full text-left bg-white border rounded-xl p-4 hover:shadow active:scale-[0.99] transition ${r.flagged>0 ? 'border-rose-300 bg-rose-50/40' : 'border-slate-200'}`}><div className="flex items-start justify-between gap-2"><div className="min-w-0 flex-1"><div className="font-mono text-[10px] text-slate-500">{r.appNo}</div><div className="font-semibold text-slate-800 text-base truncate">{r.flagged>0 && <span className="text-rose-600 mr-1">⚑</span>}{r.name}</div></div><span className={`text-[10px] font-semibold px-2 py-1 rounded whitespace-nowrap ${statusPill(label)}`}>{label}</span></div><div className="mt-2 text-xs text-slate-600">{r.program}</div><div className="text-[11px] text-slate-500">{r.department || "—"} · Section {r.section || "—"}{r.batch ? ` · Batch ${r.batch}` : ""}</div><div className="mt-3 grid grid-cols-2 gap-2 text-xs"><div className="bg-slate-50 rounded px-2 py-1.5"><div className="text-[10px] text-slate-500 uppercase tracking-wider">Uploaded</div><div className="font-semibold text-slate-800">{r.uploaded}/{r.total}</div></div><div className="bg-slate-50 rounded px-2 py-1.5"><div className="text-[10px] text-slate-500 uppercase tracking-wider">Verified</div><div className="font-semibold text-slate-800">{r.verified}/{r.total}</div></div></div>{r.assignedVerificationDate && (<div className="mt-2 flex items-center justify-between text-xs"><div><span className="text-slate-500">Verification: </span><b className="text-slate-700">{fmtDate(r.assignedVerificationDate)}</b></div><span className={`text-[10px] px-2 py-0.5 rounded ${r.verifyStatus === "verified" ? "bg-green-100 text-green-700" : r.verifyStatus === "booked" ? "bg-blue-100 text-blue-700" : r.verifyStatus === "absent" ? "bg-rose-100 text-rose-700" : r.verifyStatus === "reassigned" ? "bg-purple-100 text-purple-700" : "bg-slate-100 text-slate-500"}`}>{r.verifyStatus || "awaiting upload"}</span></div>)}<div className="mt-3 text-center bg-indigo-600 text-white py-2.5 rounded-lg font-medium text-sm">Open &amp; Verify →</div></button>);})}</div></div></div>{selected && <AdminDetail appNo={selected} role={auth.adminRole} close={()=>setSelected(null)} onChange={loadAll} />}{showAdd && <AddStudentModal profiles={meta.profiles} categories={meta.categories} close={()=>setShowAdd(false)} onAdded={()=>{ setShowAdd(false); loadAll(); }} />}{showStaff && <StaffModal close={()=>setShowStaff(false)} />}{showBlacklist && <BlacklistModal close={()=>setShowBlacklist(false)} isSupervisor={isSupervisor} />}</main><Footer /></div>);
+}
+function Stat({ label, value, color }) { return (<div className={`rounded-2xl p-4 ${color}`}><div className="text-xs uppercase tracking-wider">{label}</div><div className="text-3xl font-bold mt-1">{value}</div></div>); }
+
+function AdminDetail({ appNo, role, close, onChange }) {
+  const trapRef = useFocusTrap(true, close);
+  const [detail, setDetail] = useState(null);
+  const [err, setErr] = useState(""); const [busyId, setBusyId] = useState(null);
+  const [rejecting, setRejecting] = useState(null); const [note, setNote] = useState("");
+  const [undoing, setUndoing] = useState(null); const [undoReason, setUndoReason] = useState(""); const [undoErr, setUndoErr] = useState("");
+  const [preview, setPreview] = useState(null); const [zipBusy, setZipBusy] = useState(false);
+  const [prBusy, setPrBusy] = useState(false);
+  const [pendingDocs, setPendingDocs] = useState(""); const [pendingDeadline, setPendingDeadline] = useState("");
+  const [pendBusy, setPendBusy] = useState(false); const [pendOk, setPendOk] = useState("");
+  const [slotRejBusy, setSlotRejBusy] = useState(false);
+  const [showSlotReject, setShowSlotReject] = useState(false);
+  const [slotRejReason, setSlotRejReason] = useState("");
+  const isSupervisor = role === "supervisor";
+  const load = useCallback(async () => { try { setDetail(await API.get("/api/admin/students/" + encodeURIComponent(appNo))); setErr(""); } catch (ex) { setErr(ex.message); } }, [appNo]);
+  useEffect(() => { load(); }, [load]);
+  useEffect(() => { if (detail?.student) { setPendingDocs(detail.student.pendingDocs || ""); setPendingDeadline(detail.student.submissionDeadline ? String(detail.student.submissionDeadline).slice(0,10) : ""); } }, [detail]);
+  const verify = async (doc, status, staffNote) => { setBusyId(doc.id); setErr(""); try { await API.patch("/api/admin/documents/" + doc.id, { staffStatus: status, staffNote }); window.evToast && window.evToast("success", `${doc.name} ${status === "verified" ? "verified" : status === "rejected" ? "rejected" : "updated"}`); await load(); onChange(); } catch (ex) { setErr(ex.message); window.evToast && window.evToast("error", ex.message); } setBusyId(null); setRejecting(null); setNote(""); };
+  const doUndo = async (doc) => { const r = undoReason.trim(); if (!r) { setUndoErr("Please type a reason — any short text works."); return; } setBusyId(doc.id); setUndoErr(""); setErr(""); try { await API.post(`/api/admin/documents/${doc.id}/undo`, { reason: r }); await load(); onChange(); setUndoing(null); setUndoReason(""); setUndoErr(""); } catch (ex) { setUndoErr(ex.message); } setBusyId(null); };
+  const markPhysical = async (completed) => { setPrBusy(true); setErr(""); try { await API.post("/api/admin/students/" + encodeURIComponent(appNo) + "/physical-reporting", { completed }); await load(); onChange(); } catch (ex) { setErr(ex.message); } setPrBusy(false); };
+  const markVerifyStatus = async (status, remarks) => {
+    if (!detail?.verifySlot) return;
+    /* v30 — capture previous status BEFORE the patch so Undo can revert. */
+    const slotId = detail.verifySlot.id;
+    const prevStatus = detail.verifySlot.status;
+    setPrBusy(true); setErr("");
+    try {
+      await API.patch(`/api/admin/verify/assignment/${slotId}`, { status, remarks: remarks || null });
+      const label = status === "verified" ? "Marked Physically Verified"
+                   : status === "absent"   ? "Marked Absent"
+                   : "Status updated";
+      const reversible = (status === "verified" || status === "absent") && prevStatus && prevStatus !== status;
+      const opts = reversible ? {
+        undoLabel: "Undo",
+        undo: async () => {
+          try {
+            await API.patch(`/api/admin/verify/assignment/${slotId}`, { status: prevStatus, remarks: null });
+            window.evToast && window.evToast("info", `Reverted to ${prevStatus}`);
+            await load(); onChange();
+          } catch (e) {
+            window.evToast && window.evToast("error", "Undo failed: " + e.message);
+          }
+        },
+      } : undefined;
+      window.evToast && window.evToast("success", label, opts);
+      await load(); onChange();
+    } catch (ex) {
+      setErr(ex.message);
+      window.evToast && window.evToast("error", ex.message);
+    }
+    setPrBusy(false);
+  };
+  const [showReassignAdmin, setShowReassignAdmin] = useState(false);
+  const [reassignAuto,   setReassignAuto]   = useState(false);
+  const [reassignDate,   setReassignDate]   = useState("");
+  const [reassignRoom,   setReassignRoom]   = useState("");
+  const [reassignSlot,   setReassignSlot]   = useState("");
+  const [reassignRemarks,setReassignRemarks]= useState("");
+  const doReassign = async () => {
+    if (!detail?.verifySlot) return;
+    setPrBusy(true); setErr("");
+    try {
+      const body = reassignAuto
+        ? { remarks: reassignRemarks || null }
+        : { date: reassignDate || undefined, room: reassignRoom || undefined,
+            slotNo: reassignSlot ? parseInt(reassignSlot, 10) : undefined,
+            remarks: reassignRemarks || null };
+      await API.post(`/api/admin/verify/assignment/${detail.verifySlot.id}/reassign`, body);
+      window.evToast && window.evToast("success", "Slot reassigned — student dashboard will reflect the new room/time.");
+      setShowReassignAdmin(false);
+      setReassignDate(""); setReassignRoom(""); setReassignSlot(""); setReassignRemarks("");
+      await load(); onChange();
+    } catch (ex) { setErr(ex.message); }
+    setPrBusy(false);
+  };
+  const downloadZip = async () => { setZipBusy(true); setErr(""); try { const blob = await API.blob("/api/admin/students/" + encodeURIComponent(appNo) + "/documents.zip"); downloadBlob(appNo + "-documents.zip", blob); } catch (ex) { setErr(ex.message); } setZipBusy(false); };
+  const savePending = async () => { setPendBusy(true); setPendOk(""); setErr(""); try { await API.post("/api/admin/students/" + encodeURIComponent(appNo) + "/pending-docs", { pendingDocs: pendingDocs || null, deadline: pendingDeadline || null }); setPendOk("Saved."); await load(); onChange(); } catch (ex) { setErr(ex.message); } setPendBusy(false); };
+  const rejectSlot = async () => { setSlotRejBusy(true); setErr(""); try { await API.post("/api/admin/students/" + encodeURIComponent(appNo) + "/reject-slot", { reason: slotRejReason }); setShowSlotReject(false); setSlotRejReason(""); await load(); onChange(); } catch (ex) { setErr(ex.message); } setSlotRejBusy(false); };
+  const s = detail?.student;
+  const docs = detail?.documents || [];
+  /* v8 — split mandatory vs optional for accurate progress counts. */
+  const mandDocs = docs.filter(d => !d.optional);
+  const optDocs  = docs.filter(d =>  d.optional);
+  const verified = mandDocs.filter(d=>d.staffStatus==="verified").length;
+  const uploaded = docs.filter(d=>d.hasFile).length;
+  const flagged = docs.filter(d=>d.flagged).length;
+  const allVerified = mandDocs.length>0 && verified===mandDocs.length;
+  const slotState = !detail?.slot ? "Not booked" : s?.slotRejected ? "Rejected" : s?.slotConfirmed ? "Submitted" : "Booked";
+  const slotTone = s?.slotRejected ? "rose" : detail?.slot && s?.slotConfirmed ? "green" : detail?.slot ? "indigo" : "slate";
+  return (<div ref={trapRef} className="fixed inset-0 z-50 bg-black/40 grid place-items-center p-4"><div className="bg-white rounded-2xl max-w-4xl w-full max-h-[92vh] overflow-hidden flex flex-col"><div className="p-5 border-b border-slate-200 flex items-start justify-between"><div><div className="text-xs text-slate-500">Campus Verification</div><div className="font-bold text-slate-800 text-lg">{flagged>0 && <span className="text-rose-600 mr-1">⚑</span>}{s?s.name:appNo}</div>{s && <div className="text-xs text-slate-500 font-mono">{s.appNo} · {s.program} · {s.department||""} · Sec {s.section||"—"} · {s.profile.replace(/-/g,' / ')} · Category: {s.category || "—"}</div>}</div><button onClick={close} className="text-slate-400 hover:text-slate-700 text-2xl leading-none">×</button></div>{!detail && <div className="p-5"><Spinner label="Loading student…" /></div>}{detail && (<div className="p-5 overflow-y-auto"><ErrorNote msg={err} />{flagged>0 && (<div className="bg-rose-50 border border-rose-300 text-rose-800 rounded-lg p-3 mb-4 text-sm"><b>⚑ Flagged — Verification Required.</b> {flagged} document{flagged>1?'s':''} reference{flagged>1?'':'s'} an institution on the blacklist.</div>)}<div className="grid grid-cols-2 sm:grid-cols-4 gap-3 my-4"><MiniStat big={`${uploaded}/${docs.length}`} label="Uploaded (incl. optional)" tone="slate" /><MiniStat big={`${verified}/${mandDocs.length}`} label="Verified (mandatory)" tone="green" /><MiniStat big={s.physicalReportingCompleted?"Done":"Pending"} label="Phys. Reporting" tone={s.physicalReportingCompleted?"green":"slate"} small /></div><div className="flex items-center justify-between flex-wrap gap-2 mb-2"><div className="font-semibold text-slate-800">Documents <span className="text-[11px] text-slate-500 font-normal ml-1"><MandStar/> Mandatory · <OptionalBadge/> Optional (not required to submit)</span></div><button onClick={downloadZip} disabled={zipBusy||uploaded===0} className={`text-xs px-3 py-1.5 rounded-md ${(zipBusy||uploaded===0)?'bg-slate-200 text-slate-400 cursor-not-allowed':'bg-slate-800 text-white hover:bg-slate-900'}`}>{zipBusy?"Preparing ZIP…":"⤓ Download All (ZIP)"}</button></div>
+    <div className="space-y-2">{docs.map(d=>{const locked = d.staffStatus === "verified" || d.staffStatus === "rejected"; return (<div key={d.id} className={`border rounded-lg p-3 ${d.flagged?'border-rose-300 border-l-4 bg-rose-50/40':d.staffStatus==="verified"?'border-green-200 bg-green-50/40':'border-slate-200'}`}><div className="flex items-center justify-between flex-wrap gap-2"><div className="min-w-[180px]"><div className="text-sm font-semibold text-slate-800">{d.flagged && <span className="text-rose-600 mr-1">⚑</span>}{d.name}<DocBadge doc={d}/></div><div className="text-[11px] text-slate-500">{d.hasFile?("File: "+d.fileName):"Not uploaded yet"}{" · "}<span className={d.original?"text-rose-600":"text-emerald-600"}>{d.original?"Original at campus":"Photocopy ok"}</span>{" · self-check: "}{Object.values(d.selfVerify||{}).filter(Boolean).length}/6</div>{d.institutionName && <div className="text-[11px] text-slate-600 mt-0.5">Institution: <b>{d.institutionName}</b></div>}{d.flagged && <div className="text-[11px] text-rose-700 mt-0.5"><b>Remarks:</b> {d.flagRemarks || ("Matches blacklist entry: "+d.flagMatch)}</div>}{d.staffStatus==="verified" && d.verifiedByStaffId && (<div className="text-[11px] text-green-700 mt-0.5">Verified by <b>{d.verifiedByStaffId}{d.verifiedByName?` (${d.verifiedByName})`:""}</b>{d.verifiedAt?` on ${fmtDate(d.verifiedAt)}`:""}</div>)}</div><div className="flex items-center gap-2 flex-wrap"><button disabled={!d.hasFile} onClick={()=>setPreview(d)} className={`text-xs px-3 py-1.5 rounded-md border ${d.hasFile?'border-indigo-300 text-indigo-700 hover:bg-indigo-50':'border-slate-200 text-slate-300 cursor-not-allowed'}`}>Preview</button><button disabled={!d.hasFile} onClick={()=>window.open(d.downloadUrl,"_blank")} className={`text-xs px-3 py-1.5 rounded-md ${d.hasFile?'bg-slate-800 text-white hover:bg-slate-900':'bg-slate-200 text-slate-400 cursor-not-allowed'}`}>Download</button>{!locked && (<><button disabled={!d.hasFile||busyId===d.id} onClick={()=>verify(d,"verified")} className={`text-xs px-3 py-1.5 rounded-md ${d.hasFile?'bg-green-600 text-white hover:bg-green-700':'bg-slate-200 text-slate-400 cursor-not-allowed'}`}>✓ Verify</button><button disabled={!d.hasFile||busyId===d.id} onClick={()=>{setRejecting(d.id);setNote("");}} className={`text-xs px-3 py-1.5 rounded-md ${d.hasFile?'bg-rose-600 text-white hover:bg-rose-700':'bg-slate-200 text-slate-400 cursor-not-allowed'}`}>✕ Reject</button></>)}{locked && isSupervisor && undoing !== d.id && (<button onClick={()=>{setUndoing(d.id); setUndoReason(""); setUndoErr("");}} className="text-xs px-3 py-1.5 rounded-md border border-amber-300 text-amber-700 hover:bg-amber-50">↶ Undo verification</button>)}<span className={`text-xs font-semibold px-2 py-1 rounded ${d.staffStatus==="verified"?'bg-green-100 text-green-700':d.staffStatus==="rejected"?'bg-rose-100 text-rose-700':'bg-slate-100 text-slate-500'}`}>{d.staffStatus==="verified"?"✓ Verified":d.staffStatus==="rejected"?"✕ Rejected (awaiting re-upload)":"Awaiting"}</span></div></div>{rejecting===d.id && (<div className="mt-2 flex gap-2 flex-wrap"><input value={note} onChange={e=>setNote(e.target.value)} placeholder="Reason (shown to student)" className="flex-1 min-w-[200px] border border-slate-300 rounded-md px-2 py-1 text-xs outline-none" /><button onClick={()=>verify(d,"rejected",note||"Document rejected — please re-upload.")} className="text-xs bg-rose-600 text-white px-3 py-1 rounded-md hover:bg-rose-700">Confirm reject</button><button onClick={()=>setRejecting(null)} className="text-xs px-3 py-1 rounded-md border border-slate-300">Cancel</button></div>)}{undoing===d.id && (<div className="mt-2 p-2 bg-amber-50 border border-amber-200 rounded text-xs"><div className="font-semibold text-amber-900 mb-1">Re-open verification (audit-logged)</div><div className="flex gap-2 flex-wrap"><input value={undoReason} onChange={e=>setUndoReason(e.target.value)} placeholder="Reason for re-opening this document" className="flex-1 min-w-[200px] border border-amber-300 rounded-md px-2 py-1 text-xs outline-none bg-white" /><button onClick={()=>doUndo(d)} className="text-xs bg-amber-600 text-white px-3 py-1 rounded-md hover:bg-amber-700">Confirm undo</button><button onClick={()=>{setUndoing(null); setUndoErr("");}} className="text-xs px-3 py-1 rounded-md border border-amber-300">Cancel</button></div>{undoErr && <div className="mt-2 text-[11px] text-rose-700 bg-rose-50 border border-rose-200 rounded px-2 py-1">{undoErr}</div>}</div>)}{d.staffStatus==="rejected" && d.staffNote && <div className="mt-1 text-[11px] text-rose-600">Rejection note: {d.staffNote}</div>}{d.issueNote && d.studentStatus==="issue" && d.staffStatus!=="rejected" && <div className="mt-1 text-[11px] text-amber-600">Student note: {d.issueNote}</div>}</div>);})}</div>
+    <div className="font-semibold text-slate-800 mt-5 mb-2">Verification Slot (auto-allocated)</div>
+{detail.verifySlot ? (
+  <div className="border border-emerald-200 rounded-lg p-4 bg-emerald-50/30">
+    <div className="text-[11px] uppercase tracking-wider text-emerald-700 font-semibold">Document Verification — Orientation Week</div>
+    <div className="text-xl font-bold text-slate-800 mt-1">{detail.verifySlot.room} · Slot #{detail.verifySlot.slotNo}</div>
+    <div className="text-sm text-slate-600 mt-1">{fmtDate(detail.verifySlot.date)} · {detail.verifySlot.startTime} – {detail.verifySlot.endTime} (10 min)</div>
+    <div className="grid sm:grid-cols-3 gap-3 mt-4 text-sm">
+      <div><div className="text-xs text-slate-500">Application no</div><div className="font-medium text-slate-800">{s.appNo}</div></div>
+      <div><div className="text-xs text-slate-500">Name</div><div className="font-medium text-slate-800">{s.name}</div></div>
+      <div><div className="text-xs text-slate-500">Status</div><div className="font-medium text-slate-800">{detail.verifySlot.status === "verified" ? "Reported" : detail.verifySlot.status}</div></div>
+      <div><div className="text-xs text-slate-500">Assigned batch</div><div className="font-medium text-slate-800">{s.assignedBatch || "—"}</div></div>
+      <div><div className="text-xs text-slate-500">Allocated at</div><div className="font-medium text-slate-700 text-xs">{s.uploadCompletedAt ? new Date(s.uploadCompletedAt).toLocaleString() : "—"}</div></div>
+      <div><div className="text-xs text-slate-500">Verified at</div><div className="font-medium text-slate-700 text-xs">{detail.verifySlot.verifiedAt ? new Date(detail.verifySlot.verifiedAt).toLocaleString() : "—"}</div></div>
+    </div>
+    <div className="mt-3 text-sm bg-emerald-100/60 border border-emerald-200 rounded-lg p-3 text-emerald-900">
+      📍 Please report to <b>{detail.verifySlot.room}</b> on <b>{fmtDate(detail.verifySlot.date)}</b> at <b>{detail.verifySlot.startTime}</b> with your original documents.
+    </div>
+    <div className="mt-3 flex gap-2 flex-wrap">
+      {detail.verifySlot.status !== "verified" && (
+        <button onClick={()=>markVerifyStatus("verified")} disabled={prBusy} className="text-xs bg-green-600 text-white px-3 py-1.5 rounded-md hover:bg-green-700 disabled:opacity-60">{prBusy?"…":"✓ Physically Verified"}</button>
+      )}
+      {detail.verifySlot.status === "verified" && (
+        <button onClick={()=>markVerifyStatus("booked")} disabled={prBusy} className="text-xs border border-slate-300 text-slate-600 px-3 py-1.5 rounded-md hover:bg-white disabled:opacity-60">Undo Physical Verification</button>
+      )}
+      {detail.verifySlot.status !== "absent" && detail.verifySlot.status !== "verified" && (
+        <button onClick={()=>markVerifyStatus("absent")} disabled={prBusy} className="text-xs bg-rose-600 text-white px-3 py-1.5 rounded-md hover:bg-rose-700 disabled:opacity-60">⌀ Mark Absent</button>
+      )}
+      <button onClick={()=>setShowReassignAdmin(!showReassignAdmin)} className="text-xs border border-purple-300 text-purple-700 px-3 py-1.5 rounded-md hover:bg-purple-50">↻ Reassign Slot</button>
+    </div>
+    {showReassignAdmin && (
+      <div className="mt-3 bg-purple-50 border border-purple-200 rounded-lg p-3 text-xs">
+        <div className="font-semibold text-purple-900 mb-2">Reassign to another slot</div>
+        <label className="flex items-center gap-1 text-[11px] text-purple-800 mb-2">
+          <input type="checkbox" checked={reassignAuto} onChange={e=>setReassignAuto(e.target.checked)} /> Auto-pick next open slot
+        </label>
+        {!reassignAuto && (<div className="grid sm:grid-cols-3 gap-2">
+          <div>
+            <label className="block text-[11px] text-purple-800">Date</label>
+            <select value={reassignDate} onChange={e=>setReassignDate(e.target.value)} className="ev-input">
+              <option value="">— pick —</option>
+              <option value="2026-07-20">2026-07-20</option>
+              <option value="2026-07-21">2026-07-21</option>
+              <option value="2026-07-22">2026-07-22</option>
+              <option value="2026-07-23">2026-07-23</option>
+            </select>
+          </div>
+          <div>
+            <label className="block text-[11px] text-purple-800">Room</label>
+            <select value={reassignRoom} onChange={e=>setReassignRoom(e.target.value)} className="ev-input">
+              <option value="">— pick —</option>
+              {Array.from({length:15},(_,i)=>"AB4-"+(101+i)).map(r=><option key={r} value={r}>{r}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className="block text-[11px] text-purple-800">Slot # (1–32)</label>
+            <select value={reassignSlot} onChange={e=>setReassignSlot(e.target.value)} className="ev-input">
+              <option value="">First open in room</option>
+              {Array.from({length:32},(_,i)=>i+1).map(n=><option key={n} value={n}>Slot #{n}</option>)}
+            </select>
+          </div>
+        </div>)}
+        <label className="block text-[11px] text-purple-800 mt-2">Remarks (optional)</label>
+        <input value={reassignRemarks} onChange={e=>setReassignRemarks(e.target.value)} placeholder="e.g. extra slot due to missed original time" className="ev-input" />
+        <div className="flex gap-2 mt-2 justify-end">
+          <button onClick={()=>{setShowReassignAdmin(false);}} className="text-xs px-3 py-1 border border-slate-300 rounded">Cancel</button>
+          <button onClick={doReassign} disabled={prBusy} className="text-xs px-3 py-1 bg-purple-600 text-white rounded disabled:opacity-60">{prBusy?"Saving…":"Confirm Reassign"}</button>
+        </div>
+      </div>
+    )}
+  </div>
+) : (
+  <div className="border border-slate-200 rounded-lg p-4 bg-slate-50/40">
+    <div className="text-sm text-slate-700"><b>Assigned verification date:</b> {s.assignedVerificationDate ? fmtDate(s.assignedVerificationDate) : "— not assigned —"}{s.assignedBatch ? <span> (batch {s.assignedBatch})</span> : null}</div>
+    <div className="text-xs text-amber-700 mt-2">Student has not yet completed all mandatory uploads — the room/time slot will auto-allocate on FCFS basis the moment they do.</div>
+  </div>
+)}<div className="font-semibold text-slate-800 mt-5 mb-2">Pending Items & Deadline</div><div className="border border-slate-200 rounded-lg p-3"><Field label="Pending documents / notes (visible to the student)"><textarea value={pendingDocs} onChange={e=>setPendingDocs(e.target.value)} rows="2" placeholder="e.g. Original 12th marks card; signed Anti-Substance Abuse declaration" className="ev-input" /></Field><div className="grid sm:grid-cols-3 gap-3 mt-3 items-end"><Field label="Submission deadline"><input type="date" value={pendingDeadline} onChange={e=>setPendingDeadline(e.target.value)} className="ev-input" /></Field><div className="sm:col-span-2 flex items-end gap-2"><button onClick={savePending} disabled={pendBusy} className="text-xs bg-indigo-600 text-white px-3 py-2 rounded-md hover:bg-indigo-700 disabled:opacity-60">{pendBusy?"Saving…":"Save Pending Items"}</button>{(pendingDocs || pendingDeadline) && <button onClick={()=>{ setPendingDocs(""); setPendingDeadline(""); savePending(); }} className="text-xs border border-slate-300 px-3 py-2 rounded-md hover:bg-slate-50">Clear</button>}<OkNote msg={pendOk} /></div></div><div className="text-[11px] text-slate-500 mt-2">Pending items + deadline are <b>automatically cleared</b> when every document is verified.</div></div>
+    
+    
+    {detail.verifySlot && detail.verifySlot.status === "verified" && (<div className="mt-4 bg-green-50 border border-green-200 rounded-lg p-3 text-sm text-green-800">✓ Onboarding complete — student physically verified.</div>)}</div>)}<div className="p-4 border-t border-slate-200 flex justify-between items-center gap-3 flex-wrap sticky bottom-0 bg-white"><div className="flex gap-2 flex-wrap">{detail && detail.verifySlot && detail.verifySlot.status !== "verified" && (<button onClick={()=>markVerifyStatus("verified")} disabled={prBusy} className="text-sm bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 disabled:opacity-60 font-semibold">✓ Physically Verified</button>)}{detail && detail.verifySlot && detail.verifySlot.status !== "absent" && detail.verifySlot.status !== "verified" && (<button onClick={()=>markVerifyStatus("absent")} disabled={prBusy} className="text-sm bg-rose-600 text-white px-4 py-2 rounded-lg hover:bg-rose-700 disabled:opacity-60">⌀ Absent</button>)}</div><button onClick={close} className="text-sm bg-slate-800 text-white px-4 py-2 rounded-lg hover:bg-slate-900">Close</button></div></div>{preview && <PreviewOverlay name={preview.name} fileName={preview.fileName} viewUrl={preview.viewUrl} downloadUrl={preview.downloadUrl} close={()=>setPreview(null)} />}</div>);
+}
+function MiniStat({ big, label, tone, small }) {
+  const map = { slate:"bg-slate-50 border-slate-200 text-slate-800", green:"bg-green-50 border-green-200 text-green-700", indigo:"bg-indigo-50 border-indigo-200 text-indigo-700", rose:"bg-rose-50 border-rose-200 text-rose-700" };
+  return (<div className={`border rounded-xl p-3 text-center ${map[tone]||map.slate}`}><div className={`${small?'text-base':'text-2xl'} font-bold`}>{big}</div><div className="text-xs">{label}</div></div>);
+}
+function PreviewOverlay({ name, fileName, viewUrl, downloadUrl, close }) {
+  const trapRef = useFocusTrap(true, close);
+  const pdf = isPdfName(fileName);
+  return (<div ref={trapRef} className="fixed inset-0 z-[60] bg-black/70 grid place-items-center p-4" onClick={close}><div className="bg-white rounded-2xl max-w-4xl w-full max-h-[94vh] overflow-hidden flex flex-col" onClick={e=>e.stopPropagation()}><div className="p-4 border-b border-slate-200 flex items-center justify-between"><div><div className="text-xs text-slate-500">Secure preview</div><div className="font-semibold text-slate-800">{name}</div><div className="text-[11px] text-slate-500">{fileName}</div></div><div className="flex items-center gap-2">{downloadUrl && <button onClick={()=>window.open(downloadUrl,"_blank")} className="text-xs bg-slate-800 text-white px-3 py-1.5 rounded-md hover:bg-slate-900">Open / Download</button>}<button onClick={close} className="text-slate-400 hover:text-slate-700 text-2xl leading-none">×</button></div></div><div className="bg-slate-100 flex-1 overflow-auto grid place-items-center" style={{minHeight:"60vh"}}>{pdf ? <iframe src={viewUrl} title="preview" className="w-full" style={{height:"75vh",border:"none"}}></iframe> : <img src={viewUrl} alt="document preview" className="max-w-full max-h-[78vh] object-contain" />}</div></div></div>);
+}
+
+function AddStudentModal({ profiles, categories, close, onAdded }) {
+  const trapRef = useFocusTrap(true, close);
+  const [f, setF] = useState({ appNo:"", name:"", dob:"", email:"", phone:"", program:"", department:"", batch:"", category:"", section:"", profile:"", orientationDate:"" });
+  const [err, setErr] = useState(""); const [busy, setBusy] = useState(false);
+  const set = (k,v) => setF(s=>({ ...s, [k]:v }));
+  const submit = async (e) => { e.preventDefault(); setErr(""); setBusy(true); try { await API.post("/api/admin/students", f); onAdded(); } catch (ex) { setErr(ex.message); } setBusy(false); };
+  const catOpts = (categories && categories.length) ? categories : CATEGORIES;
+  return (<div ref={trapRef} className="fixed inset-0 z-50 bg-black/40 grid place-items-center p-4"><form onSubmit={submit} className="bg-white rounded-2xl max-w-2xl w-full max-h-[92vh] overflow-hidden flex flex-col"><div className="p-5 border-b border-slate-200 flex items-start justify-between"><div><div className="text-xs text-slate-500">Student Pipeline</div><div className="font-bold text-slate-800 text-lg">Add Newly Admitted Student</div></div><button type="button" onClick={close} className="text-slate-400 hover:text-slate-700 text-2xl leading-none">×</button></div><div className="p-5 overflow-y-auto grid sm:grid-cols-2 gap-3"><Field label="Application Number *"><input required value={f.appNo} onChange={e=>set("appNo",e.target.value)} className="ev-input" placeholder="e.g. CSE2026011" /></Field><Field label="Full Name *"><input required value={f.name} onChange={e=>set("name",e.target.value)} className="ev-input" /></Field><Field label="Date of Birth *"><input required type="date" value={f.dob} onChange={e=>set("dob",e.target.value)} className="ev-input" /></Field><Field label="Profile *"><select required value={f.profile} onChange={e=>set("profile",e.target.value)} className="ev-input"><option value="">Select profile…</option>{profiles.map(p=><option key={p} value={p}>{p.replace(/-/g," / ")}</option>)}</select></Field><Field label="Program *"><input required value={f.program} onChange={e=>set("program",e.target.value)} className="ev-input" /></Field><Field label="Department"><input value={f.department} onChange={e=>set("department",e.target.value)} className="ev-input" /></Field><Field label="Section"><input value={f.section} onChange={e=>set("section",e.target.value)} className="ev-input" /></Field><Field label="Batch"><input value={f.batch} onChange={e=>set("batch",e.target.value)} className="ev-input" /></Field><Field label="Category"><select value={f.category} onChange={e=>set("category",e.target.value)} className="ev-input"><option value="">Select…</option>{catOpts.map(c=><option key={c} value={c}>{c}</option>)}</select></Field><Field label="Orientation Date"><input type="date" value={f.orientationDate} onChange={e=>set("orientationDate",e.target.value)} className="ev-input" /></Field><Field label="Email"><input type="email" value={f.email} onChange={e=>set("email",e.target.value)} className="ev-input" /></Field><Field label="Phone"><input value={f.phone} onChange={e=>set("phone",e.target.value)} className="ev-input" /></Field><div className="sm:col-span-2"><ErrorNote msg={err} /></div></div><div className="p-4 border-t border-slate-200 flex justify-end gap-2"><button type="button" onClick={close} className="text-sm px-4 py-2 rounded-lg border border-slate-300 hover:bg-slate-50">Cancel</button><button disabled={busy} className="text-sm bg-indigo-600 text-white px-4 py-2 rounded-lg hover:bg-indigo-700 disabled:opacity-60">{busy?"Adding…":"Add Student"}</button></div></form></div>);
+}
+
+function StaffModal({ close }) {
+  const trapRef = useFocusTrap(true, close);
+  const [staff, setStaff] = useState(null);
+  const [f, setF] = useState({ staffId:"", name:"", password:"", role:"verifier" });
+  const [err, setErr] = useState(""); const [ok, setOk] = useState(""); const [busy, setBusy] = useState(false);
+  const load = useCallback(async () => { try { const r = await API.get("/api/admin/staff"); setStaff(r.staff); } catch (ex) { setErr(ex.message); } }, []);
+  useEffect(() => { load(); }, [load]);
+  const set = (k,v) => setF(s=>({ ...s, [k]:v }));
+  const submit = async (e) => { e.preventDefault(); setErr(""); setOk(""); setBusy(true); try { await API.post("/api/admin/staff", f); setOk(`Staff account ${f.staffId} created.`); setF({ staffId:"", name:"", password:"", role:"verifier" }); await load(); } catch (ex) { setErr(ex.message); } setBusy(false); };
+  return (<div ref={trapRef} className="fixed inset-0 z-50 bg-black/40 grid place-items-center p-4"><div className="bg-white rounded-2xl max-w-2xl w-full max-h-[92vh] overflow-hidden flex flex-col"><div className="p-5 border-b border-slate-200 flex items-start justify-between"><div><div className="text-xs text-slate-500">Role-based Access</div><div className="font-bold text-slate-800 text-lg">Manage Verification Staff</div></div><button onClick={close} className="text-slate-400 hover:text-slate-700 text-2xl leading-none">×</button></div><div className="p-5 overflow-y-auto"><div className="font-semibold text-slate-800 text-sm mb-2">Current staff accounts</div><div className="border border-slate-200 rounded-lg divide-y">{!staff && <div className="p-3 text-sm text-slate-400">Loading…</div>}{staff && staff.map(a=>(<div key={a.staffId} className="p-3 flex items-center justify-between text-sm"><div><span className="font-mono">{a.staffId}</span> · {a.name}</div><span className={`text-xs font-semibold px-2 py-0.5 rounded ${a.role==="supervisor"?'bg-indigo-100 text-indigo-700':'bg-slate-100 text-slate-600'}`}>{a.role}</span></div>))}</div><form onSubmit={submit} className="mt-5 border-t border-slate-200 pt-4"><div className="font-semibold text-slate-800 text-sm mb-2">Add a staff account</div><div className="grid sm:grid-cols-2 gap-3"><Field label="Staff ID *"><input required value={f.staffId} onChange={e=>set("staffId",e.target.value)} className="ev-input" /></Field><Field label="Name *"><input required value={f.name} onChange={e=>set("name",e.target.value)} className="ev-input" /></Field><Field label="Password * (min 6 chars)"><input required type="password" value={f.password} onChange={e=>set("password",e.target.value)} className="ev-input" /></Field><Field label="Role"><select value={f.role} onChange={e=>set("role",e.target.value)} className="ev-input"><option value="verifier">Verifier</option><option value="supervisor">Supervisor</option></select></Field></div><ErrorNote msg={err} /><OkNote msg={ok} /><button disabled={busy} className="mt-3 text-sm bg-indigo-600 text-white px-4 py-2 rounded-lg hover:bg-indigo-700 disabled:opacity-60">{busy?"Adding…":"Add Staff Account"}</button></form></div><div className="p-4 border-t border-slate-200 flex justify-end"><button onClick={close} className="text-sm bg-slate-800 text-white px-4 py-2 rounded-lg hover:bg-slate-900">Close</button></div></div></div>);
+}
+
+function BlacklistModal({ close, isSupervisor }) {
+  const trapRef = useFocusTrap(true, close);
+  const [entries, setEntries] = useState(null);
+  const [policy, setPolicy] = useState("warn");
+  const [policyBusy, setPolicyBusy] = useState(false);
+  const [f, setF] = useState({ name:"", region:"", reason:"" });
+  const [err, setErr] = useState(""); const [ok, setOk] = useState(""); const [busy, setBusy] = useState(false);
+  const [q, setQ] = useState("");
+  const load = useCallback(async () => {
+    try {
+      const [b, s] = await Promise.all([API.get("/api/admin/blacklist"), API.get("/api/admin/settings")]);
+      setEntries(b.entries);
+      setPolicy(s.settings?.blacklist_policy || "warn");
+    } catch (ex) { setErr(ex.message); }
+  }, []);
+  useEffect(() => { load(); }, [load]);
+  const set = (k,v) => setF(s=>({ ...s, [k]:v }));
+  const add = async (e) => { e.preventDefault(); setErr(""); setOk(""); setBusy(true); try { await API.post("/api/admin/blacklist", f); setOk("Added."); setF({ name:"", region:"", reason:"" }); await load(); } catch (ex) { setErr(ex.message); } setBusy(false); };
+  const remove = async (id, name) => { if (!window.confirm(`Remove "${name}"?`)) return; try { await API.del("/api/admin/blacklist/" + id); await load(); } catch (ex) { setErr(ex.message); } };
+  const setPol = async (v) => {
+    setPolicyBusy(true); setErr("");
+    try { await API.patch("/api/admin/settings/blacklist_policy", { value: v }); setPolicy(v); }
+    catch (ex) { setErr(ex.message); }
+    setPolicyBusy(false);
+  };
+  const visible = (entries || []).filter(e => !q || e.name.toLowerCase().includes(q.toLowerCase()));
+  return (<div ref={trapRef} className="fixed inset-0 z-50 bg-black/40 grid place-items-center p-4"><div className="bg-white rounded-2xl max-w-3xl w-full max-h-[92vh] overflow-hidden flex flex-col"><div className="p-5 border-b border-slate-200 flex items-start justify-between"><div><div className="text-xs text-slate-500">Fake / Non-recognised Institutions</div><div className="font-bold text-slate-800 text-lg">Non-recognised Universities & Boards</div></div><button onClick={close} className="text-slate-400 hover:text-slate-700 text-2xl leading-none">×</button></div><div className="p-5 overflow-y-auto"><div className="bg-indigo-50 border border-indigo-200 rounded-lg p-3 mb-4 text-sm"><div className="font-semibold text-indigo-900">Validation policy</div><div className="text-xs text-indigo-800 mt-1">Choose what happens when a student enters a non-recognised institution:</div><div className="mt-2 flex items-center gap-2 flex-wrap"><label className="flex items-center gap-1 text-xs"><input type="radio" name="bl_policy" disabled={!isSupervisor||policyBusy} checked={policy==="warn"} onChange={()=>setPol("warn")} /> <b>Warn</b> — flag for staff review but allow the student to continue.</label><label className="flex items-center gap-1 text-xs ml-3"><input type="radio" name="bl_policy" disabled={!isSupervisor||policyBusy} checked={policy==="block"} onChange={()=>setPol("block")} /> <b>Block</b> — refuse "Mark as Ready" on flagged documents.</label></div>{!isSupervisor && <div className="text-[11px] text-slate-500 mt-1">Only Supervisor can change the policy.</div>}</div><div className="flex items-center justify-between flex-wrap gap-2 mb-2"><div className="font-semibold text-slate-800 text-sm">{entries?entries.length:"…"} entries</div><input value={q} onChange={e=>setQ(e.target.value)} placeholder="Search…" className="ev-input w-56" /></div><div className="border border-slate-200 rounded-lg divide-y max-h-72 overflow-auto">{!entries && <div className="p-3 text-sm text-slate-400">Loading…</div>}{entries && visible.map(e=>(<div key={e.id} className="p-3 flex items-start justify-between gap-2 text-sm"><div><div className="font-medium text-slate-800">{e.name}</div><div className="text-[11px] text-slate-500">{e.region||"—"}{e.reason ? " · "+e.reason : ""}</div></div>{isSupervisor && <button onClick={()=>remove(e.id, e.name)} className="text-xs text-rose-600 hover:underline">Remove</button>}</div>))}</div>{isSupervisor && (<form onSubmit={add} className="mt-5 border-t border-slate-200 pt-4"><div className="font-semibold text-slate-800 text-sm mb-2">Add an institution</div><div className="grid sm:grid-cols-3 gap-3"><div className="sm:col-span-2"><Field label="Institution name *"><input required value={f.name} onChange={e=>set("name",e.target.value)} className="ev-input" /></Field></div><Field label="Region / State"><input value={f.region} onChange={e=>set("region",e.target.value)} className="ev-input" /></Field><div className="sm:col-span-3"><Field label="Reason / note"><input value={f.reason} onChange={e=>set("reason",e.target.value)} className="ev-input" /></Field></div></div><ErrorNote msg={err} /><OkNote msg={ok} /><button disabled={busy} className="mt-3 text-sm bg-rose-600 text-white px-4 py-2 rounded-lg hover:bg-rose-700 disabled:opacity-60">{busy?"Adding…":"Add to Blacklist"}</button></form>)}</div><div className="p-4 border-t border-slate-200 flex justify-end"><button onClick={close} className="text-sm bg-slate-800 text-white px-4 py-2 rounded-lg hover:bg-slate-900">Close</button></div></div></div>);
+}
+
+/* SlotMgmtModal — unchanged from v6 (carried forward verbatim). */
+const SLOT_STATUS_BADGE = { open:{label:"Open",cls:"bg-green-100 text-green-700 border border-green-300"}, hidden:{label:"Hidden",cls:"bg-slate-100 text-slate-600 border border-slate-300"}, closed:{label:"Closed",cls:"bg-amber-100 text-amber-800 border border-amber-300"}, fully_booked:{label:"Fully Booked",cls:"bg-rose-100 text-rose-800 border border-rose-300"} };
+function StatusBadge({ status }) { const b = SLOT_STATUS_BADGE[status] || SLOT_STATUS_BADGE.open; return <span className={`text-[10px] font-semibold uppercase tracking-wider px-2 py-0.5 rounded ${b.cls}`}>{b.label}</span>; }
+function SlotMgmtModal({ close, isSupervisor }) {
+  const trapRef = useFocusTrap(true, close);
+  const [slots, setSlots] = useState(null);
+  const [stats, setStats] = useState(null);
+  const [err, setErr] = useState(""); const [ok, setOk] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [f, setF] = useState({ date:"", time:"", capacity:20, durationMinutes:30, status:"open" });
+  const [tab, setTab] = useState("manage");
+  const load = useCallback(async () => { try { const [s, st] = await Promise.all([API.get("/api/admin/slots"), API.get("/api/admin/slots/stats")]); setSlots(s.slots); setStats(st); setErr(""); } catch (ex) { setErr(ex.message); } }, []);
+  useEffect(() => { load(); }, [load]);
+  const set = (k,v) => setF(s=>({ ...s, [k]:v }));
+  const add = async (e) => { e.preventDefault(); setErr(""); setOk(""); setBusy(true); try { await API.post("/api/admin/slots", f); setOk(`Slot ${f.date} ${f.time} added.`); setF({ date:"", time:"", capacity:20, durationMinutes:30, status:"open" }); await load(); } catch (ex) { setErr(ex.message); } setBusy(false); };
+  const patchSlot = async (id, patch) => { setErr(""); try { await API.patch("/api/admin/slots/" + id, patch); await load(); } catch (ex) { setErr(ex.message); } };
+  const remove = async (id) => { if (!window.confirm("Delete this slot?")) return; try { await API.del("/api/admin/slots/" + id); await load(); } catch (ex) { setErr(ex.message); } };
+  const bulkStatus = async (target, opts) => { setErr(""); try { const r = await API.post("/api/admin/slots/bulk-status", { status: target, ...opts }); setOk(`Updated ${r.changed} slot(s).`); await load(); } catch (ex) { setErr(ex.message); } };
+  const byDate = useMemo(() => { const m = {}; (slots||[]).forEach(s => { const d = fmtDate(s.date); (m[d] = m[d] || []).push(s); }); return m; }, [slots]);
+  const dates = Object.keys(byDate).sort();
+  const dateMeta = (date) => (stats?.byDate || []).find(d => fmtDate(d.date) === date) || null;
+  return (<div ref={trapRef} className="fixed inset-0 z-50 bg-black/40 grid place-items-center p-4"><div className="bg-white rounded-2xl max-w-5xl w-full max-h-[94vh] overflow-hidden flex flex-col"><div className="p-5 border-b border-slate-200 flex items-start justify-between"><div><div className="text-xs text-slate-500">Reporting Slots</div><div className="font-bold text-slate-800 text-lg">Slot Management</div><div className="text-xs text-slate-500 mt-1">Batch-wise release, dynamic capacity, real-time occupancy.</div></div><button onClick={close} className="text-slate-400 hover:text-slate-700 text-2xl leading-none">×</button></div><div className="border-b border-slate-200 px-5"><div className="flex gap-4 text-sm">{[["manage","Manage Dates & Slots"],["stats","Statistics & Utilization"],["add","Add Slot"]].map(t => (<button key={t[0]} onClick={()=>setTab(t[0])} className={`py-3 border-b-2 ${tab===t[0]?'border-indigo-600 text-indigo-700 font-semibold':'border-transparent text-slate-500'}`}>{t[1]}</button>))}</div></div><div className="p-5 overflow-y-auto"><ErrorNote msg={err} /><OkNote msg={ok} />{!slots && <Spinner label="Loading slots…" />}{slots && tab === "stats" && stats && (<div><div className="grid grid-cols-2 sm:grid-cols-4 gap-3"><MiniStat big={String(stats.overall.totalSlots)} label="Total slots" tone="slate" /><MiniStat big={String(stats.overall.totalCapacity)} label="Total capacity" tone="indigo" /><MiniStat big={String(stats.overall.totalBooked)} label="Booked" tone="green" /><MiniStat big={stats.overall.utilizationPct + "%"} label="Overall utilization" tone={stats.overall.utilizationPct>80?"rose":"indigo"} /></div><div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-3"><MiniStat big={String(stats.overall.slotsOpen)} label="Open" tone="green" small /><MiniStat big={String(stats.overall.slotsFull)} label="Fully Booked" tone="rose" small /><MiniStat big={String(stats.overall.slotsHidden)} label="Hidden" tone="slate" small /><MiniStat big={String(stats.overall.slotsClosed)} label="Closed" tone="slate" small /></div><div className="font-semibold text-slate-800 text-sm mt-5 mb-2">Booking by Date</div><div className="border border-slate-200 rounded-lg divide-y">{stats.byDate.length === 0 && <div className="p-3 text-sm text-slate-400">No slots created yet.</div>}{stats.byDate.map(d => (<div key={d.date} className="p-3 text-sm"><div className="flex items-center justify-between flex-wrap gap-2"><div className="font-medium text-slate-800">{fmtDate(d.date)}</div><div className="text-xs text-slate-600">{d.booked}/{d.capacity} ({d.utilizationPct}%) · {d.slots} slot(s) · open {d.open}, hidden {d.hidden}, closed {d.closed}</div></div><div className="w-full h-2 mt-2 bg-slate-100 rounded-full overflow-hidden"><div className={`h-full ${d.utilizationPct>80?'bg-rose-500':d.utilizationPct>50?'bg-amber-500':'bg-emerald-500'}`} style={{width: d.utilizationPct + "%"}}></div></div></div>))}</div></div>)}{slots && tab === "manage" && (<div>{isSupervisor && (<div className="bg-indigo-50 border border-indigo-200 rounded-lg p-3 mb-4 text-sm"><div className="font-semibold text-indigo-900">Bulk release / hide / close</div><BulkDateReleaser dates={dates} onApply={(targetDates, status) => bulkStatus(status, { dates: targetDates })} /></div>)}{dates.length === 0 && <div className="text-sm text-slate-500">No slots yet. Use "Add Slot" to create one.</div>}{dates.map(date => { const dayMeta = dateMeta(date); const items = byDate[date]; const slotIdsToday = items.map(s => s.id); return (<div key={date} className="border border-slate-200 rounded-lg p-3 mb-3"><div className="flex items-center justify-between flex-wrap gap-2"><div className="font-semibold text-slate-800">{date}<span className="text-xs text-slate-400 ml-2">{items.length} slot(s)</span>{dayMeta && <span className="text-xs text-slate-600 ml-2">· {dayMeta.booked}/{dayMeta.capacity} booked ({dayMeta.utilizationPct}%)</span>}</div>{isSupervisor && (<div className="flex flex-wrap gap-2 text-xs"><button onClick={()=>bulkStatus("open", { ids: slotIdsToday })} className="px-2 py-1 rounded border border-green-300 text-green-700 hover:bg-green-50">Release day (Open)</button><button onClick={()=>bulkStatus("hidden", { ids: slotIdsToday })} className="px-2 py-1 rounded border border-slate-300 text-slate-700 hover:bg-slate-50">Hide day</button><button onClick={()=>bulkStatus("closed", { ids: slotIdsToday })} className="px-2 py-1 rounded border border-amber-300 text-amber-700 hover:bg-amber-50">Close day</button></div>)}</div>{dayMeta && (<div className="w-full h-1.5 mt-2 bg-slate-100 rounded-full overflow-hidden"><div className={`h-full ${dayMeta.utilizationPct>80?'bg-rose-500':dayMeta.utilizationPct>50?'bg-amber-500':'bg-emerald-500'}`} style={{width: dayMeta.utilizationPct + "%"}}></div></div>)}<div className="mt-2 divide-y">{items.map(s => { const occPct = s.capacity ? Math.round((s.booked/s.capacity)*100) : 0; return (<div key={s.id} className="py-2 flex items-center justify-between flex-wrap gap-2 text-sm"><div className="min-w-[160px]"><div className="font-medium">{s.time} <span className="text-[11px] text-slate-500">({s.durationMinutes} min)</span></div><div className="text-[11px] text-slate-500">{s.booked}/{s.capacity} booked · {s.seatsLeft} seats left</div><div className="w-32 h-1 mt-1 bg-slate-100 rounded overflow-hidden"><div className={`h-full ${occPct>=100?'bg-rose-500':occPct>80?'bg-amber-500':'bg-emerald-500'}`} style={{width: Math.min(occPct,100) + "%"}}></div></div></div><div className="flex items-center gap-2 flex-wrap"><StatusBadge status={s.displayStatus} />{isSupervisor && (<><label className="text-xs flex items-center gap-1">status<select value={s.status} onChange={e=>patchSlot(s.id, { status: e.target.value })} className="ev-input py-1 w-auto"><option value="open">Open</option><option value="hidden">Hidden</option><option value="closed">Closed</option></select></label><label className="text-xs flex items-center gap-1">cap<input type="number" min="1" defaultValue={s.capacity} onBlur={e=>{ if (Number(e.target.value)!==s.capacity) patchSlot(s.id, { capacity: e.target.value }); }} className="ev-input w-16 py-1" /></label><label className="text-xs flex items-center gap-1">dur<input type="number" min="5" max="480" defaultValue={s.durationMinutes} onBlur={e=>{ if (Number(e.target.value)!==s.durationMinutes) patchSlot(s.id, { durationMinutes: e.target.value }); }} className="ev-input w-16 py-1" /></label><button disabled={s.booked>0} onClick={()=>remove(s.id)} className={`text-xs px-2 py-1 rounded ${s.booked>0?'border border-slate-200 text-slate-300 cursor-not-allowed':'border border-rose-300 text-rose-600 hover:bg-rose-50'}`}>Delete</button></>)}</div></div>); })}</div></div>); })}</div>)}{slots && tab === "add" && (isSupervisor ? (<form onSubmit={add}><div className="font-semibold text-slate-800 text-sm mb-2">Add a new slot</div><div className="grid sm:grid-cols-5 gap-3 items-end"><Field label="Date *"><input required type="date" value={f.date} onChange={e=>set("date",e.target.value)} className="ev-input" /></Field><Field label="Time *"><input required value={f.time} onChange={e=>set("time",e.target.value)} className="ev-input" placeholder="e.g. 09:30 AM" /></Field><Field label="Capacity *"><input required type="number" min="1" max="1000" value={f.capacity} onChange={e=>set("capacity",e.target.value)} className="ev-input" /></Field><Field label="Duration (min)"><input required type="number" min="5" max="480" value={f.durationMinutes} onChange={e=>set("durationMinutes",e.target.value)} className="ev-input" /></Field><Field label="Initial status"><select value={f.status} onChange={e=>set("status",e.target.value)} className="ev-input"><option value="open">Open (immediately visible)</option><option value="hidden">Hidden (release later)</option><option value="closed">Closed</option></select></Field></div><button disabled={busy} className="mt-3 text-sm bg-indigo-600 text-white px-4 py-2 rounded-lg hover:bg-indigo-700 disabled:opacity-60">{busy?"Adding…":"Add Slot"}</button><div className="text-[11px] text-slate-500 mt-2">Slots on the same date must be ≥ 30 minutes apart.</div></form>) : <div className="text-sm text-slate-500">Only Supervisor accounts can create slots.</div>)}</div><div className="p-4 border-t border-slate-200 flex justify-end"><button onClick={close} className="text-sm bg-slate-800 text-white px-4 py-2 rounded-lg hover:bg-slate-900">Close</button></div></div></div>);
+}
+function BulkDateReleaser({ dates, onApply }) {
+  const [picked, setPicked] = useState({}); const [status, setStatus] = useState("open");
+  const toggle = (d) => setPicked(p => ({ ...p, [d]: !p[d] }));
+  const selected = Object.keys(picked).filter(d => picked[d]);
+  const apply = () => { if (!selected.length) return; onApply(selected, status); setPicked({}); };
+  return (<div className="mt-2"><div className="flex flex-wrap gap-1">{dates.length === 0 && <div className="text-xs text-indigo-700">Add a slot first to enable bulk release.</div>}{dates.map(d => (<button key={d} onClick={()=>toggle(d)} className={`text-xs px-2 py-1 rounded ${picked[d]?'bg-indigo-600 text-white':'bg-white border border-indigo-300 text-indigo-700 hover:bg-indigo-50'}`}>{d}</button>))}</div>{dates.length > 0 && (<div className="mt-2 flex items-center gap-2 flex-wrap"><span className="text-xs text-indigo-800">{selected.length} date(s) selected →</span><select value={status} onChange={e=>setStatus(e.target.value)} className="ev-input py-1 w-auto"><option value="open">Open (release)</option><option value="hidden">Hidden</option><option value="closed">Closed</option></select><button disabled={!selected.length} onClick={apply} className={`text-xs px-3 py-1 rounded ${selected.length?'bg-indigo-600 text-white hover:bg-indigo-700':'bg-slate-200 text-slate-400 cursor-not-allowed'}`}>Apply</button></div>)}</div>);
+}
+
+/* ============================================================ */
+ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+</script>
+</body>
+</html>

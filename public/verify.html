@@ -1,0 +1,580 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>EduVerify — Verification Schedule (Orientation Week)</title>
+<script src="https://unpkg.com/react@18.2.0/umd/react.production.min.js"></script>
+<script src="https://unpkg.com/react-dom@18.2.0/umd/react-dom.production.min.js"></script>
+<script src="https://unpkg.com/@babel/standalone@7.22.20/babel.min.js"></script>
+<script src="https://cdn.tailwindcss.com/3.4.3"></script>
+<style>
+  body { font-family:'Inter',system-ui,-apple-system,sans-serif; background:#f7f8fc; }
+  .spin { animation: spin 1s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  ::-webkit-scrollbar { width:8px;height:8px; }
+  ::-webkit-scrollbar-thumb { background:#cbd5e1;border-radius:8px; }
+  .ev-input{width:100%;border:1px solid #cbd5e1;border-radius:.5rem;padding:.45rem .65rem;outline:none;font-size:.85rem}
+  .ev-input:focus{box-shadow:0 0 0 3px #c7d2fe}
+  table.tight th, table.tight td { padding:6px 10px; }
+</style>
+</head>
+<body>
+<div id="root"></div>
+
+<script type="text/babel" data-presets="env,react">
+const { useState, useEffect, useCallback, useMemo, useRef } = React;
+
+/* ====================== shared API ====================== */
+const AUTH_KEY = "ev_auth";
+function loadAuth() { try { return JSON.parse(localStorage.getItem(AUTH_KEY) || "null"); } catch (e) { return null; } }
+const auth = loadAuth();
+
+async function api(method, path, body) {
+  const headers = {};
+  if (auth?.token) headers["Authorization"] = "Bearer " + auth.token;
+  if (body !== undefined) headers["Content-Type"] = "application/json";
+  const res = await fetch(path, { method, headers, body: body !== undefined ? JSON.stringify(body) : undefined });
+  let data = {}; try { data = await res.json(); } catch (e) {}
+  if (!res.ok) throw new Error(data.error || ("Request failed (" + res.status + ")"));
+  return data;
+}
+const get = (p) => api("GET", p);
+const post = (p, b) => api("POST", p, b);
+const patch = (p, b) => api("PATCH", p, b);
+
+const STATUS_COLORS = {
+  open:       "bg-slate-100 text-slate-600 border-slate-300",
+  booked:     "bg-blue-100 text-blue-700 border-blue-300",
+  pending:    "bg-yellow-100 text-yellow-800 border-yellow-300",
+  verified:   "bg-green-100 text-green-700 border-green-300",
+  absent:     "bg-rose-100 text-rose-700 border-rose-300",
+  reassigned: "bg-purple-100 text-purple-700 border-purple-300",
+};
+const STATUS_BAR_BG = {
+  verified: "bg-green-500",
+  pending:  "bg-yellow-400",
+  booked:   "bg-blue-400",
+  absent:   "bg-rose-500",
+  reassigned: "bg-purple-400",
+};
+
+function StatusPill({ s }) {
+  const cls = STATUS_COLORS[s] || STATUS_COLORS.open;
+  return <span className={`text-[10px] font-semibold uppercase tracking-wider px-2 py-0.5 rounded border ${cls}`}>{s}</span>;
+}
+function fmtDate(d) { return d ? String(d).slice(0,10) : "—"; }
+function fmtTs(d) { if (!d) return "—"; try { const x = new Date(d); return x.toLocaleString(); } catch(e){return String(d);} }
+
+/* ====================== root ====================== */
+function App() {
+  if (!auth || auth.role !== "admin") {
+    return (
+      <div className="max-w-md mx-auto mt-20 p-6 bg-white border border-slate-200 rounded-2xl text-center">
+        <div className="text-lg font-bold text-slate-800">Verification Cell login required</div>
+        <div className="text-sm text-slate-600 mt-2">Open the main portal and sign in as an admin, then return here.</div>
+        <a href="/" className="inline-block mt-4 px-4 py-2 bg-indigo-600 text-white rounded-lg">← Back to portal</a>
+      </div>
+    );
+  }
+  const [tab, setTab] = useState("overview");
+  const isSupervisor = auth.adminRole === "supervisor";
+
+  const [stats, setStats] = useState(null);
+  const [meta, setMeta]   = useState(null);
+  const [refreshing, setRefreshing] = useState(false);
+  const [err, setErr] = useState("");
+
+  const reload = useCallback(async () => {
+    setRefreshing(true);
+    try {
+      const [s, m] = await Promise.all([get("/api/admin/verify/stats"), get("/api/admin/verify/meta")]);
+      setStats(s); setMeta(m); setErr("");
+    } catch (e) { setErr(e.message); }
+    setRefreshing(false);
+  }, []);
+  useEffect(() => { reload(); }, [reload]);
+  /* v10 — auto-refresh stats every 10 s on Overview and Day Detail */
+  useEffect(() => {
+    if (tab !== "overview" && tab !== "day") return;
+    const id = setInterval(reload, 10000);
+    return () => clearInterval(id);
+  }, [reload, tab]);
+
+  return (
+    <div className="min-h-screen flex flex-col">
+      <header className="bg-white border-b border-slate-200 sticky top-0 z-30">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 py-3 flex items-center justify-between gap-3 flex-wrap">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-indigo-600 to-blue-500 grid place-content-center text-white font-bold">EV</div>
+            <div>
+              <div className="font-bold text-slate-800 leading-tight">EduVerify · Verification Schedule</div>
+              <div className="text-[11px] text-slate-500 -mt-0.5">Orientation week · 4 days · 15 rooms · 32 students/room</div>
+            </div>
+          </div>
+          <div className="flex items-center gap-3 text-sm">
+            <span className="hidden sm:inline-flex items-center gap-2 bg-indigo-50 text-indigo-700 px-3 py-1.5 rounded-lg">
+              <span className="w-2 h-2 rounded-full bg-indigo-500"></span>
+              {auth.name} · {auth.staffId}
+              <span className="text-[10px] uppercase bg-indigo-200 px-1.5 py-0.5 rounded">{auth.adminRole}</span>
+            </span>
+            <a href="/" className="text-slate-500 hover:text-slate-800">← Main portal</a>
+          </div>
+        </div>
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 -mb-px">
+          <nav className="flex gap-1 flex-wrap">
+            {[["overview","Overview"],["day","Day Detail"],["export","Export"]].map(([k,l]) => (
+              <button key={k} onClick={()=>setTab(k)}
+                className={`px-4 py-2 text-sm border-b-2 ${tab===k?'border-indigo-600 text-indigo-700 font-semibold':'border-transparent text-slate-500'}`}>
+                {l}
+              </button>
+            ))}
+            <div className="ml-auto py-2 text-xs text-slate-400">{refreshing ? "Refreshing…" : <button onClick={reload} className="hover:underline">↻ Refresh</button>}</div>
+          </nav>
+        </div>
+      </header>
+
+      <main className="flex-1 max-w-7xl mx-auto w-full px-4 sm:px-6 py-6">
+        {err && <div className="text-sm text-red-700 bg-red-50 border border-red-200 rounded p-2 mb-3">{err}</div>}
+        {tab === "overview" && <Overview stats={stats} meta={meta} setTab={setTab} />}
+        {tab === "day"      && <DayDetail stats={stats} meta={meta} reload={reload} isSupervisor={isSupervisor} />}
+        {tab === "export"   && <ExportTab meta={meta} />}
+      </main>
+
+      <footer className="bg-white border-t border-slate-200">
+        <div className="max-w-7xl mx-auto px-6 py-3 text-xs text-slate-500">© EduVerify · Verification schedule module</div>
+      </footer>
+    </div>
+  );
+}
+
+/* ====================== Overview ====================== */
+function Overview({ stats, meta, setTab }) {
+  if (!stats) return <Spinner label="Loading statistics…" />;
+  const o = stats.overall;
+  return (
+    <div className="space-y-6">
+      <section>
+        <h2 className="text-lg font-bold text-slate-800">Overall (4-day) summary</h2>
+        <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-3 mt-3">
+          <Tile label="Total slots"   v={o.total}      tone="slate" />
+          <Tile label="Scheduled"     v={o.scheduled}  tone="indigo" />
+          <Tile label="Verified"      v={o.verified}   tone="green"  big />
+          <Tile label="Pending"       v={o.pending}    tone="yellow" />
+          <Tile label="Booked"        v={o.booked}     tone="blue" />
+          <Tile label="Absent"        v={o.absent}     tone="rose" />
+          <Tile label="Reassigned"    v={o.reassigned} tone="purple" />
+          <Tile label="Completion %"  v={o.completionPct + "%"} tone={o.completionPct>=80?"green":o.completionPct>=50?"yellow":"rose"} />
+        </div>
+      </section>
+
+      <section>
+        <h2 className="text-lg font-bold text-slate-800">Day-wise breakdown</h2>
+        <div className="grid md:grid-cols-2 xl:grid-cols-4 gap-3 mt-3">
+          {stats.byDate.length === 0 && <div className="text-sm text-slate-500">No schedule generated yet. Open <button onClick={()=>setTab("setup")} className="text-indigo-600 underline">Setup &amp; Allocation</button> to begin.</div>}
+          {stats.byDate.map((d) => (
+            <div key={d.date} className="border border-slate-200 bg-white rounded-2xl p-4">
+              <div className="flex items-center justify-between">
+                <div className="font-bold text-slate-800">{fmtDate(d.date)}</div>
+                <span className={`text-xs font-semibold px-2 py-0.5 rounded ${d.completionPct>=80?'bg-green-100 text-green-700':d.completionPct>=50?'bg-yellow-100 text-yellow-800':'bg-slate-100 text-slate-600'}`}>{d.completionPct}%</span>
+              </div>
+              <div className="text-xs text-slate-500">Scheduled: <b className="text-slate-700">{d.scheduled}</b> / {d.total}</div>
+              <div className="w-full h-2 mt-2 bg-slate-100 rounded-full overflow-hidden flex">
+                <div className={`h-full ${STATUS_BAR_BG.verified}`}   style={{width: `${(d.verified/Math.max(d.scheduled,1))*100}%`}} title={`Verified ${d.verified}`}></div>
+                <div className={`h-full ${STATUS_BAR_BG.pending}`}    style={{width: `${(d.pending/Math.max(d.scheduled,1))*100}%`}}  title={`Pending ${d.pending}`}></div>
+                <div className={`h-full ${STATUS_BAR_BG.booked}`}     style={{width: `${(d.booked/Math.max(d.scheduled,1))*100}%`}}   title={`Booked ${d.booked}`}></div>
+                <div className={`h-full ${STATUS_BAR_BG.absent}`}     style={{width: `${(d.absent/Math.max(d.scheduled,1))*100}%`}}   title={`Absent ${d.absent}`}></div>
+              </div>
+              <div className="grid grid-cols-3 gap-2 text-[11px] mt-3">
+                <span className="text-green-700">✓ {d.verified} verified</span>
+                <span className="text-yellow-700">⏳ {d.pending} pending</span>
+                <span className="text-blue-700">📌 {d.booked} booked</span>
+                <span className="text-rose-700">⌀ {d.absent} absent</span>
+                <span className="text-purple-700">↻ {d.reassigned} reassigned</span>
+                <span className="text-slate-500">{d.openSlots} open</span>
+              </div>
+            </div>
+          ))}
+        </div>
+      </section>
+
+    </div>
+  );
+}
+
+function Tile({ label, v, tone, big }) {
+  const map = {
+    slate:"bg-slate-50 text-slate-800", indigo:"bg-indigo-50 text-indigo-700",
+    green:"bg-green-50 text-green-700", yellow:"bg-yellow-50 text-yellow-800",
+    blue:"bg-blue-50 text-blue-700", rose:"bg-rose-50 text-rose-700",
+    purple:"bg-purple-50 text-purple-700",
+  };
+  return (
+    <div className={`rounded-2xl p-3 ${map[tone]||map.slate}`}>
+      <div className="text-[10px] uppercase tracking-wider opacity-80">{label}</div>
+      <div className={`${big?'text-3xl':'text-2xl'} font-bold mt-1`}>{v}</div>
+    </div>
+  );
+}
+
+/* ====================== Day Detail ====================== */
+function DayDetail({ stats, meta, reload, isSupervisor }) {
+  const dates = stats?.byDate?.map(d => d.date) || meta?.dates || [];
+  const rooms = meta?.rooms || [];
+  const [date, setDate] = useState(dates[0] || "");
+  useEffect(() => { if (!date && dates.length) setDate(dates[0]); }, [dates, date]);
+  const dayMeta = stats?.byDate?.find(d => d.date === date);
+  const rowsForDate = (stats?.byDateRoom || {})[String(date)] || [];
+
+  const [list, setList] = useState({ rows: [], total: 0 });
+  const [filters, setFilters] = useState({ room: "", status: "", q: "" });
+  const [loading, setLoading] = useState(false);
+
+  const loadList = useCallback(async () => {
+    if (!date) return;
+    setLoading(true);
+    try {
+      const params = new URLSearchParams({ date });
+      if (filters.room)   params.set("room",   filters.room);
+      if (filters.status) params.set("status", filters.status);
+      if (filters.q)      params.set("q",      filters.q);
+      const r = await get("/api/admin/verify/students?" + params.toString());
+      setList({ rows: r.rows, total: r.total });
+    } catch (e) {/* swallow — outer error display */}
+    setLoading(false);
+  }, [date, filters]);
+  useEffect(() => { loadList(); }, [loadList]);
+  /* Live: refresh every 10s. */
+  useEffect(() => { const id = setInterval(loadList, 10000); return () => clearInterval(id); }, [loadList]);
+
+  const setStatus = async (id, newStatus, remarks) => {
+    try { await patch(`/api/admin/verify/assignment/${id}`, { status: newStatus, remarks }); await loadList(); reload(); }
+    catch (e) { alert(e.message); }
+  };
+
+  return (
+    <div className="space-y-5">
+      <div className="flex items-center gap-3 flex-wrap">
+        <label className="text-sm text-slate-600">Day:</label>
+        <select value={date} onChange={e=>setDate(e.target.value)} className="ev-input w-auto">
+          {dates.map(d => <option key={d} value={d}>{fmtDate(d)}</option>)}
+          {dates.length === 0 && <option value="">No dates yet</option>}
+        </select>
+        {dayMeta && (
+          <div className="text-xs text-slate-600">
+            Scheduled <b>{dayMeta.scheduled}</b> · Verified <b className="text-green-700">{dayMeta.verified}</b> · Pending <b className="text-yellow-700">{dayMeta.pending}</b> · Absent <b className="text-rose-700">{dayMeta.absent}</b> · Completion <b>{dayMeta.completionPct}%</b>
+          </div>
+        )}
+      </div>
+
+
+      <section>
+        <div className="flex items-center justify-between flex-wrap gap-2 mb-2">
+          <h3 className="font-semibold text-slate-700 text-sm">Student list ({list.total})</h3>
+          <div className="flex gap-2 flex-wrap">
+            
+            <select value={filters.status} onChange={e=>setFilters({...filters, status:e.target.value})} className="ev-input w-auto">
+              <option value="">All statuses</option>
+              {(meta?.statuses || []).filter(s => s !== "open").map(s => <option key={s} value={s}>{s}</option>)}
+            </select>
+            <input value={filters.q} onChange={e=>setFilters({...filters, q:e.target.value})} placeholder="Search name / app no" className="ev-input w-60" />
+          </div>
+        </div>
+        <div className="overflow-x-auto bg-white border border-slate-200 rounded-2xl">
+          <table className="min-w-full text-sm tight">
+            <thead className="bg-slate-50 text-slate-600 text-xs uppercase">
+              <tr>
+                <th className="text-left">App No</th>
+                <th className="text-left">Name</th>
+                <th className="text-left">Program</th>
+                <th className="text-left">Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {loading && <tr><td colSpan="4" className="px-4 py-6 text-center text-slate-400">Loading…</td></tr>}
+              {!loading && list.rows.map((r) => (
+                <tr key={r.id} className="border-t border-slate-100">
+                  <td className="font-mono text-xs">{r.student?.appNo || "—"}</td>
+                  <td>{r.student?.name || <span className="text-slate-400">— empty —</span>}</td>
+                  <td className="text-slate-600">{r.student?.program || "—"}</td>
+                  <td><StatusPill s={r.status} /></td>
+                </tr>
+              ))}
+              {!loading && list.rows.length === 0 && <tr><td colSpan="4" className="px-4 py-6 text-center text-slate-400">No rows match.</td></tr>}
+            </tbody>
+          </table>
+        </div>
+      </section>
+    </div>
+  );
+}
+
+function ActionMenu({ row, isSupervisor, reload, loadList, meta }) {
+  const [showReassign, setShowReassign] = useState(false);
+  if (!row.student) return <span className="text-slate-300 text-xs">—</span>;
+  if (!isSupervisor) return <span className="text-slate-300 text-xs">—</span>;
+  return (
+    <div className="flex items-center gap-1 flex-wrap">
+      <button onClick={()=>setShowReassign(!showReassign)} className="text-[11px] border border-purple-300 text-purple-700 px-2 py-0.5 rounded">↻ Reassign</button>
+      {showReassign && (
+        <ReassignForm row={row} meta={meta} close={()=>setShowReassign(false)} onDone={()=>{ loadList(); reload(); }} />
+      )}
+    </div>
+  );
+}
+
+function ReassignForm({ row, meta, close, onDone }) {
+  const [busy, setBusy] = useState(false);
+  const [err, setErr]   = useState("");
+  const [date, setDate] = useState(row.date);
+  const [room, setRoom] = useState(row.room);
+  const [slotNo, setSlotNo] = useState("");
+  const [auto, setAuto] = useState(false);
+  const [remarks, setRemarks] = useState("");
+  const dates = (meta?.dates || []);
+  const rooms = (meta?.rooms || []);
+  const slots = Array.from({length: 32}, (_, i) => i + 1);
+  const submit = async () => {
+    setBusy(true); setErr("");
+    try {
+      const body = auto ? { remarks }
+                        : { date, room, slotNo: parseInt(slotNo, 10) || undefined, remarks };
+      await post(`/api/admin/verify/assignment/${row.id}/reassign`, body);
+      close(); onDone();
+    } catch (e) { setErr(e.message); }
+    setBusy(false);
+  };
+  return (
+    <div className="absolute mt-8 bg-white border border-purple-200 rounded p-3 shadow z-20 w-80">
+      <div className="text-xs font-semibold text-slate-700 mb-2">Reassign {row.student?.appNo}</div>
+      <label className="flex items-center gap-1 text-[11px] text-slate-600 mb-2">
+        <input type="checkbox" checked={auto} onChange={e=>setAuto(e.target.checked)} /> Auto-pick next open slot
+      </label>
+      {!auto && (<>
+        <label className="text-[11px] text-slate-600">Date</label>
+        <select value={date} onChange={e=>setDate(e.target.value)} className="ev-input mb-2">
+          {dates.map(d => <option key={d} value={d}>{fmtDate(d)}</option>)}
+        </select>
+        <label className="text-[11px] text-slate-600">Room</label>
+        <select value={room} onChange={e=>setRoom(e.target.value)} className="ev-input mb-2">
+          {rooms.map(r => <option key={r} value={r}>{r}</option>)}
+        </select>
+        <label className="text-[11px] text-slate-600">Slot # (1–32) — blank = first open</label>
+        <select value={slotNo} onChange={e=>setSlotNo(e.target.value)} className="ev-input mb-2">
+          <option value="">First open in this room</option>
+          {slots.map(n => <option key={n} value={n}>Slot #{n}</option>)}
+        </select>
+      </>)}
+      <label className="text-[11px] text-slate-600">Remarks (optional)</label>
+      <input value={remarks} onChange={e=>setRemarks(e.target.value)} placeholder="Reason / remarks" className="ev-input mb-2" />
+      {err && <div className="text-[11px] text-red-700 mb-1">{err}</div>}
+      <div className="flex gap-2 justify-end">
+        <button onClick={close} className="text-xs px-2 py-1 border border-slate-300 rounded">Cancel</button>
+        <button onClick={submit} disabled={busy} className="text-xs px-2 py-1 bg-purple-600 text-white rounded">{busy?"…":"Reassign"}</button>
+      </div>
+    </div>
+  );
+}
+
+/* ====================== Setup tab ====================== */
+function Setup({ meta, reload, isSupervisor }) {
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg]   = useState("");
+  const [err, setErr]   = useState("");
+  const [confirmReset, setConfirmReset] = useState(false);
+  const [showResetModal, setShowResetModal] = useState(false);
+
+  const run = async (fn) => { setBusy(true); setMsg(""); setErr(""); try { const r = await fn(); setMsg(JSON.stringify(r, null, 2)); reload(); } catch(e) { setErr(e.message); } setBusy(false); };
+
+  return (
+    <div className="space-y-5 max-w-3xl">
+      <section className="bg-rose-50 border border-rose-300 rounded-2xl p-5">
+        <h3 className="font-bold text-rose-900">⚠ Danger — Reset &amp; Reseed (1,920 students)</h3>
+        <p className="text-xs text-rose-800 mt-1">
+          <b>Deletes ALL students, documents, flagged cases and verification schedule rows</b>,
+          then inserts a fresh dataset of exactly 1,920 students (APP0001..APP1920) mapped to:
+          20 Jul (APP0001–APP0480), 21 Jul (APP0481–APP0960), 22 Jul (APP0961–APP1440),
+          23 Jul (APP1441–APP1920). Empty slot grid is regenerated. Initial document upload
+          status = PENDING; verification status = PENDING. Slot allocation stays FCFS-after-upload.
+        </p>
+        <button onClick={()=>setShowResetModal(true)} disabled={busy||!isSupervisor} className="mt-3 text-sm bg-rose-600 text-white px-4 py-2 rounded-lg disabled:opacity-60">🔄 Reset &amp; Reseed 1,920 students</button>
+        {!isSupervisor && <div className="text-[11px] text-rose-700 mt-1">Supervisor only.</div>}
+      </section>
+
+      <section className="bg-white border border-slate-200 rounded-2xl p-5 bg-amber-50/30 border-amber-200">
+        <h3 className="font-bold text-amber-900">Quick fix — Backfill missing dates</h3>
+        <p className="text-xs text-amber-800 mt-1">Assigns 2026-07-20 (day 1) to any student whose <code>assigned_verification_date</code> is still NULL — e.g. the v7 demo accounts (CSE2026001 … MTC2026010). Idempotent.</p>
+        <button onClick={()=>run(()=>post("/api/admin/verify/backfill-dates", {}))} disabled={busy||!isSupervisor} className="mt-3 text-sm bg-amber-600 text-white px-4 py-2 rounded-lg disabled:opacity-60">Backfill missing dates</button>
+      </section>
+
+      <section className="bg-white border border-slate-200 rounded-2xl p-5">
+        <h3 className="font-bold text-slate-800">Step 0 — Seed dummy students (testing only)</h3>
+        <p className="text-xs text-slate-500 mt-1">Creates <b>480 dummy students per day × 4 days = 1,920</b> with structured application numbers like <code>ORI20260720001</code>. Skips any that already exist (idempotent).</p>
+        <button onClick={()=>run(()=>post("/api/admin/verify/seed-students", { perDay: 480, days: 4 }))} disabled={busy||!isSupervisor} className="mt-3 text-sm bg-slate-800 text-white px-4 py-2 rounded-lg disabled:opacity-60">Seed 1,920 dummy students</button>
+        {!isSupervisor && <div className="text-[11px] text-slate-500 mt-1">Supervisor only.</div>}
+      </section>
+
+      <section className="bg-white border border-slate-200 rounded-2xl p-5">
+        <h3 className="font-bold text-slate-800">Step 1 — Generate the empty schedule</h3>
+        <p className="text-xs text-slate-500 mt-1">Creates the 4 days × 15 rooms × 32 ten-minute slots starting at 1:00 PM. Already-existing rows are skipped.</p>
+        <button onClick={()=>run(()=>post("/api/admin/verify/generate", {}))} disabled={busy||!isSupervisor} className="mt-3 text-sm bg-indigo-600 text-white px-4 py-2 rounded-lg disabled:opacity-60">Generate default schedule</button>
+        {!isSupervisor && <div className="text-[11px] text-slate-500 mt-1">Supervisor only.</div>}
+      </section>
+
+      <section className="bg-white border border-slate-200 rounded-2xl p-5">
+        <h3 className="font-bold text-slate-800">Step 2 — Allocate students to slots</h3>
+        <p className="text-xs text-slate-500 mt-1">Auto-assigns each unallocated student to the next open slot (sorted by date → room → slot no). Existing assignments are preserved.</p>
+        <button onClick={()=>run(()=>post("/api/admin/verify/allocate", { order: "appno" }))} disabled={busy||!isSupervisor} className="mt-3 text-sm bg-emerald-600 text-white px-4 py-2 rounded-lg disabled:opacity-60">Allocate by application number</button>
+        <button onClick={()=>run(()=>post("/api/admin/verify/allocate", { order: "alpha" }))} disabled={busy||!isSupervisor} className="ml-2 mt-3 text-sm bg-emerald-700 text-white px-4 py-2 rounded-lg disabled:opacity-60">Allocate by name (A–Z)</button>
+      </section>
+
+      <section className="bg-white border border-rose-200 rounded-2xl p-5 bg-rose-50/30">
+        <h3 className="font-bold text-rose-800">Danger zone — Reset</h3>
+        <p className="text-xs text-rose-700 mt-1">Deletes every row in the verification schedule. Use this if you need to start over.</p>
+        {!confirmReset ? (
+          <button onClick={()=>setConfirmReset(true)} disabled={!isSupervisor} className="mt-3 text-sm bg-white border border-rose-300 text-rose-700 px-4 py-2 rounded-lg">I want to reset…</button>
+        ) : (
+          <div className="mt-3 flex items-center gap-2">
+            <button onClick={()=>run(async()=>{ const r = await post("/api/admin/verify/reset", { confirm:"YES" }); setConfirmReset(false); return r; })} className="text-sm bg-rose-600 text-white px-4 py-2 rounded-lg">Confirm wipe (cannot undo)</button>
+            <button onClick={()=>setConfirmReset(false)} className="text-sm border border-slate-300 px-4 py-2 rounded-lg">Cancel</button>
+          </div>
+        )}
+      </section>
+
+      {(msg || err) && (
+        <pre className={`text-[11px] p-3 rounded-lg whitespace-pre-wrap ${err?'bg-red-50 text-red-800 border border-red-200':'bg-slate-50 text-slate-700 border border-slate-200'}`}>{err || msg}</pre>
+      )}
+      {showResetModal && (
+        <ResetReseedModal
+          busy={busy}
+          onClose={()=>setShowResetModal(false)}
+          onConfirm={async ()=>{
+            setShowResetModal(false);
+            await run(()=>post("/api/admin/verify/reset-and-reseed", { confirm: "RESET", phrase: "DELETE 1920 STUDENTS" }));
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
+/* v32 — typed-confirmation modal for the Reset & Reseed action. */
+function ResetReseedModal({ busy, onClose, onConfirm }) {
+  const PHRASE = "DELETE 1920 STUDENTS";
+  const [typed, setTyped] = useState("");
+  const matches = typed.trim() === PHRASE;
+  useEffect(() => {
+    const onKey = (e) => { if (e.key === "Escape") onClose(); };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [onClose]);
+  return (
+    <div className="fixed inset-0 z-[100] bg-black/60 grid place-items-center p-4" role="dialog" aria-modal="true" aria-labelledby="reset-title">
+      <div className="bg-white rounded-2xl max-w-lg w-full p-6 border-4 border-rose-300 shadow-2xl">
+        <div className="text-rose-700 text-xs uppercase font-semibold tracking-wider">⚠ Destructive Action</div>
+        <h3 id="reset-title" className="text-xl font-bold text-slate-900 mt-2">Reset &amp; Reseed</h3>
+        <p className="text-sm text-slate-700 mt-3">This will <b>permanently delete</b>:</p>
+        <ul className="list-disc list-inside text-sm text-slate-700 mt-2 space-y-1">
+          <li>All <b>students</b> (incl. saved passwords)</li>
+          <li>All <b>uploaded documents</b> (database rows; Cloudinary files stay)</li>
+          <li>All <b>flagged cases</b></li>
+          <li>All <b>verification schedule</b> rows + auto-allocations</li>
+        </ul>
+        <p className="text-sm text-slate-700 mt-3">A fresh APP0001..APP1920 dataset will be reseeded with date-batch mapping.</p>
+        <div className="mt-4 bg-rose-50 border border-rose-300 rounded-lg p-3">
+          <div className="text-xs text-rose-900 font-semibold">To proceed, type the phrase exactly:</div>
+          <div className="font-mono text-rose-900 font-bold mt-1 select-all text-sm tracking-wide">{PHRASE}</div>
+          <input
+            value={typed}
+            onChange={e=>setTyped(e.target.value)}
+            placeholder="type the phrase here"
+            className="ev-input mt-2 font-mono"
+            autoFocus
+            aria-label="Verification phrase"
+            aria-invalid={typed && !matches ? "true" : "false"}
+          />
+          {typed && !matches && <div className="text-[11px] text-rose-700 mt-1">Doesn't match yet — type it exactly.</div>}
+          {matches && <div className="text-[11px] text-green-700 mt-1">✓ Phrase matches. The button below is now armed.</div>}
+        </div>
+        <div className="flex gap-2 mt-5 justify-end">
+          <button type="button" onClick={onClose} disabled={busy} className="text-sm px-4 py-2 border border-slate-300 rounded-lg hover:bg-slate-50">Cancel</button>
+          <button
+            type="button"
+            onClick={onConfirm}
+            disabled={busy || !matches}
+            className={`text-sm px-4 py-2 rounded-lg font-semibold ${matches ? 'bg-rose-600 text-white hover:bg-rose-700' : 'bg-slate-200 text-slate-400 cursor-not-allowed'}`}>
+            {busy ? "Resetting…" : "🔥 Confirm Reset & Reseed"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ====================== Export tab ====================== */
+function ExportTab({ meta }) {
+  const [date, setDate] = useState("");
+  const [room, setRoom] = useState("");
+  const [status, setStatus] = useState("");
+  const download = () => {
+    const p = new URLSearchParams();
+    if (date)   p.set("date", date);
+    if (room)   p.set("room", room);
+    if (status) p.set("status", status);
+    /* Use form-style direct-link download so the browser handles the filename. */
+    const url = "/api/admin/verify/export.csv?" + p.toString();
+    /* Add bearer via a temporary fetch+blob since auth is header-based. */
+    fetch(url, { headers: { "Authorization": "Bearer " + auth.token } })
+      .then(r => r.ok ? r.blob() : r.json().then(d => Promise.reject(new Error(d.error || ("HTTP " + r.status)))))
+      .then(blob => {
+        const a = document.createElement("a");
+        a.href = URL.createObjectURL(blob);
+        a.download = `verify-schedule${date?"-"+date:""}.csv`;
+        document.body.appendChild(a); a.click();
+        URL.revokeObjectURL(a.href); a.remove();
+      })
+      .catch(e => alert(e.message));
+  };
+  return (
+    <div className="max-w-3xl space-y-4">
+      <section className="bg-white border border-slate-200 rounded-2xl p-5">
+        <h3 className="font-bold text-slate-800">Export to CSV</h3>
+        <p className="text-xs text-slate-500 mt-1">Filtered to the values you pick below. Leave blank to export everything (excluding empty/open rows by default).</p>
+        <div className="grid sm:grid-cols-3 gap-3 mt-3">
+          <select value={date} onChange={e=>setDate(e.target.value)} className="ev-input">
+            <option value="">All dates</option>
+            {(meta?.dates || []).map(d => <option key={d} value={d}>{fmtDate(d)}</option>)}
+          </select>
+          <select value={room} onChange={e=>setRoom(e.target.value)} className="ev-input">
+            <option value="">All rooms</option>
+            {(meta?.rooms || []).map(r => <option key={r} value={r}>{r}</option>)}
+          </select>
+          <select value={status} onChange={e=>setStatus(e.target.value)} className="ev-input">
+            <option value="">All statuses</option>
+            {(meta?.statuses || []).filter(s=>s!=="open").map(s => <option key={s} value={s}>{s}</option>)}
+          </select>
+        </div>
+        <button onClick={download} className="mt-4 text-sm bg-indigo-600 text-white px-4 py-2 rounded-lg">⤓ Download CSV</button>
+      </section>
+      <section className="bg-white border border-slate-200 rounded-2xl p-5">
+        <h3 className="font-bold text-slate-800">Excel</h3>
+        <p className="text-xs text-slate-500 mt-1">Open the CSV in Excel — File → Open → choose the downloaded .csv. Excel auto-recognises the headers.</p>
+      </section>
+    </div>
+  );
+}
+
+/* ====================== misc ====================== */
+function Spinner({ label }) {
+  return (
+    <div className="grid place-items-center py-20 text-slate-500">
+      <div className="w-8 h-8 border-4 border-slate-200 border-t-indigo-600 rounded-full spin"></div>
+      <div className="mt-3 text-sm">{label || "Loading…"}</div>
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+</script>
+</body>
+</html>
