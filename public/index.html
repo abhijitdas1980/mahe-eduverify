@@ -72,7 +72,7 @@ function saveAuth(a) { if (a) { localStorage.setItem(AUTH_KEY, JSON.stringify(a)
 /* ============================================================ STATIC CONFIG ============================================================ */
 /* Set false when students only use orientation document verification (no separate reporting-slot booking). */
 const USE_REPORTING_SLOTS = false;
-/* v8 — removed: PAN, BANK, CASTE, MEDICAL. MIGRATION + TC are now Optional. */
+/* v8 — removed: PAN, BANK, CASTE, MEDICAL. MIGRATION is optional; TC is mandatory for all. */
 const DOC_CATALOG = {
   AADHAAR:    { copies:2, formats:"PDF, JPG, PNG (max 6MB)", mistakes:["Photo edges cropped","Aadhaar number not visible","Name mismatch with college record"] },
   PAN_PARENT: { copies:1, formats:"PDF, JPG (max 6MB)",      mistakes:["Wrong parent's PAN uploaded","Blurred PAN number","Cropped corners"] },
@@ -82,7 +82,7 @@ const DOC_CATALOG = {
   UG_DEGREE:  { copies:2, formats:"PDF (max 6MB)",           mistakes:["Convocation certificate not yet issued — provisional accepted","Photo missing"] },
   UG_MARKS:   { copies:2, formats:"PDF (max 6MB)",           mistakes:["Semester-wise instead of consolidated","CGPA conversion certificate missing"] },
   DIPLOMA:    { copies:2, formats:"PDF (max 6MB)",           mistakes:["All semester marks not combined","Diploma certificate missing seal"] },
-  TC:         { copies:1, formats:"PDF (max 6MB) · OPTIONAL", mistakes:["TC from earlier school instead of last institution studied","Issued over 6 months ago without validity","Date of leaving missing"] },
+  TC:         { copies:1, formats:"PDF (max 6MB)", mistakes:["TC from earlier school instead of last institution studied","Issued over 6 months ago without validity","Date of leaving missing"] },
   MIGRATION:  { copies:1, formats:"PDF (max 6MB) · OPTIONAL", mistakes:["Migration from wrong board/university","Migration from an earlier institution instead of the last","Original not provided"] },
   CHAR_CERT:  { copies:1, formats:"PDF (max 6MB)",           mistakes:["Older than 6 months","No school/college letterhead","From earlier institution, not the last one studied"] },
   PHOTOS:     { copies:6, formats:"JPG or PNG only · 3.5×4.5 cm · WHITE background only", mistakes:["Selfies submitted","Any non-white background (blue/red/grey not allowed)","Sunglasses or hats","Old photo (over 6 months)","Uploading a PDF instead of an image"] },
@@ -90,6 +90,8 @@ const DOC_CATALOG = {
   ANTI_RAG_P: { copies:1, formats:"PDF (max 6MB) · standard template (see Standard Templates)", mistakes:["Parent name mismatch with Aadhaar","Not e-signed on antiragging.in","Wrong format"] },
   ANTI_SUB:   { copies:1, formats:"PDF (max 6MB) · standard template (see Standard Templates)", mistakes:["Form unsigned","Wrong year","Not on the prescribed format"] },
   INCOME:     { copies:1, formats:"PDF (max 6MB)",           mistakes:["ITR for wrong assessment year","Acknowledgment page missing","Not in parent/guardian name"] },
+  ITR_PARENTS:{ copies:1, formats:"PDF (max 6MB)",           mistakes:["Only one parent's ITR uploaded","Wrong assessment year","Acknowledgment page missing"] },
+  NRI_AFFIDAVIT: { copies:1, formats:"PDF (max 6MB) · use enclosed format", mistakes:["Not on prescribed affidavit format","Not signed by parent/guardian","Not notarised where required"] },
   PASSPORT:   { copies:1, formats:"PDF (max 6MB)",           mistakes:["Only front page uploaded","Expired passport"] },
   VISA:       { copies:1, formats:"PDF (max 6MB)",           mistakes:["Tourist visa uploaded","Visa expiry before course end"] },
   EQUIV:      { copies:1, formats:"PDF (max 6MB)",           mistakes:["Provisional letter uploaded instead","Not on AIU letterhead"] },
@@ -212,6 +214,31 @@ Signature of student : ______________________________
 Name (block letters) : ______________________________
 Parent signature     : ______________________________
 Date  : ____ / ____ / __________     Place : __________
+` },
+  { key:"NRI_AFFIDAVIT", name:"NRI Affidavit (NRI / NRI Sponsored students)", content:
+`NRI AFFIDAVIT — FORMAT ENCLOSED
+================================
+
+(To be submitted on non-judicial stamp paper of appropriate value, as applicable
+in the state of execution. Notarisation may be required.)
+
+I, _______________________________ , son/daughter of _______________________________ ,
+resident of _________________________________________________________________ ,
+holding Application No. ________________ , do hereby solemnly affirm and declare that:
+
+1. I am an NRI / NRI Sponsored student seeking admission to the programme stated
+   in my application.
+2. The information furnished in my application and supporting documents is true
+   and correct to the best of my knowledge.
+3. I undertake to abide by the rules and regulations of the institution.
+
+Deponent signature     : ______________________________
+Name (block letters)   : ______________________________
+Parent/Guardian sign.  : ______________________________
+Date                   : ____ / ____ / __________
+Place                  : __________
+
+(For notarisation / attestation by competent authority, if required)
 ` },
 ];
 
@@ -457,7 +484,7 @@ function StudentApp({ auth, logout }) {
   return (<div className="min-h-screen flex flex-col"><TopBar subtitle="Student Portal" right={right} /><main id="main" className="flex-1">{body}</main><Footer />{showTemplates && <TemplatesModal close={()=>setShowTemplates(false)} />}</div>);
 }
 
-/* v8 — gating uses MANDATORY docs only. Optional docs (MIGRATION, TC) are
+/* v8 — gating uses MANDATORY docs only. Optional docs (MIGRATION) are
    reported separately and don't block declaration or slot booking. */
 function docStats(documents) {
   const mand = documents.filter(d => !d.optional);

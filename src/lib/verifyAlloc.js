@@ -15,7 +15,7 @@ async function tryAllocateVerifySlot(studentId) {
   try {
     await client.query("BEGIN");
     const sr = await client.query(
-      `SELECT id, profile, assigned_verification_date, upload_completed_at,
+      `SELECT id, profile, category, assigned_verification_date, upload_completed_at,
               verify_schedule_id
          FROM students WHERE id=$1 FOR UPDATE`,
       [studentId]
@@ -34,7 +34,7 @@ async function tryAllocateVerifySlot(studentId) {
       return { allocated: false, reason: "no-assigned-date" };
     }
 
-    const mandatory = checklistFor(s.profile);
+    const mandatory = checklistFor(s.profile, s.category);
     if (!mandatory.length) {
       await client.query("ROLLBACK");
       return { allocated: false, reason: "no-checklist" };

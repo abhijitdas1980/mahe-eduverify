@@ -5,7 +5,7 @@
 const { pool } = require("../config/db");
 const {
   checklistFor, fullDocSetFor, DOC_META,
-  isLegacyCode, isOptionalCode,
+  isLegacyCode, isOptionalCode, isMandatoryForStudent,
 } = require("../config/checklists");
 const { signedUrl } = require("../config/cloudinary");
 
@@ -14,8 +14,8 @@ const CONFIRM_KEY = "confirmed";
 /* Legacy six-key flow from v7 — still honoured for old self_verify payloads. */
 const LEGACY_VERIFY_KEYS = ["clarity", "complete", "name", "signature", "date", "authentic"];
 
-async function ensureDocuments(studentId, profile) {
-  for (const code of fullDocSetFor(profile)) {
+async function ensureDocuments(studentId, profile, category) {
+  for (const code of fullDocSetFor(profile, category)) {
     await pool.query(
       `INSERT INTO documents (student_id, doc_code) VALUES ($1,$2)
        ON CONFLICT (student_id, doc_code) DO NOTHING`,
@@ -37,14 +37,21 @@ function isConfirmed(selfVerify) {
   return LEGACY_VERIFY_KEYS.every((k) => selfVerify[k] === true);
 }
 
-function serializeDoc(d) {
+function docOptionalFlag(d, ctx) {
+  if (ctx?.profile) {
+    return !isMandatoryForStudent(d.doc_code, ctx.profile, ctx.category);
+  }
+  return !!DOC_META[d.doc_code]?.optional || isOptionalCode(d.doc_code);
+}
+
+function serializeDoc(d, ctx) {
   const sv = d.self_verify || {};
   return {
     docCode: d.doc_code,
     name: DOC_META[d.doc_code]?.name || d.doc_code,
     original: !!DOC_META[d.doc_code]?.original,
     needsInstitution: !!DOC_META[d.doc_code]?.needsInstitution,
-    optional: !!DOC_META[d.doc_code]?.optional || isOptionalCode(d.doc_code),
+    optional: docOptionalFlag(d, ctx),
     hasFile: !!d.file_public_id,
     fileName: d.file_name || null,
     fileUrl: d.file_public_id ? signedUrl(d, false) : null,
@@ -66,7 +73,7 @@ function serializeDoc(d) {
   };
 }
 
-function serializeDocAdmin(d) {
+function serializeDocAdmin(d, ctx) {
   const sv = d.self_verify || {};
   return {
     id: d.id,
@@ -74,7 +81,7 @@ function serializeDocAdmin(d) {
     name: DOC_META[d.doc_code]?.name || d.doc_code,
     original: !!DOC_META[d.doc_code]?.original,
     needsInstitution: !!DOC_META[d.doc_code]?.needsInstitution,
-    optional: !!DOC_META[d.doc_code]?.optional || isOptionalCode(d.doc_code),
+    optional: docOptionalFlag(d, ctx),
     hasFile: !!d.file_public_id,
     fileName: d.file_name || null,
     fileSize: d.file_size || null,

@@ -6,8 +6,8 @@
        MEDICAL (Medical Fitness Certificate)
    - OPTIONAL (student may skip, admin can still view if uploaded):
        MIGRATION (Migration Certificate — from Last Institution Studied)
-       TC        (Transfer Certificate — from Last Institution Studied)
-   - Category dropdown extended with: NRI Sponsored, Foreign, OCI
+   - TC is mandatory for all profiles (v33).
+   - Category-specific mandatory docs: AICTE → ITR_PARENTS; NRI / NRI Sponsored → NRI_AFFIDAVIT
    Legacy doc rows on existing students remain in the DB but are filtered
    out of all student/admin views (see lib/docs.js + routes).
 */
@@ -21,16 +21,16 @@ const DOC_META = {
   UG_DEGREE:  { name: "UG Degree / Provisional Certificate",                           original: true,  needsInstitution: true,  imageOnly: false, optional: false },
   UG_MARKS:   { name: "UG Consolidated Marks Card",                                    original: true,  needsInstitution: true,  imageOnly: false, optional: false },
   DIPLOMA:    { name: "Diploma Certificate & Marks Cards",                             original: true,  needsInstitution: true,  imageOnly: false, optional: false },
-  /* OPTIONAL */
-  TC:         { name: "Transfer Certificate (TC) — from the Last Institution Studied", original: true,  needsInstitution: true,  imageOnly: false, optional: true  },
   MIGRATION:  { name: "Migration Certificate (from the Last Institution Studied)",     original: true,  needsInstitution: true,  imageOnly: false, optional: true  },
-  /* /OPTIONAL */
+  TC:         { name: "Transfer Certificate (mandatory document – issued by last institution studied)", original: true, needsInstitution: true, imageOnly: false, optional: false },
   CHAR_CERT:  { name: "Character / Conduct Certificate (from Last Institution Studied)", original: true, needsInstitution: true, imageOnly: false, optional: false },
   PHOTOS:     { name: "Passport-size Photographs (white background)",                  original: true,  needsInstitution: false, imageOnly: true,  optional: false },
   ANTI_RAG_S: { name: "Anti-Ragging Undertaking (Student)",                            original: true,  needsInstitution: false, imageOnly: false, optional: false },
   ANTI_RAG_P: { name: "Anti-Ragging Undertaking (Parent)",                             original: true,  needsInstitution: false, imageOnly: false, optional: false },
   ANTI_SUB:   { name: "Anti-Substance Abuse Declaration",                              original: true,  needsInstitution: false, imageOnly: false, optional: false },
   INCOME:     { name: "ITR – AICTE Fee Waiver",                                        original: true,  needsInstitution: false, imageOnly: false, optional: false },
+  ITR_PARENTS:{ name: "ITR of both parents (mandatory document for students admitted under AICTE Category)", original: true, needsInstitution: false, imageOnly: false, optional: false },
+  NRI_AFFIDAVIT: { name: "NRI Affidavit (format enclosed; mandatory document for NRI/NRI Sponsored students)", original: true, needsInstitution: false, imageOnly: false, optional: false },
   PASSPORT:   { name: "Passport (NRI/Foreign)",                                        original: true,  needsInstitution: false, imageOnly: false, optional: false },
   VISA:       { name: "Valid Student Visa",                                            original: true,  needsInstitution: false, imageOnly: false, optional: false },
   EQUIV:      { name: "AIU / Equivalence Certificate",                                 original: true,  needsInstitution: true,  imageOnly: false, optional: false },
@@ -39,18 +39,24 @@ const DOC_META = {
 
 /* MANDATORY checklists per profile — these gate declaration + slot booking. */
 const CHECKLISTS = {
-  "UG-Indian":             ["SSLC","PUC","CHAR_CERT","AADHAAR","APAAR","PAN_PARENT","PHOTOS","ANTI_RAG_S","ANTI_RAG_P","ANTI_SUB"],
-  "UG-Indian-Scholarship": ["SSLC","PUC","CHAR_CERT","AADHAAR","APAAR","PAN_PARENT","PHOTOS","ANTI_RAG_S","ANTI_RAG_P","ANTI_SUB","INCOME"],
-  "UG-NRI":                ["SSLC","PUC","AADHAAR","APAAR","PAN_PARENT","PHOTOS","ANTI_RAG_S","ANTI_RAG_P","ANTI_SUB","PASSPORT","VISA","EQUIV"],
-  "UG-Foreign":            ["PUC","PHOTOS","ANTI_RAG_S","ANTI_RAG_P","ANTI_SUB","PASSPORT","VISA","EQUIV","ENGLISH"],
-  "UG-Lateral":            ["SSLC","DIPLOMA","CHAR_CERT","AADHAAR","APAAR","PAN_PARENT","PHOTOS","ANTI_RAG_S","ANTI_RAG_P","ANTI_SUB"],
-  "PG-Indian":             ["SSLC","PUC","UG_DEGREE","UG_MARKS","CHAR_CERT","AADHAAR","APAAR","PAN_PARENT","PHOTOS","ANTI_RAG_S","ANTI_SUB"],
-  "PG-Indian-Scholarship": ["SSLC","PUC","UG_DEGREE","UG_MARKS","CHAR_CERT","AADHAAR","APAAR","PAN_PARENT","PHOTOS","ANTI_RAG_S","ANTI_SUB","INCOME"],
+  "UG-Indian":             ["SSLC","PUC","CHAR_CERT","TC","AADHAAR","APAAR","PAN_PARENT","PHOTOS","ANTI_RAG_S","ANTI_RAG_P","ANTI_SUB"],
+  "UG-Indian-Scholarship": ["SSLC","PUC","CHAR_CERT","TC","AADHAAR","APAAR","PAN_PARENT","PHOTOS","ANTI_RAG_S","ANTI_RAG_P","ANTI_SUB","INCOME"],
+  "UG-NRI":                ["SSLC","PUC","TC","AADHAAR","APAAR","PAN_PARENT","PHOTOS","ANTI_RAG_S","ANTI_RAG_P","ANTI_SUB","PASSPORT","VISA","EQUIV"],
+  "UG-Foreign":            ["PUC","TC","PHOTOS","ANTI_RAG_S","ANTI_RAG_P","ANTI_SUB","PASSPORT","VISA","EQUIV","ENGLISH"],
+  "UG-Lateral":            ["SSLC","DIPLOMA","CHAR_CERT","TC","AADHAAR","APAAR","PAN_PARENT","PHOTOS","ANTI_RAG_S","ANTI_RAG_P","ANTI_SUB"],
+  "PG-Indian":             ["SSLC","PUC","UG_DEGREE","UG_MARKS","CHAR_CERT","TC","AADHAAR","APAAR","PAN_PARENT","PHOTOS","ANTI_RAG_S","ANTI_SUB"],
+  "PG-Indian-Scholarship": ["SSLC","PUC","UG_DEGREE","UG_MARKS","CHAR_CERT","TC","AADHAAR","APAAR","PAN_PARENT","PHOTOS","ANTI_RAG_S","ANTI_SUB","INCOME"],
 };
 
-/* OPTIONAL documents shown to every student. Student can submit without them.
-   Admin can still view + download them if uploaded. */
-const OPTIONAL_DOCS = ["MIGRATION", "TC"];
+/* Category-specific mandatory documents (added to profile checklist). */
+const CATEGORY_MANDATORY = {
+  AICTE: ["ITR_PARENTS"],
+  NRI: ["NRI_AFFIDAVIT"],
+  "NRI Sponsored": ["NRI_AFFIDAVIT"],
+};
+
+/* OPTIONAL documents shown to every student. Student can submit without them. */
+const OPTIONAL_DOCS = ["MIGRATION"];
 
 /* Codes removed in v8. Existing student rows for these are filtered out of
    listings, stats and reports — without being deleted. */
@@ -59,13 +65,39 @@ const LEGACY_DOC_CODES = ["PAN", "BANK", "CASTE", "MEDICAL"];
 /* Canonical category dropdown — v8 adds NRI Sponsored, Foreign, OCI. */
 const CATEGORIES = ["General", "NRI", "NRI Sponsored", "Foreign", "OCI", "AICTE"];
 
-function checklistFor(profile) { return CHECKLISTS[profile] || CHECKLISTS["UG-Indian"]; }
+function categoryMandatoryFor(category) {
+  if (!category) return [];
+  return CATEGORY_MANDATORY[category] || [];
+}
+
+function checklistFor(profile, category) {
+  const base = CHECKLISTS[profile] || CHECKLISTS["UG-Indian"];
+  const extra = categoryMandatoryFor(category);
+  const seen = new Set(base);
+  const out = [...base];
+  for (const code of extra) {
+    if (!seen.has(code)) {
+      out.push(code);
+      seen.add(code);
+    }
+  }
+  return out;
+}
+
 function optionalDocsFor(_profile) { return OPTIONAL_DOCS.slice(); }
-function fullDocSetFor(profile) { return [...checklistFor(profile), ...OPTIONAL_DOCS]; }
+function fullDocSetFor(profile, category) {
+  return [...checklistFor(profile, category), ...OPTIONAL_DOCS];
+}
 function isLegacyCode(code) { return LEGACY_DOC_CODES.includes(code); }
 function isOptionalCode(code) { return OPTIONAL_DOCS.includes(code); }
 
+function isMandatoryForStudent(docCode, profile, category) {
+  if (isLegacyCode(docCode)) return false;
+  return checklistFor(profile, category).includes(docCode);
+}
+
 module.exports = {
-  DOC_META, CHECKLISTS, OPTIONAL_DOCS, LEGACY_DOC_CODES, CATEGORIES,
-  checklistFor, optionalDocsFor, fullDocSetFor, isLegacyCode, isOptionalCode,
+  DOC_META, CHECKLISTS, CATEGORY_MANDATORY, OPTIONAL_DOCS, LEGACY_DOC_CODES, CATEGORIES,
+  checklistFor, categoryMandatoryFor, optionalDocsFor, fullDocSetFor,
+  isLegacyCode, isOptionalCode, isMandatoryForStudent,
 };

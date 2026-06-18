@@ -58,7 +58,8 @@ async function bulkInsertStudents(rows) {
 
       for (const ins of r.rows) {
         appNos.push(ins.app_no);
-        for (const code of fullDocSetFor(ins.profile)) {
+        const src = chunk.find((row) => row.application_number === ins.app_no);
+        for (const code of fullDocSetFor(ins.profile, src?.category)) {
           await client.query(
             `INSERT INTO documents (student_id, doc_code) VALUES ($1,$2)
              ON CONFLICT (student_id, doc_code) DO NOTHING`,

@@ -2,7 +2,7 @@
    v8 changes:
    - /meta returns the extended category dropdown (General / NRI / NRI Sponsored
      / Foreign / OCI / AICTE) from a central CATEGORIES constant.
-   - Stats + pipeline counts exclude OPTIONAL_DOCS (MIGRATION, TC) and
+   - Stats + pipeline counts exclude OPTIONAL_DOCS (MIGRATION) and
      LEGACY_DOC_CODES (PAN/BANK/CASTE/MEDICAL), so totals represent mandatory
      docs only.
    - maybeClearPending() considers mandatory docs only.
@@ -64,7 +64,7 @@ function serializeSlot(s) {
 }
 
 /** v8 — clear pending docs/deadline once every MANDATORY doc is verified.
-    Optional docs (MIGRATION, TC) don't have to be verified to trigger this. */
+    Optional docs (MIGRATION) don't have to be verified to trigger this. */
 async function maybeClearPending(studentId) {
   const r = await pool.query(
     `SELECT COUNT(*) AS total, COUNT(*) FILTER (WHERE staff_status='verified') AS verified
@@ -429,7 +429,7 @@ router.post("/students", requireSupervisor, async (req, res, next) => {
         category, b.section ? String(b.section).trim() : null,
         profile, isDate(b.orientationDate) ? b.orientationDate : null]
     );
-    await ensureDocuments(ins.rows[0].id, profile);
+    await ensureDocuments(ins.rows[0].id, profile, category);
     await audit(req, "admin", req.admin.staffId, "STUDENT_ADDED", `${appNo} (${profile})`);
     res.json({ ok: true, appNo });
   } catch (e) { next(e); }
@@ -475,7 +475,8 @@ router.get("/students/:appNo", async (req, res, next) => {
     const s = sr.rows[0];
     if (!s) return res.status(404).json({ error: "Student not found." });
     /* v8 — backfill docs in case checklist evolved while student was active. */
-    await ensureDocuments(s.id, s.profile);
+    await ensureDocuments(s.id, s.profile, s.category);
+    const docCtx = { profile: s.profile, category: s.category };
     const dr = await pool.query(
       `SELECT ${DOC_SELECT_WITH_VERIFIER} FROM documents d ${DOC_JOIN_VERIFIER} WHERE d.student_id=$1 ORDER BY d.id`,
       [s.id]);
@@ -519,7 +520,7 @@ router.get("/students/:appNo", async (req, res, next) => {
         uploadCompletedAt: s.upload_completed_at,
       },
       /* v8 — hide legacy doc codes from admin view (PAN/BANK/CASTE/MEDICAL). */
-      documents: filterVisible(dr.rows).map(serializeDocAdmin),
+      documents: filterVisible(dr.rows).map((d) => serializeDocAdmin(d, docCtx)),
       slot,
       verifySlot,
     });
@@ -541,6 +542,8 @@ router.patch("/students/:appNo", requireSupervisor, async (req, res, next) => {
        b.department || null, b.batch || null, b.category || null, b.section || null,
        isDate(b.orientationDate) ? b.orientationDate : null, s.id]
     );
+    const fresh = await pool.query("SELECT profile, category FROM students WHERE id=$1", [s.id]);
+    await ensureDocuments(s.id, fresh.rows[0].profile, fresh.rows[0].category);
     await audit(req, "admin", req.admin.staffId, "STUDENT_EDITED", s.app_no);
     res.json({ ok: true });
   } catch (e) { next(e); }
@@ -575,8 +578,10 @@ router.patch("/documents/:id", async (req, res, next) => {
             updated_at=now() WHERE id=$1`, [id]);
     }
     const fresh = await pool.query(`SELECT ${DOC_SELECT_WITH_VERIFIER} FROM documents d ${DOC_JOIN_VERIFIER} WHERE d.id=$1`, [id]);
+    const sr = await pool.query("SELECT profile, category FROM students WHERE id=$1", [doc.student_id]);
+    const docCtx = sr.rows[0] ? { profile: sr.rows[0].profile, category: sr.rows[0].category } : {};
     await audit(req, "admin", req.admin.staffId, "DOC_" + status.toUpperCase(), `doc#${id} (${doc.doc_code})`);
-    res.json({ document: serializeDocAdmin(fresh.rows[0]) });
+    res.json({ document: serializeDocAdmin(fresh.rows[0], docCtx) });
   } catch (e) { next(e); }
 });
 
@@ -606,7 +611,9 @@ router.post("/documents/:id/undo", requireSupervisor, async (req, res, next) => 
       `SELECT ${DOC_SELECT_WITH_VERIFIER} FROM documents d ${DOC_JOIN_VERIFIER} WHERE d.id=$1`,
       [id]
     );
-    res.json({ document: serializeDocAdmin(fresh.rows[0]) });
+    const sr = await pool.query("SELECT profile, category FROM students WHERE id=$1", [doc.student_id]);
+    const docCtx = sr.rows[0] ? { profile: sr.rows[0].profile, category: sr.rows[0].category } : {};
+    res.json({ document: serializeDocAdmin(fresh.rows[0], docCtx) });
   } catch (e) { next(e); }
 });
 
