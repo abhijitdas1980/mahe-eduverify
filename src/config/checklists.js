@@ -8,6 +8,7 @@
        MIGRATION (Migration Certificate — from Last Institution Studied)
    - TC is mandatory for all profiles (v33).
    - Category-specific mandatory docs: AICTE → ITR_PARENTS; NRI / NRI Sponsored → NRI_AFFIDAVIT
+   - v35: student profile is UG or PG only; category drives international/extra docs.
    Legacy doc rows on existing students remain in the DB but are filtered
    out of all student/admin views (see lib/docs.js + routes).
 */
@@ -37,22 +38,21 @@ const DOC_META = {
   ENGLISH:    { name: "English Proficiency (IELTS/TOEFL)",                             original: false, needsInstitution: true,  imageOnly: false, optional: false },
 };
 
+/** Allowed values for new students (bulk upload, add student). */
+const PROFILES = ["UG", "PG"];
+
 /* MANDATORY checklists per profile — these gate declaration + slot booking. */
 const CHECKLISTS = {
-  "UG-Indian":             ["SSLC","PUC","CHAR_CERT","TC","AADHAAR","APAAR","PAN_PARENT","PHOTOS","ANTI_RAG_S","ANTI_RAG_P","ANTI_SUB"],
-  "UG-Indian-Scholarship": ["SSLC","PUC","CHAR_CERT","TC","AADHAAR","APAAR","PAN_PARENT","PHOTOS","ANTI_RAG_S","ANTI_RAG_P","ANTI_SUB","INCOME"],
-  "UG-NRI":                ["SSLC","PUC","TC","AADHAAR","APAAR","PAN_PARENT","PHOTOS","ANTI_RAG_S","ANTI_RAG_P","ANTI_SUB","PASSPORT","VISA","EQUIV"],
-  "UG-Foreign":            ["PUC","TC","PHOTOS","ANTI_RAG_S","ANTI_RAG_P","ANTI_SUB","PASSPORT","VISA","EQUIV","ENGLISH"],
-  "UG-Lateral":            ["SSLC","DIPLOMA","CHAR_CERT","TC","AADHAAR","APAAR","PAN_PARENT","PHOTOS","ANTI_RAG_S","ANTI_RAG_P","ANTI_SUB"],
-  "PG-Indian":             ["SSLC","PUC","UG_DEGREE","UG_MARKS","CHAR_CERT","TC","AADHAAR","APAAR","PAN_PARENT","PHOTOS","ANTI_RAG_S","ANTI_SUB"],
-  "PG-Indian-Scholarship": ["SSLC","PUC","UG_DEGREE","UG_MARKS","CHAR_CERT","TC","AADHAAR","APAAR","PAN_PARENT","PHOTOS","ANTI_RAG_S","ANTI_SUB","INCOME"],
+  UG: ["SSLC", "PUC", "CHAR_CERT", "TC", "AADHAAR", "APAAR", "PAN_PARENT", "PHOTOS", "ANTI_RAG_S", "ANTI_RAG_P", "ANTI_SUB"],
+  PG: ["SSLC", "PUC", "UG_DEGREE", "UG_MARKS", "CHAR_CERT", "TC", "AADHAAR", "APAAR", "PAN_PARENT", "PHOTOS", "ANTI_RAG_S", "ANTI_SUB"],
 };
 
 /* Category-specific mandatory documents (added to profile checklist). */
 const CATEGORY_MANDATORY = {
   AICTE: ["ITR_PARENTS"],
-  NRI: ["NRI_AFFIDAVIT"],
-  "NRI Sponsored": ["NRI_AFFIDAVIT"],
+  NRI: ["NRI_AFFIDAVIT", "PASSPORT", "VISA", "EQUIV"],
+  "NRI Sponsored": ["NRI_AFFIDAVIT", "PASSPORT", "VISA", "EQUIV"],
+  Foreign: ["PASSPORT", "VISA", "EQUIV", "ENGLISH"],
 };
 
 /* OPTIONAL documents shown to every student. Student can submit without them. */
@@ -65,13 +65,29 @@ const LEGACY_DOC_CODES = ["PAN", "BANK", "CASTE", "MEDICAL"];
 /* Canonical category dropdown — v8 adds NRI Sponsored, Foreign, OCI. */
 const CATEGORIES = ["General", "NRI", "NRI Sponsored", "Foreign", "OCI", "AICTE"];
 
+/** Map legacy profile strings (pre-v35) to UG or PG for checklist lookup. */
+function normalizeProfile(profile) {
+  if (!profile) return "UG";
+  const p = String(profile).trim();
+  if (p === "UG" || p === "PG") return p;
+  const upper = p.toUpperCase();
+  if (upper.startsWith("PG")) return "PG";
+  if (upper.startsWith("UG")) return "UG";
+  return "UG";
+}
+
+function isValidProfile(profile) {
+  return PROFILES.includes(String(profile || "").trim().toUpperCase());
+}
+
 function categoryMandatoryFor(category) {
   if (!category) return [];
   return CATEGORY_MANDATORY[category] || [];
 }
 
 function checklistFor(profile, category) {
-  const base = CHECKLISTS[profile] || CHECKLISTS["UG-Indian"];
+  const p = normalizeProfile(profile);
+  const base = CHECKLISTS[p] || CHECKLISTS.UG;
   const extra = categoryMandatoryFor(category);
   const seen = new Set(base);
   const out = [...base];
@@ -97,7 +113,8 @@ function isMandatoryForStudent(docCode, profile, category) {
 }
 
 module.exports = {
-  DOC_META, CHECKLISTS, CATEGORY_MANDATORY, OPTIONAL_DOCS, LEGACY_DOC_CODES, CATEGORIES,
+  DOC_META, CHECKLISTS, CATEGORY_MANDATORY, OPTIONAL_DOCS, LEGACY_DOC_CODES, CATEGORIES, PROFILES,
+  normalizeProfile, isValidProfile,
   checklistFor, categoryMandatoryFor, optionalDocsFor, fullDocSetFor,
   isLegacyCode, isOptionalCode, isMandatoryForStudent,
 };

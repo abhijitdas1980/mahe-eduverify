@@ -20,7 +20,7 @@ const {
   DOC_SELECT_WITH_VERIFIER, DOC_JOIN_VERIFIER,
 } = require("../lib/docs");
 const {
-  CHECKLISTS, DOC_META, CATEGORIES, OPTIONAL_DOCS, LEGACY_DOC_CODES,
+  CHECKLISTS, DOC_META, CATEGORIES, OPTIONAL_DOCS, LEGACY_DOC_CODES, PROFILES, isValidProfile,
 } = require("../config/checklists");
 const { fetchAssetBuffer } = require("../config/cloudinary");
 const { normalize } = require("../lib/blacklist");
@@ -92,7 +92,7 @@ router.get("/meta", async (_req, res, next) => {
       departments: d.rows.map((r) => r.department),
       sections: s.rows.map((r) => r.section),
       batches: b.rows.map((r) => r.batch),
-      profiles: Object.keys(CHECKLISTS),
+      profiles: PROFILES.slice(),
       /* v8 — extended category dropdown. */
       categories: CATEGORIES.slice(),
     });
@@ -449,9 +449,9 @@ router.post("/students", requireSupervisor, async (req, res, next) => {
     const name = String(b.name || "").trim();
     const dob = String(b.dob || "").trim();
     const program = String(b.program || "").trim();
-    const profile = String(b.profile || "").trim();
+    const profile = String(b.profile || "").trim().toUpperCase();
     if (!appNo || !name || !isDate(dob) || !program) return res.status(400).json({ error: "Application number, name, a valid date of birth, and program are required." });
-    if (!CHECKLISTS[profile]) return res.status(400).json({ error: "Choose a valid student profile." });
+    if (!isValidProfile(profile)) return res.status(400).json({ error: "Profile must be UG or PG." });
     /* v8 — soft-validate category if provided (free text still accepted for legacy data) */
     const category = b.category ? String(b.category).trim() : null;
     const ex = await pool.query("SELECT 1 FROM students WHERE LOWER(app_no)=LOWER($1)", [appNo]);

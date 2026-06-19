@@ -1,5 +1,5 @@
 /* Row-level validation for student bulk Excel uploads. */
-const { CHECKLISTS, CATEGORIES } = require("../config/checklists");
+const { CATEGORIES, PROFILES, isValidProfile } = require("../config/checklists");
 const {
   REQUIRED_FIELDS,
   GENDERS,
@@ -119,10 +119,11 @@ function validateRow(row, ctx) {
 
   const profile = r.profile;
   if (profile) {
-    if (!CHECKLISTS[profile]) {
-      errors.push(`profile must be one of: ${Object.keys(CHECKLISTS).join(", ")}.`);
+    const profileKey = profile.toUpperCase();
+    if (!isValidProfile(profileKey)) {
+      errors.push(`profile must be one of: ${PROFILES.join(", ")}.`);
     } else {
-      normalized.profile = profile;
+      normalized.profile = profileKey;
     }
   }
 

@@ -8,7 +8,7 @@ const {
   DATE_DISPLAY_FORMAT,
   DEFAULT_VERIFICATION_DATES,
 } = require("../constants/studentBulkUpload");
-const { CHECKLISTS, CATEGORIES } = require("../config/checklists");
+const { PROFILES, CATEGORIES } = require("../config/checklists");
 const { cellStr } = require("./studentBulkValidator");
 
 const SAMPLE_ROWS = [
@@ -17,7 +17,7 @@ const SAMPLE_ROWS = [
     full_name: "Aarav Sharma",
     date_of_birth: "15-03-2007",
     gender: "Male",
-    profile: "UG-Indian",
+    profile: "UG",
     program: "B.E. Computer Science",
     department: "Computer Science",
     section: "A",
@@ -30,13 +30,13 @@ const SAMPLE_ROWS = [
     phone: "9000000001",
   },
   {
-    application_number: "CSE2026102",
-    full_name: "Priya Iyer",
-    date_of_birth: "04-11-2006",
-    gender: "Female",
-    profile: "UG-Indian-Scholarship",
-    program: "B.E. Computer Science",
-    department: "Computer Science",
+    application_number: "MBA2026103",
+    full_name: "Rahul Menon",
+    date_of_birth: "22-08-1999",
+    gender: "Male",
+    profile: "PG",
+    program: "MBA",
+    department: "Management",
     section: "A",
     batch: "2026",
     category: "General",
@@ -87,10 +87,10 @@ async function buildTemplateBuffer() {
     ws.getCell(r, profileCol).dataValidation = {
       type: "list",
       allowBlank: true,
-      formulae: [`"${Object.keys(CHECKLISTS).join(",")}"`],
+      formulae: [`"${PROFILES.join(",")}"`],
       showErrorMessage: true,
       errorTitle: "Invalid profile",
-      error: "Choose a valid student profile from the list.",
+      error: `Choose one of: ${PROFILES.join(", ")}.`,
     };
     ws.getCell(r, categoryCol).dataValidation = {
       type: "list",
@@ -118,7 +118,7 @@ async function buildTemplateBuffer() {
   }
 
   const noteRow = ws.addRow([]);
-  noteRow.getCell(1).value = `Required: application_number, full_name, date_of_birth, gender, profile, program, verification_date (dd-mm-yyyy, e.g. 20-07-2026). verification_batch (1–4) is optional and auto-filled from the date when omitted. Date format: ${DATE_DISPLAY_FORMAT}. File type: .xlsx only.`;
+  noteRow.getCell(1).value = `Required: application_number, full_name, date_of_birth, gender, profile (UG or PG), program, verification_date (dd-mm-yyyy, e.g. 20-07-2026). verification_batch (1–4) is optional and auto-filled from the date when omitted. Date format: ${DATE_DISPLAY_FORMAT}. File type: .xlsx only.`;
   noteRow.getCell(1).font = { italic: true, color: { argb: "FF64748B" } };
   ws.mergeCells(noteRow.number, 1, noteRow.number, COLUMNS.length);
 
