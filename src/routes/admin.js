@@ -24,6 +24,7 @@ const {
 } = require("../config/checklists");
 const { fetchAssetBuffer } = require("../config/cloudinary");
 const { normalize } = require("../lib/blacklist");
+const { serializeContact } = require("../lib/contact");
 
 const studentBulkRoutes = require("./studentBulk");
 
@@ -122,11 +123,19 @@ router.get("/stats", async (_req, res, next) => {
         COUNT(*) FILTER (WHERE physical_reporting_completed)                   AS reported,
         COUNT(*) FILTER (WHERE flagged>0)                                      AS flagged
       FROM per`, [EXCLUDE_FROM_COUNTS]);
+    const contact = await pool.query(`
+      SELECT
+        COUNT(*) FILTER (WHERE contact_completed_at IS NULL) AS contact_incomplete,
+        COUNT(*) FILTER (WHERE contact_completed_at IS NOT NULL AND contact_verified_at IS NULL) AS contact_unverified
+      FROM students`);
     const s = r.rows[0];
+    const c = contact.rows[0];
     res.json({
       total: Number(s.total), docsReady: Number(s.docs_ready), openIssues: Number(s.open_issues),
       booked: Number(s.booked), cleared: Number(s.cleared),
       reported: Number(s.reported), flagged: Number(s.flagged),
+      contactIncomplete: Number(c.contact_incomplete),
+      contactUnverified: Number(c.contact_unverified),
     });
   } catch (e) { next(e); }
 });
@@ -366,6 +375,7 @@ router.get("/students", async (req, res, next) => {
       `SELECT s.app_no, s.name, s.program, s.department, s.section, s.batch,
               s.profile, s.declared, s.slot_confirmed, s.slot_rejected, s.physical_reporting_completed,
               s.assigned_verification_date, s.assigned_batch, s.upload_completed_at,
+              s.contact_completed_at, s.contact_verified_at,
               vs.status AS verify_status, vs.verified_at AS verify_verified_at,
               sl.slot_date, sl.slot_time,
               COUNT(d.id)                                          AS total,
@@ -381,7 +391,8 @@ router.get("/students", async (req, res, next) => {
           AND d.doc_code <> ALL($1::text[])
          LEFT JOIN slots sl ON sl.id = s.slot_id
          LEFT JOIN verify_schedule vs ON vs.id = s.verify_schedule_id
-        GROUP BY s.id, sl.slot_date, sl.slot_time, vs.status, vs.verified_at
+        GROUP BY s.id, sl.slot_date, sl.slot_time, vs.status, vs.verified_at,
+                 s.contact_completed_at, s.contact_verified_at
         ORDER BY s.app_no`, [EXCLUDE_FROM_COUNTS]
     );
     let rows = r.rows.map((x) => {
@@ -397,6 +408,8 @@ router.get("/students", async (req, res, next) => {
         uploadCompletedAt: x.upload_completed_at,
         verifyStatus: x.verify_status,
         verifyVerifiedAt: x.verify_verified_at,
+        contactCompleted: !!x.contact_completed_at,
+        contactVerified: !!x.contact_verified_at,
         total, uploaded: Number(x.uploaded), ready: Number(x.ready),
         verified, rejected: Number(x.rejected), issues: Number(x.issues),
         flagged, cleared: total > 0 && verified === total && x.slot_confirmed,
@@ -518,6 +531,7 @@ router.get("/students/:appNo", async (req, res, next) => {
         assignedVerificationDate: s.assigned_verification_date,
         assignedBatch: s.assigned_batch,
         uploadCompletedAt: s.upload_completed_at,
+        ...serializeContact(s),
       },
       /* v8 — hide legacy doc codes from admin view (PAN/BANK/CASTE/MEDICAL). */
       documents: filterVisible(dr.rows).map((d) => serializeDocAdmin(d, docCtx)),
@@ -631,6 +645,32 @@ router.post("/students/:appNo/reject-slot", async (req, res, next) => {
     );
     await audit(req, "admin", req.admin.staffId, "SLOT_REJECTED", `${s.app_no}: ${reason || ""}`);
     res.json({ ok: true });
+  } catch (e) { next(e); }
+});
+
+router.post("/students/:appNo/verify-contact", async (req, res, next) => {
+  try {
+    const sr = await pool.query("SELECT * FROM students WHERE LOWER(app_no)=LOWER($1)", [req.params.appNo]);
+    const s = sr.rows[0];
+    if (!s) return res.status(404).json({ error: "Student not found." });
+    if (!s.contact_completed_at) {
+      return res.status(400).json({ error: "Student has not submitted contact details yet." });
+    }
+    const verified = req.body?.verified !== false;
+    if (verified) {
+      await pool.query(
+        `UPDATE students SET contact_verified_at=now(), contact_verified_by=$1 WHERE id=$2`,
+        [req.admin.id, s.id]
+      );
+      await audit(req, "admin", req.admin.staffId, "CONTACT_VERIFIED", s.app_no);
+    } else {
+      await pool.query(
+        `UPDATE students SET contact_verified_at=NULL, contact_verified_by=NULL WHERE id=$1`,
+        [s.id]
+      );
+      await audit(req, "admin", req.admin.staffId, "CONTACT_VERIFY_UNDONE", s.app_no);
+    }
+    res.json({ ok: true, contactVerified: verified });
   } catch (e) { next(e); }
 });
 

@@ -177,6 +177,18 @@ ALTER TABLE students ADD COLUMN IF NOT EXISTS assigned_batch INT;
 ALTER TABLE students ADD COLUMN IF NOT EXISTS upload_completed_at TIMESTAMPTZ;
 ALTER TABLE students ADD COLUMN IF NOT EXISTS verify_schedule_id INT;
 ALTER TABLE students ADD COLUMN IF NOT EXISTS gender VARCHAR(10);
+
+-- ====== v34: student + parent contact (collected on first login, verified at campus) ======
+ALTER TABLE students ADD COLUMN IF NOT EXISTS parent_name VARCHAR(120);
+ALTER TABLE students ADD COLUMN IF NOT EXISTS parent_relation VARCHAR(30);
+ALTER TABLE students ADD COLUMN IF NOT EXISTS parent_email VARCHAR(160);
+ALTER TABLE students ADD COLUMN IF NOT EXISTS parent_phone VARCHAR(20);
+ALTER TABLE students ADD COLUMN IF NOT EXISTS contact_completed_at TIMESTAMPTZ;
+ALTER TABLE students ADD COLUMN IF NOT EXISTS contact_verified_at TIMESTAMPTZ;
+ALTER TABLE students ADD COLUMN IF NOT EXISTS contact_verified_by INT REFERENCES admins(id) ON DELETE SET NULL;
+CREATE INDEX IF NOT EXISTS idx_students_contact_completed ON students(contact_completed_at);
+CREATE INDEX IF NOT EXISTS idx_students_contact_verified ON students(contact_verified_at);
+
 CREATE INDEX IF NOT EXISTS idx_students_assigned_date    ON students(assigned_verification_date);
 CREATE INDEX IF NOT EXISTS idx_students_upload_completed ON students(upload_completed_at);
 
