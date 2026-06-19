@@ -25,6 +25,7 @@ const {
 const { fetchAssetBuffer } = require("../config/cloudinary");
 const { normalize } = require("../lib/blacklist");
 const { serializeContact } = require("../lib/contact");
+const { buildExportBuffer, queryStudentExportRows } = require("../lib/studentExportExcel");
 
 const studentBulkRoutes = require("./studentBulk");
 
@@ -417,6 +418,27 @@ router.get("/students", async (req, res, next) => {
     });
     if (q) rows = rows.filter((r) => r.name.toLowerCase().includes(q) || r.appNo.toLowerCase().includes(q) || (r.program || "").toLowerCase().includes(q));
     res.json({ students: rows });
+  } catch (e) { next(e); }
+});
+
+/** GET /api/admin/students/export.xlsx — roster with contact details + progress (respects filters). */
+router.get("/students/export.xlsx", async (req, res, next) => {
+  try {
+    const filters = {
+      department: String(req.query.department || "").trim(),
+      section: String(req.query.section || "").trim(),
+      batch: String(req.query.batch || "").trim(),
+      status: String(req.query.status || "").trim(),
+      contact: String(req.query.contact || "").trim(),
+      q: String(req.query.q || "").trim(),
+    };
+    const rows = await queryStudentExportRows(pool, filters, EXCLUDE_FROM_COUNTS);
+    const buf = await buildExportBuffer(rows);
+    const stamp = new Date().toISOString().slice(0, 10);
+    res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+    res.setHeader("Content-Disposition", `attachment; filename="students-export-${stamp}.xlsx"`);
+    await audit(req, "admin", req.admin.staffId, "STUDENTS_EXPORT", `rows=${rows.length}`);
+    res.send(buf);
   } catch (e) { next(e); }
 });
 
