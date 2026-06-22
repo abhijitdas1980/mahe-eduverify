@@ -182,6 +182,7 @@ router.post("/documents/:code/upload", uploadLimiter, singleFile("file"), async 
       `UPDATE documents SET file_public_id=$1, file_resource_type=$2, file_format=$3,
                 file_name=$4, file_size=$5, student_status='pending', staff_status='pending',
                 staff_note=NULL, issue_note=NULL, verified_by=NULL, verified_at=NULL,
+                physical_submission=NULL,
                 self_verify='{}'::jsonb, updated_at=now() WHERE id=$6`,
       [result.public_id, result.resource_type, ext, req.file.originalname, req.file.size, doc.id]
     );

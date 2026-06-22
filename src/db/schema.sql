@@ -192,6 +192,23 @@ CREATE INDEX IF NOT EXISTS idx_students_contact_verified ON students(contact_ver
 CREATE INDEX IF NOT EXISTS idx_students_assigned_date    ON students(assigned_verification_date);
 CREATE INDEX IF NOT EXISTS idx_students_upload_completed ON students(upload_completed_at);
 
+-- ====== v35: per-document physical submission + admin follow-up remark audit trail ======
+ALTER TABLE documents ADD COLUMN IF NOT EXISTS physical_submission VARCHAR(20);
+
+CREATE TABLE IF NOT EXISTS student_followup_remarks (
+  id                       SERIAL PRIMARY KEY,
+  student_id               INT NOT NULL REFERENCES students(id) ON DELETE CASCADE,
+  admin_id                 INT REFERENCES admins(id) ON DELETE SET NULL,
+  physical_submission_note TEXT,
+  discrepancies            TEXT,
+  discussion_notes         TEXT,
+  expected_submission_date DATE,
+  remarks                  TEXT,
+  created_at               TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_followup_student ON student_followup_remarks(student_id);
+CREATE INDEX IF NOT EXISTS idx_followup_created ON student_followup_remarks(created_at);
+
 -- ====== v27: heal stale students.verify_schedule_id references ======
 -- A pre-v26 reassign would leave students.verify_schedule_id pointing at the
 -- old (now-reassigned) verify_schedule row, while the new target row carried

@@ -8,6 +8,7 @@ const {
   isLegacyCode, isOptionalCode, isMandatoryForStudent,
 } = require("../config/checklists");
 const { signedUrl } = require("../config/cloudinary");
+const { physicalSubmissionLabel } = require("./followupRemarks");
 
 /* v9 — the new single confirmation key. */
 const CONFIRM_KEY = "confirmed";
@@ -67,6 +68,8 @@ function serializeDoc(d, ctx) {
     issueNote: d.issue_note || null,
     staffStatus: d.staff_status,
     staffNote: d.staff_note || null,
+    physicalSubmission: d.physical_submission || null,
+    physicalSubmissionLabel: physicalSubmissionLabel(d.physical_submission),
     verifiedByStaffId: d.verifier_staff_id || null,
     verifiedByName: d.verifier_name || null,
     verifiedAt: d.verified_at || null,
@@ -98,6 +101,8 @@ function serializeDocAdmin(d, ctx) {
     issueNote: d.issue_note || null,
     staffStatus: d.staff_status,
     staffNote: d.staff_note || null,
+    physicalSubmission: d.physical_submission || null,
+    physicalSubmissionLabel: physicalSubmissionLabel(d.physical_submission),
     verifiedByStaffId: d.verifier_staff_id || null,
     verifiedByName: d.verifier_name || null,
     verifiedAt: d.verified_at || null,

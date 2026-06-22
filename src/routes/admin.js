@@ -26,6 +26,12 @@ const { fetchAssetBuffer } = require("../config/cloudinary");
 const { normalize } = require("../lib/blacklist");
 const { serializeContact } = require("../lib/contact");
 const { buildExportBuffer, queryStudentExportRows } = require("../lib/studentExportExcel");
+const {
+  PHYSICAL_SUBMISSION_VALUES,
+  listFollowupRemarks,
+  validateFollowupPayload,
+  insertFollowupRemark,
+} = require("../lib/followupRemarks");
 
 const studentBulkRoutes = require("./studentBulk");
 
@@ -559,6 +565,7 @@ router.get("/students/:appNo", async (req, res, next) => {
       documents: filterVisible(dr.rows).map((d) => serializeDocAdmin(d, docCtx)),
       slot,
       verifySlot,
+      followupRemarks: await listFollowupRemarks(s.id),
     });
   } catch (e) { next(e); }
 });
@@ -590,8 +597,16 @@ router.patch("/documents/:id", async (req, res, next) => {
   try {
     const id = parseInt(req.params.id, 10);
     const status = String(req.body.staffStatus || "");
-    const note = req.body.staffNote ? String(req.body.staffNote) : null;
-    if (!["verified", "rejected", "pending"].includes(status)) return res.status(400).json({ error: "Invalid verification status." });
+    const note = req.body.staffNote == null ? null : String(req.body.staffNote).trim() || null;
+    const physicalSubmission = req.body.physicalSubmission == null
+      ? null
+      : String(req.body.physicalSubmission).trim() || null;
+    if (!["verified", "rejected", "pending"].includes(status)) {
+      return res.status(400).json({ error: "Invalid verification status." });
+    }
+    if (physicalSubmission && !PHYSICAL_SUBMISSION_VALUES.includes(physicalSubmission)) {
+      return res.status(400).json({ error: "Invalid physical submission value." });
+    }
     const dr = await pool.query("SELECT * FROM documents WHERE id=$1", [id]);
     const doc = dr.rows[0];
     if (!doc) return res.status(404).json({ error: "Document not found." });
@@ -599,19 +614,26 @@ router.patch("/documents/:id", async (req, res, next) => {
     if (status === "rejected") {
       await pool.query(
         `UPDATE documents SET staff_status='rejected', staff_note=$1, verified_by=$2, verified_at=now(),
+            physical_submission=COALESCE($5, physical_submission),
             student_status='issue', issue_note=$3, updated_at=now() WHERE id=$4`,
         [note || "Rejected by verification staff.", req.admin.id,
-         note || "Rejected by verification staff. Please re-upload a correct copy.", id]);
+         note || "Rejected by verification staff. Please re-upload a correct copy.", id, physicalSubmission]
+      );
     } else if (status === "verified") {
       await pool.query(
-        `UPDATE documents SET staff_status='verified', staff_note=NULL, verified_by=$1, verified_at=now(),
-            student_status='ready', issue_note=NULL, updated_at=now() WHERE id=$2`, [req.admin.id, id]);
-      // v8: if every MANDATORY doc on this student is now verified, clear stale pending/deadline.
+        `UPDATE documents SET staff_status='verified', staff_note=$1, verified_by=$2, verified_at=now(),
+            physical_submission=COALESCE($3, physical_submission),
+            student_status='ready', issue_note=NULL, updated_at=now() WHERE id=$4`,
+        [note, req.admin.id, physicalSubmission, id]
+      );
       await maybeClearPending(doc.student_id);
     } else {
       await pool.query(
         `UPDATE documents SET staff_status='pending', staff_note=NULL, verified_by=NULL, verified_at=NULL,
-            updated_at=now() WHERE id=$1`, [id]);
+            physical_submission=COALESCE($2, physical_submission),
+            updated_at=now() WHERE id=$1`,
+        [id, physicalSubmission]
+      );
     }
     const fresh = await pool.query(`SELECT ${DOC_SELECT_WITH_VERIFIER} FROM documents d ${DOC_JOIN_VERIFIER} WHERE d.id=$1`, [id]);
     const sr = await pool.query("SELECT profile, category FROM students WHERE id=$1", [doc.student_id]);
@@ -636,7 +658,7 @@ router.post("/documents/:id/undo", requireSupervisor, async (req, res, next) => 
     const prev = doc.staff_status;
     await pool.query(
       `UPDATE documents SET staff_status='pending', staff_note=NULL,
-              verified_by=NULL, verified_at=NULL,
+              verified_by=NULL, verified_at=NULL, physical_submission=NULL,
               student_status='pending', issue_note=NULL,
               updated_at=now() WHERE id=$1`,
       [id]
@@ -722,6 +744,33 @@ router.post("/students/:appNo/pending-docs", async (req, res, next) => {
     await pool.query(`UPDATE students SET pending_docs=$1, submission_deadline=$2 WHERE id=$3`, [pendingDocs, deadline, s.id]);
     await audit(req, "admin", req.admin.staffId, "PENDING_DOCS_UPDATED", `${s.app_no}: ${pendingDocs || "cleared"}${deadline ? " (by " + deadline + ")" : ""}`);
     res.json({ ok: true, pendingDocs, submissionDeadline: deadline });
+  } catch (e) { next(e); }
+});
+
+router.get("/students/:appNo/remarks", async (req, res, next) => {
+  try {
+    const sr = await pool.query("SELECT id FROM students WHERE LOWER(app_no)=LOWER($1)", [req.params.appNo]);
+    if (!sr.rows[0]) return res.status(404).json({ error: "Student not found." });
+    res.json({ remarks: await listFollowupRemarks(sr.rows[0].id) });
+  } catch (e) { next(e); }
+});
+
+router.post("/students/:appNo/remarks", async (req, res, next) => {
+  try {
+    const sr = await pool.query("SELECT * FROM students WHERE LOWER(app_no)=LOWER($1)", [req.params.appNo]);
+    const s = sr.rows[0];
+    if (!s) return res.status(404).json({ error: "Student not found." });
+    const payload = validateFollowupPayload(req.body || {});
+    if (payload.error) return res.status(400).json({ error: payload.error });
+    const remark = await insertFollowupRemark(s.id, req.admin.id, payload);
+    if (payload.expectedSubmissionDate) {
+      await pool.query(
+        "UPDATE students SET submission_deadline=$1 WHERE id=$2",
+        [payload.expectedSubmissionDate, s.id]
+      );
+    }
+    await audit(req, "admin", req.admin.staffId, "FOLLOWUP_REMARK_ADDED", `${s.app_no} remark#${remark.id}`);
+    res.json({ ok: true, remark });
   } catch (e) { next(e); }
 });
 
