@@ -11,7 +11,7 @@ const express = require("express");
 const { pool } = require("../config/db");
 const { requireStudent } = require("../middleware/auth");
 const { uploadLimiter } = require("../middleware/security");
-const { singleFile, ALLOWED } = require("../middleware/upload");
+const { singleFile, formatForMime } = require("../middleware/upload");
 const { uploadBuffer, destroyAsset, isConfigured } = require("../config/cloudinary");
 const { audit } = require("../lib/audit");
 const {
@@ -177,7 +177,7 @@ router.post("/documents/:code/upload", uploadLimiter, singleFile("file"), async 
     }
     if (doc.file_public_id) await destroyAsset(doc.file_public_id, doc.file_resource_type);
     const result = await uploadBuffer(req.file.buffer, req.student.appNo, code);
-    const ext = ALLOWED[req.file.mimetype] || result.format;
+    const ext = formatForMime(req.file.mimetype, code) || result.format;
     await pool.query(
       `UPDATE documents SET file_public_id=$1, file_resource_type=$2, file_format=$3,
                 file_name=$4, file_size=$5, student_status='pending', staff_status='pending',
@@ -190,7 +190,15 @@ router.post("/documents/:code/upload", uploadLimiter, singleFile("file"), async 
     await audit(req, "student", req.student.appNo, "DOC_UPLOAD", `${code} (${req.file.originalname})`);
     const ctx = await studentDocContext(req.student.id);
     res.json({ document: serializeDoc(fresh.rows[0], ctx) });
-  } catch (e) { next(e); }
+  } catch (e) {
+    const msg = String(e.message || "");
+    if (/cloudinary|cloud name|invalid api|unknown api/i.test(msg)) {
+      return res.status(503).json({
+        error: "Upload failed on the server (storage not ready). Please try again shortly or contact the verification cell.",
+      });
+    }
+    next(e);
+  }
 });
 
 router.patch("/documents/:code", async (req, res, next) => {

@@ -34,7 +34,7 @@ app.use(
         scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'", "https://unpkg.com", "https://cdn.tailwindcss.com"],
         styleSrc: ["'self'", "'unsafe-inline'", "https://cdn.tailwindcss.com", "https://fonts.googleapis.com"],
         fontSrc: ["'self'", "https://fonts.gstatic.com", "data:"],
-        imgSrc: ["'self'", "data:", "https://res.cloudinary.com"],
+        imgSrc: ["'self'", "data:", "blob:", "https://res.cloudinary.com"],
         connectSrc: ["'self'", "https://res.cloudinary.com"],
         frameSrc: ["'self'", "https://res.cloudinary.com"],
       },

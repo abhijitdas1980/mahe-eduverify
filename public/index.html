@@ -628,31 +628,47 @@ function SChecklist({ data, reload, go, openTemplates }) {
 }
 
 /* v7 PHOTOS validation: enforce image-only + dimension/size pre-check on frontend. */
+const PHOTO_MIMES = new Set(["image/jpeg", "image/png", "image/jpg", "image/pjpeg", "image/x-png"]);
+const PHOTO_EXTS = new Set(["jpg", "jpeg", "jfif", "png"]);
+
+function probePhotoDimensions(f) {
+  return new Promise((resolve) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const img = new Image();
+      img.onload = () => resolve({ w: img.naturalWidth, h: img.naturalHeight });
+      img.onerror = () => resolve(null);
+      img.src = reader.result;
+    };
+    reader.onerror = () => resolve(null);
+    reader.readAsDataURL(f);
+  });
+}
+
 async function validatePhotoFile(f) {
   const ext = (f.name || "").split(".").pop().toLowerCase();
-  const okType = ["image/jpeg", "image/png"].includes(f.type) || ["jpg", "jpeg", "png"].includes(ext);
+  if (["heic", "heif"].includes(ext)) {
+    return "iPhone HEIC photos are not supported. Open the photo, save/export as JPG, then upload.";
+  }
+  const mime = (f.type || "").toLowerCase().split(";")[0].trim();
+  const okType = PHOTO_MIMES.has(mime) || PHOTO_EXTS.has(ext);
   if (!okType) {
-    return "Photographs must be JPG or PNG only — PDFs and other formats are not accepted.";
+    return "Photographs must be JPG or PNG only — PDFs, HEIC, and other formats are not accepted.";
   }
   if (f.size > 6 * 1024 * 1024) return "Photograph file is too large (max 6 MB).";
-  // Probe image dimensions
-  return await new Promise((resolve) => {
-    const url = URL.createObjectURL(f);
-    const img = new Image();
-    img.onload = () => {
-      URL.revokeObjectURL(url);
-      const w = img.naturalWidth, h = img.naturalHeight;
-      // v17 — relaxed limits so modern phone photos pass.
-      // Min stays at 200×250 (clearly too small / thumbnail). Max raised to
-      // 8000×8000 (12+ MP phones). Orientation no longer enforced — staff
-      // can still reject a non-portrait shot during verification.
-      if (w < 200 || h < 250) return resolve(`Photograph must be at least 200×250 pixels — yours is ${w}×${h}. Use a passport-size photo with WHITE background.`);
-      if (w > 8000 || h > 8000) return resolve(`Photograph is too large (${w}×${h}). Maximum is 8000×8000 px — try saving at a lower resolution.`);
-      resolve(null);
-    };
-    img.onerror = () => { URL.revokeObjectURL(url); resolve("Could not read that image — please choose a valid JPG/PNG photograph."); };
-    img.src = url;
-  });
+  const dims = await probePhotoDimensions(f);
+  if (!dims) {
+    /* If the browser cannot preview the image, still allow upload — server validates type. */
+    return null;
+  }
+  const { w, h } = dims;
+  if (w < 120 || h < 120) {
+    return `Photograph is too small (${w}×${h} px). Use a clear passport-size JPG/PNG (at least 120×120 px).`;
+  }
+  if (w > 12000 || h > 12000) {
+    return `Photograph is too large (${w}×${h} px). Try saving at a lower resolution.`;
+  }
+  return null;
 }
 
 function DocModal({ doc, reload, close, openTemplates }) {
@@ -712,10 +728,10 @@ function DocModal({ doc, reload, close, openTemplates }) {
       {isNriAffidavit && (<div className="mb-4 text-sm bg-indigo-50 border border-indigo-200 rounded-xl p-4 text-indigo-900"><div className="font-semibold">NRI Affidavit — prescribed format</div><div className="mt-1 text-xs text-indigo-800">Download the official format, print on stamp paper, fill and sign, get notarised if required, then scan and upload here.</div><a href={NRI_AFFIDAVIT_PDF} download="NRI-Affidavit-Format.pdf" className="mt-2 inline-block text-xs bg-indigo-600 text-white px-3 py-1.5 rounded-md hover:bg-indigo-700">Download PDF format</a></div>)}
       <div className="border-2 border-dashed border-slate-300 rounded-xl p-6 text-center bg-slate-50">
         <div className="text-3xl">⤴</div><div className="font-semibold mt-2 text-slate-700">Upload scanned copy</div><div className="text-xs text-slate-500">Accepted: {cat.formats}</div>
-        {canUpload ? (<label className={`mt-3 inline-block px-4 py-2 rounded-lg cursor-pointer ${busy?'bg-slate-300 text-slate-500':'bg-indigo-600 text-white hover:bg-indigo-700'}`}>{busy?"Uploading…":(doc.hasFile?"Replace file":"Choose file")}<input type="file" className="hidden" accept={isPhotosDoc ? ".jpg,.jpeg,.png" : ".pdf,.jpg,.jpeg,.png"} disabled={busy} onChange={doUpload} /></label>) : (<div className="mt-3 inline-block bg-slate-200 text-slate-600 px-4 py-2 rounded-lg text-sm">🔒 Locked — replacement allowed only after staff rejection</div>)}
+        {canUpload ? (<label className={`mt-3 inline-block px-4 py-2 rounded-lg cursor-pointer ${busy?'bg-slate-300 text-slate-500':'bg-indigo-600 text-white hover:bg-indigo-700'}`}>{busy?"Uploading…":(doc.hasFile?"Replace file":"Choose file")}<input type="file" className="hidden" accept={isPhotosDoc ? "image/jpeg,image/png,.jpg,.jpeg,.png" : ".pdf,.jpg,.jpeg,.png,image/jpeg,image/png,application/pdf"} disabled={busy} onChange={doUpload} /></label>) : (<div className="mt-3 text-sm text-slate-600 bg-slate-100 border border-slate-200 rounded-lg px-4 py-2">🔒 Locked — you already uploaded this file. Staff must reject it before you can replace it.</div>)}
         {doc.hasFile && (<div className="mt-3 text-sm text-slate-700 flex items-center justify-center gap-2 flex-wrap">Current file: <b>{doc.fileName}</b><button onClick={()=>setPreview(true)} className="text-xs px-2 py-1 rounded-md border border-indigo-300 text-indigo-700 hover:bg-indigo-50">👁 Preview my upload</button></div>)}
       </div>
-      {isPhotosDoc && (<div className="mt-4 text-xs text-blue-700 bg-blue-50 border border-blue-200 rounded-lg p-3"><b>Photograph tips:</b><ul className="list-disc list-inside mt-1 space-y-0.5"><li>Plain <b>white background</b> if possible.</li><li>Passport-size, recent (under 6 months), no selfies, sunglasses or hats.</li><li>JPG or PNG only (no PDF), ≤ 6 MB.</li></ul></div>)}
+      {isPhotosDoc && (<div className="mt-4 text-xs text-blue-700 bg-blue-50 border border-blue-200 rounded-lg p-3"><b>Photograph tips:</b><ul className="list-disc list-inside mt-1 space-y-0.5"><li>Plain <b>white background</b> if possible.</li><li>Passport-size, recent (under 6 months), no selfies, sunglasses or hats.</li><li><b>JPG or PNG only</b> (no PDF, no iPhone HEIC) — ≤ 6 MB.</li><li>If your phone saves HEIC, use Gallery → Share/Save as JPG before uploading.</li></ul></div>)}
       <div className="mt-4 text-xs text-slate-600 bg-blue-50 border border-blue-200 rounded-lg p-3">Your file is sent over HTTPS and stored as a private, encrypted asset.</div>
       <ErrorNote msg={err} />
     </div>)}
