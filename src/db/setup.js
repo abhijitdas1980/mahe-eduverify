@@ -10,6 +10,7 @@ const fs = require("fs");
 const path = require("path");
 const bcrypt = require("bcryptjs");
 const { pool } = require("../config/db");
+const { isProduction, DEFAULT_ADMIN_PASS } = require("../config/env");
 const { normalize, SEED_BLACKLIST } = require("../lib/blacklist");
 const {
   generateEmptySchedule,
@@ -28,7 +29,10 @@ async function runSetup({ closePool = false, quiet = false } = {}) {
     log("[setup] Seeding supervisor admin account (if missing) ...");
     const adminId = process.env.SEED_ADMIN_ID || "ADM-001";
     const adminName = process.env.SEED_ADMIN_NAME || "Verification Cell Admin";
-    const adminPass = process.env.SEED_ADMIN_PASSWORD || "ChangeMe@2026";
+    const adminPass = process.env.SEED_ADMIN_PASSWORD || DEFAULT_ADMIN_PASS;
+    if (isProduction() && adminPass === DEFAULT_ADMIN_PASS) {
+      throw new Error("SEED_ADMIN_PASSWORD must be set in production.");
+    }
     const adminHash = await bcrypt.hash(adminPass, 12);
     await client.query(
       `INSERT INTO admins (staff_id, name, password_hash, role)

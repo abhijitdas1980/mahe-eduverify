@@ -1,14 +1,33 @@
 /* v14 — Auto-allocation of a document-verification slot.
-   Called every time a student transitions a document to status='ready'.
-   - Pre-assigned date is immutable on the student record.
-   - Allocation is FCFS within that date, ordered (slot_no, room) so slot 1
-     in all 15 rooms fills first (15 students processed in parallel at 1:00 PM),
-     then slot 2 in all 15 rooms, etc.
-   - FOR UPDATE SKIP LOCKED keeps two concurrent allocations from grabbing
-     the same row.
+   Called after the student signs the self-declaration (all mandatory docs ready).
 */
 const { pool } = require("../config/db");
 const { checklistFor } = require("../config/checklists");
+
+async function releaseVerifySlotForStudent(client, studentId) {
+  const sr = await client.query(
+    "SELECT verify_schedule_id FROM students WHERE id=$1 FOR UPDATE",
+    [studentId]
+  );
+  const slotId = sr.rows[0]?.verify_schedule_id;
+  if (!slotId) return false;
+
+  await client.query(
+    `UPDATE verify_schedule
+        SET student_id = NULL,
+            status = CASE WHEN status IN ('booked','pending','verified','absent') THEN 'open' ELSE status END,
+            verified_at = NULL,
+            verified_by = NULL,
+            updated_at = now()
+      WHERE id = $1`,
+    [slotId]
+  );
+  await client.query(
+    "UPDATE students SET verify_schedule_id = NULL, upload_completed_at = NULL WHERE id = $1",
+    [studentId]
+  );
+  return true;
+}
 
 async function tryAllocateVerifySlot(studentId) {
   const client = await pool.connect();
@@ -16,7 +35,7 @@ async function tryAllocateVerifySlot(studentId) {
     await client.query("BEGIN");
     const sr = await client.query(
       `SELECT id, profile, category, assigned_verification_date, upload_completed_at,
-              verify_schedule_id
+              verify_schedule_id, declared
          FROM students WHERE id=$1 FOR UPDATE`,
       [studentId]
     );
@@ -32,6 +51,10 @@ async function tryAllocateVerifySlot(studentId) {
     if (!s.assigned_verification_date) {
       await client.query("ROLLBACK");
       return { allocated: false, reason: "no-assigned-date" };
+    }
+    if (!s.declared) {
+      await client.query("ROLLBACK");
+      return { allocated: false, reason: "not-declared" };
     }
 
     const mandatory = checklistFor(s.profile, s.category);
@@ -61,7 +84,7 @@ async function tryAllocateVerifySlot(studentId) {
 
     const slotR = await client.query(
       `SELECT id FROM verify_schedule
-        WHERE schedule_date=$1 AND status='open' AND student_id IS NULL
+        WHERE schedule_date=$1 AND status IN ('open', 'reassigned') AND student_id IS NULL
         ORDER BY slot_no ASC, room ASC
         LIMIT 1 FOR UPDATE SKIP LOCKED`,
       [s.assigned_verification_date]
@@ -89,4 +112,4 @@ async function tryAllocateVerifySlot(studentId) {
   }
 }
 
-module.exports = { tryAllocateVerifySlot };
+module.exports = { tryAllocateVerifySlot, releaseVerifySlotForStudent };

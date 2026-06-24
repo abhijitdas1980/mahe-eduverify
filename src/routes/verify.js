@@ -453,11 +453,28 @@ router.post("/assignment/:id/reassign", async (req, res, next) => {
       );
       target = tr.rows[0];
     } else if (!isDate(b.date) && !b.room && !b.targetId) {
-      const tr = await client.query(
-        `SELECT * FROM verify_schedule WHERE status='open' AND student_id IS NULL
-          ORDER BY schedule_date, room, slot_no LIMIT 1 FOR UPDATE`
+      const studR = await client.query(
+        "SELECT assigned_verification_date FROM students WHERE id=$1",
+        [row.student_id]
       );
-      target = tr.rows[0];
+      const assignedDate = studR.rows[0]?.assigned_verification_date;
+      if (assignedDate) {
+        const tr = await client.query(
+          `SELECT * FROM verify_schedule
+            WHERE schedule_date=$1 AND status IN ('open', 'reassigned') AND student_id IS NULL
+            ORDER BY slot_no, room LIMIT 1 FOR UPDATE`,
+          [assignedDate]
+        );
+        target = tr.rows[0];
+      }
+      if (!target) {
+        const tr = await client.query(
+          `SELECT * FROM verify_schedule
+            WHERE status IN ('open', 'reassigned') AND student_id IS NULL
+            ORDER BY schedule_date, room, slot_no LIMIT 1 FOR UPDATE`
+        );
+        target = tr.rows[0];
+      }
     } else {
       await client.query("ROLLBACK");
       return res.status(400).json({ error: "Provide date, room, and start time — or use auto-pick with no date/room." });
@@ -503,6 +520,11 @@ router.post("/assignment/:id/reassign", async (req, res, next) => {
     res.json({ source: serializeAssignment(freshSrc.rows[0]), target: serializeAssignment(freshTgt.rows[0]) });
   } catch (e) {
     await client.query("ROLLBACK").catch(() => {});
+    const msg = String(e.message || "");
+    if (/occupied|required|not found/i.test(msg)) {
+      const code = /occupied/i.test(msg) ? 409 : 400;
+      return res.status(code).json({ error: msg });
+    }
     next(e);
   } finally {
     client.release();

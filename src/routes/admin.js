@@ -35,6 +35,7 @@ const {
   insertFollowupRemark,
 } = require("../lib/followupRemarks");
 const { deleteStudentsByAppNos } = require("../lib/deleteStudent");
+const { releaseVerifySlotForStudent } = require("../lib/verifyAlloc");
 
 const studentBulkRoutes = require("./studentBulk");
 
@@ -163,7 +164,7 @@ router.post("/staff", requireSupervisor, async (req, res, next) => {
     const name = String(req.body.name || "").trim();
     const password = String(req.body.password || "");
     const role = req.body.role === "supervisor" ? "supervisor" : "verifier";
-    if (!staffId || !name || password.length < 6) return res.status(400).json({ error: "Staff ID, name, and a password of at least 6 characters are required." });
+    if (!staffId || !name || password.length < 8) return res.status(400).json({ error: "Staff ID, name, and a password of at least 8 characters are required." });
     const ex = await pool.query("SELECT 1 FROM admins WHERE LOWER(staff_id)=LOWER($1)", [staffId]);
     if (ex.rows.length) return res.status(409).json({ error: "That staff ID already exists." });
     const hash = await bcrypt.hash(password, 12);
@@ -484,15 +485,17 @@ router.post("/students", requireSupervisor, async (req, res, next) => {
     if (!isValidProfile(profile)) return res.status(400).json({ error: "Profile must be UG or PG." });
     /* v8 — soft-validate category if provided (free text still accepted for legacy data) */
     const category = b.category ? String(b.category).trim() : null;
+    const verificationDate = isDate(b.verificationDate) ? b.verificationDate
+      : (isDate(b.orientationDate) ? b.orientationDate : null);
     const ex = await pool.query("SELECT 1 FROM students WHERE LOWER(app_no)=LOWER($1)", [appNo]);
     if (ex.rows.length) return res.status(409).json({ error: "A student with that application number already exists." });
     const ins = await pool.query(
-      `INSERT INTO students (app_no,name,dob,email,phone,program,department,batch,category,section,profile,orientation_date)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING id`,
+      `INSERT INTO students (app_no,name,dob,email,phone,program,department,batch,category,section,profile,orientation_date,assigned_verification_date)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING id`,
       [appNo, name, dob, b.email ? String(b.email).trim() : null, b.phone ? String(b.phone).trim() : null,
         program, b.department ? String(b.department).trim() : null, b.batch ? String(b.batch).trim() : null,
         category, b.section ? String(b.section).trim() : null,
-        profile, isDate(b.orientationDate) ? b.orientationDate : null]
+        profile, isDate(b.orientationDate) ? b.orientationDate : null, verificationDate]
     );
     await ensureDocuments(ins.rows[0].id, profile, category);
     await audit(req, "admin", req.admin.staffId, "STUDENT_ADDED", `${appNo} (${profile})`);
@@ -518,7 +521,11 @@ router.get("/students/:appNo/documents.zip", async (req, res, next) => {
     res.setHeader("Content-Type", "application/zip");
     res.setHeader("Content-Disposition", `attachment; filename="${s.app_no}-documents.zip"`);
     const archive = archiver("zip", { zlib: { level: 9 } });
-    archive.on("error", (err) => { throw err; });
+    archive.on("error", (err) => {
+      console.error("ZIP archive error:", err.message);
+      if (!res.headersSent) res.status(500).json({ error: "Could not build the ZIP file." });
+      else res.destroy(err);
+    });
     archive.pipe(res);
     for (const d of dr.rows) {
       try {
@@ -622,7 +629,9 @@ router.post("/students/delete", requireSupervisor, async (req, res, next) => {
     if (!appNos.length) return res.status(400).json({ error: "Select at least one student to delete." });
     if (appNos.length > 200) return res.status(400).json({ error: "Maximum 200 students per delete request." });
     const { deleted, notFound } = await deleteStudentsByAppNos(pool, appNos);
-    if (!deleted.length) return res.status(404).json({ error: "No matching students found." });
+    if (!deleted.length) {
+      return res.status(404).json({ error: "No matching students found.", notFound });
+    }
     await audit(req, "admin", req.admin.staffId, "STUDENT_DELETED", `bulk (${deleted.length}): ${deleted.join(", ")}`);
     res.json({ ok: true, deleted: deleted.length, appNos: deleted, notFound });
   } catch (e) { next(e); }
@@ -678,10 +687,21 @@ router.patch("/documents/:id", async (req, res, next) => {
       const sr = await pool.query("SELECT profile, category FROM students WHERE id=$1", [doc.student_id]);
       const mandatory = checklistFor(sr.rows[0]?.profile, sr.rows[0]?.category);
       if (mandatory.includes(doc.doc_code)) {
-        await pool.query(
-          "UPDATE students SET declared=false, declared_at=NULL WHERE id=$1",
-          [doc.student_id]
-        );
+        const client = await pool.connect();
+        try {
+          await client.query("BEGIN");
+          await client.query(
+            "UPDATE students SET declared=false, declared_at=NULL WHERE id=$1",
+            [doc.student_id]
+          );
+          await releaseVerifySlotForStudent(client, doc.student_id);
+          await client.query("COMMIT");
+        } catch (e) {
+          await client.query("ROLLBACK").catch(() => {});
+          throw e;
+        } finally {
+          client.release();
+        }
       }
     } else if (status === "verified") {
       await pool.query(
@@ -727,6 +747,14 @@ router.post("/documents/:id/undo", requireSupervisor, async (req, res, next) => 
               updated_at=now() WHERE id=$1`,
       [id]
     );
+    const sr0 = await pool.query("SELECT profile, category FROM students WHERE id=$1", [doc.student_id]);
+    const mandatory = checklistFor(sr0.rows[0]?.profile, sr0.rows[0]?.category);
+    if (mandatory.includes(doc.doc_code)) {
+      await pool.query(
+        "UPDATE students SET declared=false, declared_at=NULL WHERE id=$1",
+        [doc.student_id]
+      );
+    }
     await audit(req, "admin", req.admin.staffId, "DOC_UNDO_" + prev.toUpperCase(),
       `doc#${id} (${doc.doc_code}): ${reason}`);
     const fresh = await pool.query(

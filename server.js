@@ -11,6 +11,9 @@ const express = require("express");
 const helmet = require("helmet");
 const cors = require("cors");
 
+const { assertProductionConfig } = require("./src/config/env");
+assertProductionConfig();
+
 const { pool } = require("./src/config/db");
 const { runSetup } = require("./src/db/setup");
 const { apiLimiter } = require("./src/middleware/security");

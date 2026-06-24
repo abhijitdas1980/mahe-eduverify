@@ -49,8 +49,8 @@ router.post("/student/register", async (req, res, next) => {
     if (!appNo || !isDate(dob)) {
       return res.status(400).json({ error: "Missing application number or date of birth." });
     }
-    if (password.length < 6) {
-      return res.status(400).json({ error: "Choose a password of at least 6 characters." });
+    if (password.length < 8) {
+      return res.status(400).json({ error: "Choose a password of at least 8 characters." });
     }
     const r = await pool.query(
       "SELECT * FROM students WHERE LOWER(app_no)=LOWER($1) AND dob=$2",
@@ -96,8 +96,8 @@ router.post("/student/reset-password", async (req, res, next) => {
     if (!appNo || !isDate(dob)) {
       return res.status(400).json({ error: "Enter your application number and date of birth." });
     }
-    if (password.length < 6) {
-      return res.status(400).json({ error: "Choose a new password of at least 6 characters." });
+    if (password.length < 8) {
+      return res.status(400).json({ error: "Choose a new password of at least 8 characters." });
     }
     const r = await pool.query(
       "SELECT * FROM students WHERE LOWER(app_no)=LOWER($1) AND dob=$2",

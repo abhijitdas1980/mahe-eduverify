@@ -2,8 +2,9 @@
    A token proves who the caller is (a specific student, or an admin).
    It is signed with JWT_SECRET so it cannot be forged. */
 const jwt = require("jsonwebtoken");
+const { jwtSecret } = require("../config/env");
 
-const SECRET = process.env.JWT_SECRET || "dev-only-insecure-secret-change-me";
+const SECRET = jwtSecret();
 const EXPIRES = process.env.JWT_EXPIRES_IN || "12h";
 
 /** Create a signed token. payload e.g. { type:'student', id, appNo } */

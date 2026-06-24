@@ -164,7 +164,7 @@ router.post("/contact", async (req, res, next) => {
     if (row?.contact_verified_at) {
       return res.status(400).json({ error: "Contact details were verified by staff and cannot be changed online. Contact the verification cell." });
     }
-    if (row?.verify_status === "verified" || row?.physical_reporting_completed) {
+    if (row?.verify_status === "verified" || row?.verify_status === "absent" || row?.physical_reporting_completed) {
       return res.status(400).json({ error: "Contact details are locked after campus verification. Contact the verification cell to request changes." });
     }
     const v = validateContactPayload(req.body || {});
@@ -196,6 +196,9 @@ router.post("/documents/:code/upload", uploadLimiter, singleFile("file"), async 
     const dr = await pool.query("SELECT * FROM documents WHERE student_id=$1 AND doc_code=$2", [req.student.id, code]);
     const doc = dr.rows[0];
     if (!doc) return res.status(404).json({ error: "This document is not part of your checklist." });
+    if (doc.file_public_id && doc.staff_status === "verified") {
+      return res.status(400).json({ error: "This document was accepted by staff and cannot be replaced. Contact the verification cell." });
+    }
     if (doc.file_public_id && doc.student_status === "ready" && doc.staff_status !== "rejected") {
       return res.status(400).json({ error: "This document has been self-verified and cannot be replaced. Contact the verification cell if you need to change it." });
     }
@@ -236,6 +239,9 @@ router.patch("/documents/:code", async (req, res, next) => {
     const dr = await pool.query("SELECT * FROM documents WHERE student_id=$1 AND doc_code=$2", [req.student.id, code]);
     const doc = dr.rows[0];
     if (!doc) return res.status(404).json({ error: "Document not found in your checklist." });
+    if (doc.staff_status === "verified" && (status === "issue" || status === "ready")) {
+      return res.status(400).json({ error: "This document was accepted by staff and cannot be changed online." });
+    }
 
     /* v9 — accept either a `confirmed:boolean` shorthand OR a full selfVerify
        object. Preserve any prior keys so legacy data isn't clobbered. */
@@ -269,13 +275,6 @@ router.patch("/documents/:code", async (req, res, next) => {
         [JSON.stringify(nextSV), doc.id]
       );
       await audit(req, "student", req.student.appNo, "DOC_CONFIRMED", code);
-      /* v14 — Auto-allocate verification slot when all mandatory docs are Ready. */
-      try {
-        const alloc = await tryAllocateVerifySlot(req.student.id);
-        if (alloc && alloc.allocated) {
-          await audit(req, "student", req.student.appNo, "VERIFY_SLOT_AUTO_ALLOCATED", `slot#${alloc.slotId}`);
-        }
-      } catch (e) { console.warn("[verify] auto-allocate failed for student", req.student.id, e.message); }
     } else if (status === "issue") {
       await pool.query(
         `UPDATE documents SET self_verify=$1, student_status='issue', issue_note=$2, updated_at=now() WHERE id=$3`,
@@ -324,7 +323,17 @@ router.post("/declare", async (req, res, next) => {
     }
     await pool.query("UPDATE students SET declared=true, declared_at=now() WHERE id=$1", [req.student.id]);
     await audit(req, "student", req.student.appNo, "DECLARED", "Self-declaration signed");
-    res.json({ ok: true });
+    let allocation = { allocated: false, reason: "not-attempted" };
+    try {
+      allocation = await tryAllocateVerifySlot(req.student.id);
+      if (allocation.allocated) {
+        await audit(req, "student", req.student.appNo, "VERIFY_SLOT_AUTO_ALLOCATED", `slot#${allocation.slotId}`);
+      }
+    } catch (e) {
+      console.warn("[verify] auto-allocate failed for student", req.student.id, e.message);
+      allocation = { allocated: false, reason: "error" };
+    }
+    res.json({ ok: true, allocation });
   } catch (e) { next(e); }
 });
 
