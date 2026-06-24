@@ -66,7 +66,10 @@ app.use("/api/admin", adminRoutes);
 app.use("/api/admin/verify", verifyRoutes);
 
 app.use(express.static(path.join(__dirname, "public")));
-app.get(/^(?!\/api).*/, (_req, res) => {
+app.get(/^(?!\/api).*/, (req, res) => {
+  if (/\.[a-z0-9]+$/i.test(req.path) && !req.path.endsWith(".html")) {
+    return res.status(404).type("text/plain").send("Not found");
+  }
   res.sendFile(path.join(__dirname, "public", "index.html"));
 });
 

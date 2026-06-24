@@ -84,7 +84,16 @@ function InstitutionStrip() {
 
 /* ====================== shared API ====================== */
 const AUTH_KEY = "ev_auth";
-function loadAuth() { try { return JSON.parse(localStorage.getItem(AUTH_KEY) || "null"); } catch (e) { return null; } }
+function loadAuth() {
+  try {
+    const a = JSON.parse(localStorage.getItem(AUTH_KEY) || "null");
+    if (a && a.token && a.role === "admin") return a;
+  } catch (e) {}
+  return null;
+}
+function clearAuth() {
+  try { localStorage.removeItem(AUTH_KEY); } catch (e) {}
+}
 function getAuthToken() {
   const a = loadAuth();
   return a?.token || null;
@@ -97,6 +106,11 @@ async function api(method, path, body) {
   if (body !== undefined) headers["Content-Type"] = "application/json";
   const res = await fetch(path, { method, headers, body: body !== undefined ? JSON.stringify(body) : undefined });
   let data = {}; try { data = await res.json(); } catch (e) {}
+  if (res.status === 401) {
+    clearAuth();
+    window.dispatchEvent(new Event("ev-auth-cleared"));
+    throw new Error("Session expired — sign in again on the main portal.");
+  }
   if (!res.ok) throw new Error(data.error || ("Request failed (" + res.status + ")"));
   return data;
 }
@@ -164,11 +178,16 @@ function App() {
   useEffect(() => {
     setAuth(loadAuth());
     const onStorage = (e) => { if (e.key === AUTH_KEY) setAuth(loadAuth()); };
+    const onAuthCleared = () => setAuth(loadAuth());
     window.addEventListener("storage", onStorage);
-    return () => window.removeEventListener("storage", onStorage);
+    window.addEventListener("ev-auth-cleared", onAuthCleared);
+    return () => {
+      window.removeEventListener("storage", onStorage);
+      window.removeEventListener("ev-auth-cleared", onAuthCleared);
+    };
   }, []);
 
-  const isAdmin = !!(auth && auth.role === "admin");
+  const isAdmin = !!(auth && auth.token && auth.role === "admin");
 
   if (!isAdmin) {
     return (
@@ -354,6 +373,7 @@ function DayDetail({ stats, meta, reload, isSupervisor, pauseRefresh, setPauseRe
   const [filters, setFilters] = useState({ room: "", status: "", q: "" });
   const [loading, setLoading] = useState(false);
   const [listErr, setListErr] = useState("");
+  const [actionErr, setActionErr] = useState("");
 
   const loadList = useCallback(async () => {
     if (!date) return;
@@ -377,12 +397,14 @@ function DayDetail({ stats, meta, reload, isSupervisor, pauseRefresh, setPauseRe
   }, [loadList, pauseRefresh]);
 
   const setStatus = async (id, newStatus, remarks) => {
+    setActionErr("");
     try { await patch(`/api/admin/verify/assignment/${id}`, { status: newStatus, remarks }); await loadList(); reload(); }
-    catch (e) { alert(e.message); }
+    catch (e) { setActionErr(e.message); }
   };
 
   return (
     <div className="space-y-5">
+      {actionErr && <div className="text-sm text-red-700 bg-red-50 border border-red-200 rounded p-2">{actionErr}</div>}
       <div className="flex items-center gap-3 flex-wrap">
         <label className="text-sm text-slate-600">Day:</label>
         <select value={date} onChange={e=>setDate(e.target.value)} className="ev-input w-auto">
@@ -560,7 +582,9 @@ function ExportTab({ meta }) {
   const [date, setDate] = useState("");
   const [room, setRoom] = useState("");
   const [status, setStatus] = useState("");
+  const [exportErr, setExportErr] = useState("");
   const download = () => {
+    setExportErr("");
     const p = new URLSearchParams();
     if (date)   p.set("date", date);
     if (room)   p.set("room", room);
@@ -577,10 +601,11 @@ function ExportTab({ meta }) {
         document.body.appendChild(a); a.click();
         URL.revokeObjectURL(a.href); a.remove();
       })
-      .catch(e => alert(e.message));
+      .catch(e => setExportErr(e.message));
   };
   return (
     <div className="max-w-3xl space-y-4">
+      {exportErr && <div className="text-sm text-red-700 bg-red-50 border border-red-200 rounded p-2">{exportErr}</div>}
       <section className="bg-white border border-slate-200 rounded-2xl p-5">
         <h3 className="font-bold text-slate-800">Export to CSV</h3>
         <p className="text-xs text-slate-500 mt-1">Filtered to the values you pick below. Leave blank to export everything (excluding empty/open rows by default).</p>

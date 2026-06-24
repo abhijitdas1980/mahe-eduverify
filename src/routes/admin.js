@@ -130,7 +130,7 @@ router.get("/stats", async (_req, res, next) => {
         COUNT(*) FILTER (WHERE total>0 AND ready=total)                        AS docs_ready,
         COUNT(*) FILTER (WHERE issues>0)                                       AS open_issues,
         COUNT(*) FILTER (WHERE slot_id IS NOT NULL)                            AS booked,
-        COUNT(*) FILTER (WHERE total>0 AND verified=total AND slot_confirmed)  AS cleared,
+        COUNT(*) FILTER (WHERE total>0 AND verified=total)                       AS cleared,
         COUNT(*) FILTER (WHERE physical_reporting_completed)                   AS reported,
         COUNT(*) FILTER (WHERE flagged>0)                                      AS flagged
       FROM per`, [EXCLUDE_FROM_COUNTS]);
