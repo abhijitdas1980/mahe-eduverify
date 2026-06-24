@@ -34,6 +34,7 @@ const {
   validateFollowupPayload,
   insertFollowupRemark,
 } = require("../lib/followupRemarks");
+const { deleteStudentsByAppNos } = require("../lib/deleteStudent");
 
 const studentBulkRoutes = require("./studentBulk");
 
@@ -612,6 +613,27 @@ router.patch("/students/:appNo", requireSupervisor, async (req, res, next) => {
     await ensureDocuments(s.id, fresh.rows[0].profile, fresh.rows[0].category);
     await audit(req, "admin", req.admin.staffId, "STUDENT_EDITED", s.app_no);
     res.json({ ok: true });
+  } catch (e) { next(e); }
+});
+
+router.post("/students/delete", requireSupervisor, async (req, res, next) => {
+  try {
+    const appNos = Array.isArray(req.body?.appNos) ? req.body.appNos : [];
+    if (!appNos.length) return res.status(400).json({ error: "Select at least one student to delete." });
+    if (appNos.length > 200) return res.status(400).json({ error: "Maximum 200 students per delete request." });
+    const { deleted, notFound } = await deleteStudentsByAppNos(pool, appNos);
+    if (!deleted.length) return res.status(404).json({ error: "No matching students found." });
+    await audit(req, "admin", req.admin.staffId, "STUDENT_DELETED", `bulk (${deleted.length}): ${deleted.join(", ")}`);
+    res.json({ ok: true, deleted: deleted.length, appNos: deleted, notFound });
+  } catch (e) { next(e); }
+});
+
+router.delete("/students/:appNo", requireSupervisor, async (req, res, next) => {
+  try {
+    const { deleted, notFound } = await deleteStudentsByAppNos(pool, [req.params.appNo]);
+    if (!deleted.length) return res.status(404).json({ error: notFound.length ? "Student not found." : "Student not found." });
+    await audit(req, "admin", req.admin.staffId, "STUDENT_DELETED", deleted[0]);
+    res.json({ ok: true, deleted: deleted.length, appNos: deleted });
   } catch (e) { next(e); }
 });
 

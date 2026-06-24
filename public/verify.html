@@ -65,6 +65,36 @@ function StatusPill({ s }) {
 }
 function fmtDate(d) { return d ? String(d).slice(0,10) : "—"; }
 function fmtTs(d) { if (!d) return "—"; try { const x = new Date(d); return x.toLocaleString(); } catch(e){return String(d);} }
+function parseTimeLabel(label) {
+  const s = String(label || "").trim();
+  const m12 = s.match(/^(\d{1,2}):(\d{2})\s*(AM|PM)$/i);
+  if (m12) {
+    let h = parseInt(m12[1], 10);
+    const mm = parseInt(m12[2], 10);
+    const ap = m12[3].toUpperCase();
+    if (ap === "PM" && h !== 12) h += 12;
+    if (ap === "AM" && h === 12) h = 0;
+    return h * 60 + mm;
+  }
+  const m24 = s.match(/^(\d{1,2}):(\d{2})$/);
+  if (m24) return parseInt(m24[1], 10) * 60 + parseInt(m24[2], 10);
+  return null;
+}
+function labelToTimeInput(label) {
+  const mins = parseTimeLabel(label);
+  if (mins == null) return "";
+  const h = Math.floor(mins / 60);
+  const mm = String(mins % 60).padStart(2, "0");
+  return `${String(h).padStart(2, "0")}:${mm}`;
+}
+function addMinutesToTimeInput(val, minutes) {
+  const mins = parseTimeLabel(val);
+  if (mins == null) return "";
+  const total = mins + minutes;
+  const h = Math.floor(total / 60) % 24;
+  const mm = String(total % 60).padStart(2, "0");
+  return `${String(h).padStart(2, "0")}:${mm}`;
+}
 
 /* ====================== root ====================== */
 function App() {
@@ -83,6 +113,7 @@ function App() {
   const [stats, setStats] = useState(null);
   const [meta, setMeta]   = useState(null);
   const [refreshing, setRefreshing] = useState(false);
+  const [pauseRefresh, setPauseRefresh] = useState(false);
   const [err, setErr] = useState("");
 
   const reload = useCallback(async () => {
@@ -94,8 +125,13 @@ function App() {
     setRefreshing(false);
   }, []);
   useEffect(() => { reload(); }, [reload]);
-  /* v10 — auto-refresh stats every 10 s on Overview and Day Detail */
-  useEffect(() => { if (tab !== "overview" && tab !== "day") return; const id = setInterval(reload, 10000); return () => clearInterval(id); }, [reload, tab]);
+  /* v10 — auto-refresh stats every 10 s on Overview and Day Detail (paused while reassigning) */
+  useEffect(() => {
+    if (pauseRefresh) return;
+    if (tab !== "overview" && tab !== "day") return;
+    const id = setInterval(reload, 10000);
+    return () => clearInterval(id);
+  }, [reload, tab, pauseRefresh]);
 
   return (
     <div className="min-h-screen flex flex-col">
@@ -133,7 +169,7 @@ function App() {
       <main className="flex-1 max-w-7xl mx-auto w-full px-4 sm:px-6 py-6">
         {err && <div className="text-sm text-red-700 bg-red-50 border border-red-200 rounded p-2 mb-3">{err}</div>}
         {tab === "overview" && <Overview stats={stats} />}
-        {tab === "day"      && <DayDetail stats={stats} meta={meta} reload={reload} isSupervisor={isSupervisor} />}
+        {tab === "day"      && <DayDetail stats={stats} meta={meta} reload={reload} isSupervisor={isSupervisor} pauseRefresh={pauseRefresh} setPauseRefresh={setPauseRefresh} />}
         {tab === "export"   && <ExportTab meta={meta} />}
       </main>
 
@@ -214,7 +250,7 @@ function Tile({ label, v, tone, big }) {
 }
 
 /* ====================== Day Detail ====================== */
-function DayDetail({ stats, meta, reload, isSupervisor }) {
+function DayDetail({ stats, meta, reload, isSupervisor, pauseRefresh, setPauseRefresh }) {
   const dates = stats?.byDate?.map(d => d.date) || meta?.dates || [];
   const rooms = meta?.rooms || [];
   const [date, setDate] = useState(dates[0] || "");
@@ -242,8 +278,11 @@ function DayDetail({ stats, meta, reload, isSupervisor }) {
     setLoading(false);
   }, [date, filters]);
   useEffect(() => { loadList(); }, [loadList]);
-  /* Live: refresh every 10s. */
-  useEffect(() => { const id = setInterval(loadList, 10000); return () => clearInterval(id); }, [loadList]);
+  useEffect(() => {
+    if (pauseRefresh) return;
+    const id = setInterval(loadList, 10000);
+    return () => clearInterval(id);
+  }, [loadList, pauseRefresh]);
 
   const setStatus = async (id, newStatus, remarks) => {
     try { await patch(`/api/admin/verify/assignment/${id}`, { status: newStatus, remarks }); await loadList(); reload(); }
@@ -315,7 +354,7 @@ function DayDetail({ stats, meta, reload, isSupervisor }) {
                   <td className="text-slate-600">{r.slotNo != null ? `#${r.slotNo}` : "—"}</td>
                   <td className="text-slate-600">{r.startTime || "—"}{r.endTime ? ` – ${r.endTime}` : ""}</td>
                   <td><StatusPill s={r.status} /></td>
-                  <td className="relative"><ActionMenu row={r} isSupervisor={isSupervisor} setStatus={setStatus} reload={reload} loadList={loadList} meta={meta} /></td>
+                  <td className="relative"><ActionMenu row={r} isSupervisor={isSupervisor} setStatus={setStatus} reload={reload} loadList={loadList} setPauseRefresh={setPauseRefresh} /></td>
                 </tr>
               ))}
               {!loading && list.rows.length === 0 && <tr><td colSpan="8" className="px-4 py-6 text-center text-slate-400">No rows match.</td></tr>}
@@ -327,71 +366,81 @@ function DayDetail({ stats, meta, reload, isSupervisor }) {
   );
 }
 
-function ActionMenu({ row, isSupervisor, setStatus, reload, loadList, meta }) {
+function ActionMenu({ row, isSupervisor, setStatus, reload, loadList, setPauseRefresh }) {
   const [showReassign, setShowReassign] = useState(false);
   if (!row.student) return <span className="text-slate-300 text-xs">—</span>;
-  if (!isSupervisor) return <span className="text-slate-300 text-xs">—</span>;
+  const openReassign = () => { setPauseRefresh(true); setShowReassign(true); };
+  const closeReassign = () => { setShowReassign(false); setPauseRefresh(false); };
   return (
     <div className="flex items-center gap-1 flex-wrap">
       {row.status !== "verified" && <button onClick={()=>setStatus(row.id, "verified")} className="text-[11px] bg-green-600 text-white px-2 py-0.5 rounded">✓ Verify</button>}
       {row.status !== "pending" && row.status !== "open" && <button onClick={()=>setStatus(row.id, "pending")} className="text-[11px] bg-yellow-500 text-white px-2 py-0.5 rounded">⏳ Pending</button>}
       {row.status !== "absent" && row.status !== "open" && <button onClick={()=>setStatus(row.id, "absent")} className="text-[11px] bg-rose-600 text-white px-2 py-0.5 rounded">⌀ Absent</button>}
-      <button onClick={()=>setShowReassign(!showReassign)} className="text-[11px] border border-purple-300 text-purple-700 px-2 py-0.5 rounded">↻ Reassign</button>
+      <button onClick={openReassign} className="text-[11px] border border-purple-300 text-purple-700 px-2 py-0.5 rounded">↻ Reassign</button>
       {showReassign && (
-        <ReassignForm row={row} meta={meta} close={()=>setShowReassign(false)} onDone={()=>{ loadList(); reload(); }} />
+        <ReassignForm row={row} close={closeReassign} onDone={()=>{ loadList(); reload(); }} />
       )}
     </div>
   );
 }
 
-function ReassignForm({ row, meta, close, onDone }) {
+function ReassignForm({ row, close, onDone }) {
   const [busy, setBusy] = useState(false);
   const [err, setErr]   = useState("");
-  const [date, setDate] = useState(row.date);
-  const [room, setRoom] = useState(row.room);
-  const [slotNo, setSlotNo] = useState("");
+  const [date, setDate] = useState(row.date ? String(row.date).slice(0, 10) : "");
+  const [room, setRoom] = useState(row.room || "");
+  const [startTime, setStartTime] = useState(labelToTimeInput(row.startTime) || "13:00");
+  const [endTime, setEndTime] = useState(labelToTimeInput(row.endTime) || addMinutesToTimeInput(labelToTimeInput(row.startTime) || "13:00", 10));
   const [auto, setAuto] = useState(false);
   const [remarks, setRemarks] = useState("");
-  const dates = (meta?.dates || []);
-  const rooms = (meta?.rooms || []);
-  const slots = Array.from({length: 32}, (_, i) => i + 1);
   const submit = async () => {
     setBusy(true); setErr("");
     try {
-      const body = auto ? { remarks }
-                        : { date, room, slotNo: parseInt(slotNo, 10) || undefined, remarks };
+      const body = auto
+        ? { remarks: remarks || null }
+        : {
+            date: date || undefined,
+            room: room || undefined,
+            startTime: startTime || undefined,
+            endTime: endTime || undefined,
+            remarks: remarks || null,
+          };
       await post(`/api/admin/verify/assignment/${row.id}/reassign`, body);
       close(); onDone();
     } catch (e) { setErr(e.message); }
     setBusy(false);
   };
   return (
-    <div className="absolute mt-8 bg-white border border-purple-200 rounded p-3 shadow z-20 w-80">
-      <div className="text-xs font-semibold text-slate-700 mb-2">Reassign {row.student?.appNo}</div>
-      <label className="flex items-center gap-1 text-[11px] text-slate-600 mb-2">
-        <input type="checkbox" checked={auto} onChange={e=>setAuto(e.target.checked)} /> Auto-pick next open slot
-      </label>
-      {!auto && (<>
-        <label className="text-[11px] text-slate-600">Date</label>
-        <select value={date} onChange={e=>setDate(e.target.value)} className="ev-input mb-2">
-          {dates.map(d => <option key={d} value={d}>{fmtDate(d)}</option>)}
-        </select>
-        <label className="text-[11px] text-slate-600">Room</label>
-        <select value={room} onChange={e=>setRoom(e.target.value)} className="ev-input mb-2">
-          {rooms.map(r => <option key={r} value={r}>{r}</option>)}
-        </select>
-        <label className="text-[11px] text-slate-600">Slot # (1–32) — blank = first open</label>
-        <select value={slotNo} onChange={e=>setSlotNo(e.target.value)} className="ev-input mb-2">
-          <option value="">First open in this room</option>
-          {slots.map(n => <option key={n} value={n}>Slot #{n}</option>)}
-        </select>
-      </>)}
-      <label className="text-[11px] text-slate-600">Remarks (optional)</label>
-      <input value={remarks} onChange={e=>setRemarks(e.target.value)} placeholder="Reason / remarks" className="ev-input mb-2" />
-      {err && <div className="text-[11px] text-red-700 mb-1">{err}</div>}
-      <div className="flex gap-2 justify-end">
-        <button onClick={close} className="text-xs px-2 py-1 border border-slate-300 rounded">Cancel</button>
-        <button onClick={submit} disabled={busy} className="text-xs px-2 py-1 bg-purple-600 text-white rounded">{busy?"…":"Reassign"}</button>
+    <div className="fixed inset-0 z-50 bg-black/40 grid place-items-center p-4" onClick={close}>
+      <div className="bg-white border border-purple-200 rounded-xl p-4 shadow-xl w-full max-w-md" onClick={e=>e.stopPropagation()}>
+        <div className="text-sm font-semibold text-slate-800 mb-1">Reassign {row.student?.appNo}</div>
+        <div className="text-[11px] text-slate-500 mb-3">Choose any date, room, and time. A new slot is created automatically if needed.</div>
+        <label className="flex items-center gap-2 text-xs text-slate-600 mb-3">
+          <input type="checkbox" checked={auto} onChange={e=>setAuto(e.target.checked)} /> Auto-pick next open slot
+        </label>
+        {!auto && (<>
+          <label className="text-[11px] text-slate-600">Date</label>
+          <input type="date" value={date} onChange={e=>setDate(e.target.value)} className="ev-input mb-2" />
+          <label className="text-[11px] text-slate-600">Room</label>
+          <input value={room} onChange={e=>setRoom(e.target.value)} placeholder="e.g. AB4-101 or Hall A" className="ev-input mb-2" />
+          <div className="grid grid-cols-2 gap-2 mb-2">
+            <div>
+              <label className="text-[11px] text-slate-600">Start time</label>
+              <input type="time" value={startTime} onChange={e=>{ setStartTime(e.target.value); if (!endTime) setEndTime(addMinutesToTimeInput(e.target.value, 10)); }} className="ev-input" />
+            </div>
+            <div>
+              <label className="text-[11px] text-slate-600">End time</label>
+              <input type="time" value={endTime} onChange={e=>setEndTime(e.target.value)} className="ev-input" />
+            </div>
+          </div>
+        </>)}
+        <label className="text-[11px] text-slate-600">Remarks (optional)</label>
+        <input value={remarks} onChange={e=>setRemarks(e.target.value)} placeholder="Reason / remarks" className="ev-input mb-2" />
+        {err && <div className="text-[11px] text-red-700 mb-2 bg-red-50 border border-red-200 rounded p-2">{err}</div>}
+        <div className="flex gap-2 justify-end">
+          <button onClick={close} className="text-xs px-3 py-1.5 border border-slate-300 rounded">Cancel</button>
+          <button onClick={submit} disabled={busy || (!auto && (!date || !room || !startTime))} className="text-xs px-3 py-1.5 bg-purple-600 text-white rounded disabled:opacity-50">{busy?"Saving…":"Confirm Reassign"}</button>
+        </div>
       </div>
     </div>
   );

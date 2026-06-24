@@ -31,6 +31,8 @@ const {
   DEFAULT_SLOT_MINUTES,
   DEFAULT_SLOTS_PER_ROOM,
   generateEmptySchedule,
+  findOrCreateOpenSlot,
+  normalizeTimeLabel,
 } = require("../lib/verifySchedule");
 
 const STATUSES = ["open", "booked", "pending", "verified", "absent", "reassigned"];
@@ -420,7 +422,7 @@ router.patch("/assignment/:id", async (req, res, next) => {
    REASSIGN — move student from this slot to an open slot.
    Body: { targetId } OR { date, room, slotNo }
    ============================================================================ */
-router.post("/assignment/:id/reassign", requireSupervisor, async (req, res, next) => {
+router.post("/assignment/:id/reassign", async (req, res, next) => {
   const client = await pool.connect();
   try {
     const id = parseInt(req.params.id, 10);
@@ -436,19 +438,29 @@ router.post("/assignment/:id/reassign", requireSupervisor, async (req, res, next
     if (b.targetId) {
       const tr = await client.query("SELECT * FROM verify_schedule WHERE id=$1 FOR UPDATE", [parseInt(b.targetId, 10)]);
       target = tr.rows[0];
+    } else if (isDate(b.date) && b.room && b.startTime) {
+      target = await findOrCreateOpenSlot(client, {
+        date: b.date,
+        room: b.room,
+        startTime: b.startTime,
+        endTime: b.endTime,
+        slotNo: Number.isFinite(Number(b.slotNo)) ? Number(b.slotNo) : undefined,
+      });
     } else if (isDate(b.date) && b.room && Number.isFinite(Number(b.slotNo))) {
       const tr = await client.query(
         "SELECT * FROM verify_schedule WHERE schedule_date=$1 AND room=$2 AND slot_no=$3 FOR UPDATE",
-        [b.date, String(b.room), Number(b.slotNo)]
+        [b.date, String(b.room).trim(), Number(b.slotNo)]
       );
       target = tr.rows[0];
-    } else {
-      /* Pick the first open slot. */
+    } else if (!isDate(b.date) && !b.room && !b.targetId) {
       const tr = await client.query(
         `SELECT * FROM verify_schedule WHERE status='open' AND student_id IS NULL
           ORDER BY schedule_date, room, slot_no LIMIT 1 FOR UPDATE`
       );
       target = tr.rows[0];
+    } else {
+      await client.query("ROLLBACK");
+      return res.status(400).json({ error: "Provide date, room, and start time — or use auto-pick with no date/room." });
     }
 
     if (!target) { await client.query("ROLLBACK"); return res.status(404).json({ error: "No suitable target slot found." }); }
@@ -472,14 +484,13 @@ router.post("/assignment/:id/reassign", requireSupervisor, async (req, res, next
         WHERE id=$1`,
       [row.id, target.id]
     );
-    /* v26 — re-point the student record to the NEW slot so the student
-       dashboard immediately reflects the new room/time. */
     await client.query(
       `UPDATE students SET verify_schedule_id=$1,
+                           assigned_verification_date=$2,
                            physical_reporting_completed=false,
                            physical_reporting_at=NULL
-        WHERE id=$2`,
-      [target.id, row.student_id]
+        WHERE id=$3`,
+      [target.id, target.schedule_date, row.student_id]
     );
     await client.query("COMMIT");
 
