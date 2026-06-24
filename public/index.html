@@ -4,13 +4,47 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>EduVerify — Guided Digital Pre-Verification Portal</title>
+<link rel="preconnect" href="https://api.fontshare.com">
+<link href="https://api.fontshare.com/v2/css?f[]=satoshi@400,500,700,900&f[]=cabinet-grotesk@500,700,800,900&display=swap" rel="stylesheet">
 <script src="https://unpkg.com/react@18.2.0/umd/react.production.min.js"></script>
 <script src="https://unpkg.com/react-dom@18.2.0/umd/react-dom.production.min.js"></script>
 <script src="https://unpkg.com/@babel/standalone@7.22.20/babel.min.js"></script>
 <script src="https://unpkg.com/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
 <script src="https://cdn.tailwindcss.com/3.4.3"></script>
+<script>
+  tailwind.config = {
+    darkMode: 'class',
+    theme: {
+      extend: {
+        colors: {
+          crimson: { DEFAULT: '#C0392B', deep: '#A93226', dark: '#7B1E15', mid: '#A52A1E', bright: '#E74C3C' },
+          gold:    { DEFAULT: '#FFD700', light: '#FFE26B', pale: '#FFF1B0' },
+        },
+        fontFamily: {
+          heading: ['Cabinet Grotesk', 'sans-serif'],
+          sans:    ['Satoshi', 'system-ui', 'sans-serif'],
+        },
+      },
+    },
+  };
+</script>
+<script src="https://unpkg.com/lucide@latest"></script>
 <style>
-  body { font-family:'Inter',system-ui,-apple-system,sans-serif; background:#f7f8fc; }
+  html { scroll-behavior: smooth; }
+  body { font-family:'Satoshi',system-ui,-apple-system,sans-serif; background:#f7f8fc; }
+  .reveal { opacity: 0; transform: translateY(26px); transition: opacity .7s cubic-bezier(.16,1,.3,1), transform .7s cubic-bezier(.16,1,.3,1); }
+  .reveal-in { opacity: 1; transform: none; }
+  .icon-sun { display: none; } .dark .icon-sun { display: inline-flex; }
+  .icon-moon { display: inline-flex; } .dark .icon-moon { display: none; }
+  summary { list-style: none; cursor: pointer; }
+  summary::-webkit-details-marker { display: none; }
+  details[open] .faq-chev { transform: rotate(180deg); }
+  @keyframes evShift { 0%{background-position:0% 50%} 50%{background-position:100% 50%} 100%{background-position:0% 50%} }
+  @keyframes evFloat { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-12px)} }
+  @keyframes evFloatB { 0%,100%{transform:translateY(0) rotate(-3deg)} 50%{transform:translateY(-9px) rotate(-3deg)} }
+  .nav-link::after { content:''; position:absolute; left:0; bottom:-6px; height:2px; width:0; background:#C0392B; transition:width .25s ease; }
+  .nav-link:hover::after { width:100%; }
+  .dark .nav-link::after { background:#FFD700; }
   .fade-in { animation: fadeIn .35s ease-in; }
   @keyframes fadeIn { from{opacity:0;transform:translateY(6px)} to{opacity:1;transform:translateY(0)} }
   .traffic-light { display:inline-block;width:10px;height:10px;border-radius:9999px;margin-right:6px; }
@@ -345,7 +379,7 @@ function App() {
 function TopBar({ subtitle, right }) {
   return (<header className="bg-white border-b border-slate-200 sticky top-0 z-30"><div className="max-w-7xl mx-auto px-4 sm:px-6 py-3 flex items-center justify-between gap-2 min-w-0"><div className="flex items-center gap-2 sm:gap-3 min-w-0"><div className="w-9 h-9 sm:w-10 sm:h-10 shrink-0 rounded-xl bg-gradient-to-br from-indigo-600 to-blue-500 grid place-content-center text-white font-bold text-sm sm:text-base">EV</div><div className="min-w-0"><div className="font-bold text-slate-800 leading-tight text-sm sm:text-base truncate">EduVerify</div><div className="text-[10px] sm:text-[11px] text-slate-500 -mt-0.5 truncate">{subtitle || "Pre-Verification Portal"}</div></div></div><div className="flex items-center gap-2 sm:gap-3 text-sm shrink-0">{right}</div></div></header>);
 }
-function Footer() { return (<footer className="border-t border-slate-200 bg-white mt-auto"><div className="max-w-7xl mx-auto px-4 sm:px-6 py-4 text-xs text-slate-500 flex flex-col sm:flex-row sm:justify-between gap-2"><div>© 2026 EduVerify · Guided Digital Pre-Verification Portal</div><div>Helpdesk: {SUPPORT.phone} · {SUPPORT.email}</div></div></footer>); }
+function AppFooter() { return (<footer className="border-t border-slate-200 bg-white mt-auto"><div className="max-w-7xl mx-auto px-4 sm:px-6 py-4 text-xs text-slate-500 flex flex-col sm:flex-row sm:justify-between gap-2"><div>© 2026 EduVerify · Guided Digital Pre-Verification Portal</div><div>Helpdesk: {SUPPORT.phone} · {SUPPORT.email}</div></div></footer>); }
 function Spinner({ label }) { return (<div className="grid place-items-center py-20 text-slate-500"><div className="w-8 h-8 border-4 border-slate-200 border-t-indigo-600 rounded-full spin"></div><div className="mt-3 text-sm">{label || "Loading…"}</div></div>); }
 function ErrorNote({ msg }) { if (!msg) return null; return <div className="text-xs text-red-700 bg-red-50 border border-red-200 rounded-md p-2 mt-2">{msg}</div>; }
 function OkNote({ msg }) { if (!msg) return null; return <div className="text-xs text-green-700 bg-green-50 border border-green-200 rounded-md p-2 mt-2">{msg}</div>; }
@@ -497,19 +531,412 @@ function useFocusTrap(active, onEscape) {
 }
 
 
-/* ============================================================ AUTH ============================================================ */
-function AuthScreen({ onAuth }) {
-  const [mode, setMode] = useState("home");
-  return (<div className="min-h-screen flex flex-col"><TopBar /><main id="main" className="flex-1">{mode === "home" && <Landing go={setMode} />}{mode === "student" && <StudentLogin onAuth={onAuth} back={() => setMode("home")} />}{mode === "admin" && <AdminLogin onAuth={onAuth} back={() => setMode("home")} />}</main><Footer /></div>);
+/* ============================================================ AUTH & LANDING ============================================================ */
+const LANDING_STEPS = [
+  { n: "01", t: "Validate",  d: "Confirm your admission offer and chosen program in a few taps.", i: "badge-check" },
+  { n: "02", t: "Checklist", d: "Receive a personalised document list built for your program and category.", i: "list-checks" },
+  { n: "03", t: "Upload",    d: "Add scans of each document through a secure, encrypted upload.", i: "upload-cloud" },
+  { n: "04", t: "Declare",   d: "Sign your digital self-declaration confirming everything is accurate.", i: "pen-line" },
+  { n: "05", t: USE_REPORTING_SLOTS ? "Book slot" : "Auto slot", d: USE_REPORTING_SLOTS ? "Pick your campus reporting appointment online." : "An orientation verification slot is automatically assigned to you.", i: "calendar-clock" },
+  { n: "06", t: "Walk-in",   d: "Bring your originals once — they're verified on campus in minutes.", i: "door-open", active: true },
+];
+const LANDING_BENEFITS = [
+  { n: "01", t: "Fully paperless",  d: "No printouts, no plastic folders. Every document lives securely in one organised place you can revisit anytime.", i: "leaf" },
+  { n: "02", t: "Secure by design", d: "Bank-grade encryption and strict access controls keep academic records private — visible only to authorised staff.", i: "shield-check" },
+  { n: "03", t: "Hours saved",      d: "Skip the orientation-day queues. Pre-verified students walk in, confirm originals, and walk out in minutes.", i: "timer" },
+];
+const LANDING_FAQS = [
+  { q: "Do I still need to visit campus at all?", a: "Yes — once. The entire pre-verification happens online, but you'll make a single short walk-in during orientation so staff can confirm your original documents." },
+  { q: "Is my personal data safe on EduVerify?", a: "Every upload is encrypted and stored with strict, role-based access. Only the university's authorised verification cell can view your records." },
+  { q: "Which documents will I need?", a: "After you log in and validate your admission, EduVerify generates a personalised checklist for your program and category." },
+  { q: "What if I miss my assigned slot?", a: "Contact the admissions helpdesk — they can reassign you to the next available verification time." },
+];
+const LANDING_STATS = [
+  { v: "2,400+", l: "students verified" },
+  { v: "~8 min", l: "avg. to complete" },
+  { v: "100%",   l: "paperless" },
+  { v: "1 trip", l: "to campus" },
+];
+
+function useLandingEffects() {
+  useEffect(() => {
+    let t = null;
+    try { t = localStorage.getItem("theme"); } catch (e) {}
+    if (!t) t = (window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches) ? "dark" : "light";
+    document.documentElement.classList.toggle("dark", t === "dark");
+    const tryIcons = (n) => {
+      if (window.lucide && window.lucide.createIcons) window.lucide.createIcons();
+      else if (n < 50) setTimeout(() => tryIcons(n + 1), 100);
+    };
+    tryIcons(0);
+    const els = document.querySelectorAll(".reveal");
+    let io;
+    if ("IntersectionObserver" in window) {
+      io = new IntersectionObserver((entries) => {
+        entries.forEach((e) => { if (e.isIntersecting) { e.target.classList.add("reveal-in"); io.unobserve(e.target); } });
+      }, { threshold: 0.12, rootMargin: "0px 0px -8% 0px" });
+      els.forEach((el) => io.observe(el));
+    } else {
+      els.forEach((el) => el.classList.add("reveal-in"));
+    }
+    return () => { if (io) io.disconnect(); };
+  }, []);
+}
+
+function refreshLucideIcons() {
+  if (window.lucide && window.lucide.createIcons) window.lucide.createIcons();
+}
+
+function LandingBadge({ children }) {
+  return (
+    <span className="inline-flex items-center gap-1.5 text-[11.5px] font-bold tracking-wide text-[#2a1311] dark:text-[#f7ecea] bg-white dark:bg-[#281412] border border-[#ead9d6] dark:border-[#3d201d] px-3 py-1.5 rounded-full">
+      {children}
+    </span>
+  );
+}
+
+function MaheLogo({ className }) {
+  return <img src="/assets/mahe-logo.png" alt="Manipal Academy of Higher Education, Bengaluru Campus" className={className || "h-[30px] block"} />;
+}
+
+function LandingHeader({ go }) {
+  const toggleTheme = () => {
+    const html = document.documentElement;
+    const dark = html.classList.toggle("dark");
+    try { localStorage.setItem("theme", dark ? "dark" : "light"); } catch (e) {}
+    refreshLucideIcons();
+  };
+  const toggleMenu = () => {
+    const m = document.getElementById("mobile-menu");
+    if (m) m.classList.toggle("hidden");
+  };
+  return (
+    <header className="sticky top-0 z-50 bg-white/80 dark:bg-[#1a0c0a]/80 backdrop-blur-xl border-b border-[#ead9d6] dark:border-[#3d201d]">
+      <div className="max-w-[1200px] mx-auto px-4 sm:px-6 py-3 flex items-center justify-between gap-4">
+        <a href="#home" className="flex items-center gap-3">
+          <span className="w-[34px] h-[34px] rounded-[9px] grid place-items-center shadow-lg shadow-crimson/30" style={{ background: "linear-gradient(135deg,#E74C3C,#7B1E15)" }}>
+            <i data-lucide="shield-check" className="text-white w-[19px] h-[19px]"></i>
+          </span>
+          <span className="font-heading font-extrabold text-[21px] tracking-tight">EduVerify</span>
+        </a>
+        <nav className="hidden md:flex items-center gap-8 text-[15px] font-medium text-[#6e5350] dark:text-[#c9a9a5]">
+          <a className="nav-link relative" href="#home">Home</a>
+          <a className="nav-link relative" href="#how">How It Works</a>
+          <a className="nav-link relative" href="#faq">FAQ</a>
+          <a className="nav-link relative" href="#contact">Contact</a>
+        </nav>
+        <div className="flex items-center gap-2 sm:gap-3">
+          <button type="button" onClick={toggleTheme} aria-label="Toggle dark mode" className="w-10 h-10 rounded-[10px] border border-[#ead9d6] dark:border-[#3d201d] bg-[#fbf5f4] dark:bg-[#241211] grid place-items-center">
+            <i data-lucide="moon" className="icon-moon w-[18px] h-[18px]"></i>
+            <i data-lucide="sun" className="icon-sun w-[18px] h-[18px]"></i>
+          </button>
+          <button type="button" onClick={() => go("student")} className="inline-flex items-center gap-2 bg-crimson hover:-translate-y-0.5 transition-transform text-white font-bold text-[15px] px-[18px] py-[11px] rounded-[10px] shadow-lg shadow-crimson/30">
+            <span className="hidden sm:inline">Student Login</span>
+            <i data-lucide="arrow-right" className="w-[17px] h-[17px]"></i>
+          </button>
+          <button type="button" onClick={toggleMenu} aria-label="Menu" className="md:hidden w-10 h-10 rounded-[10px] border border-[#ead9d6] dark:border-[#3d201d] bg-[#fbf5f4] dark:bg-[#241211] grid place-items-center">
+            <i data-lucide="menu" className="w-5 h-5"></i>
+          </button>
+        </div>
+      </div>
+      <div id="mobile-menu" className="hidden md:hidden border-t border-[#ead9d6] dark:border-[#3d201d] px-4 sm:px-6 pb-4">
+        {["Home|home", "How It Works|how", "FAQ|faq", "Contact|contact"].map((x) => {
+          const [label, id] = x.split("|");
+          return <a key={id} href={"#" + id} onClick={toggleMenu} className="block py-3 font-semibold border-b border-[#ead9d6] dark:border-[#3d201d] last:border-0">{label}</a>;
+        })}
+        <button type="button" onClick={() => { toggleMenu(); go("admin"); }} className="mt-3 w-full text-left py-3 font-semibold text-crimson dark:text-gold">Verification Cell Login</button>
+      </div>
+    </header>
+  );
+}
+
+function InstitutionStrip() {
+  return (
+    <div className="bg-[#fbf5f4] dark:bg-[#241211] border-b border-[#ead9d6] dark:border-[#3d201d]">
+      <div className="max-w-[1200px] mx-auto px-4 sm:px-6 py-2.5 flex items-center justify-between gap-3 flex-wrap">
+        <div className="flex items-center gap-3">
+          <span className="bg-white dark:bg-[#281412] rounded-lg px-2.5 py-1.5 inline-flex items-center shadow-sm">
+            <MaheLogo />
+          </span>
+          <span className="hidden sm:inline text-[12.5px] font-medium text-[#6e5350] dark:text-[#c9a9a5]">The official pre-verification portal of MAHE</span>
+        </div>
+        <div className="flex items-center gap-2 flex-wrap">
+          <LandingBadge><span className="w-1.5 h-1.5 rounded-full bg-crimson dark:bg-gold"></span>Institution of Eminence</LandingBadge>
+          <LandingBadge>NAAC A++</LandingBadge>
+          <LandingBadge>NIRF #3</LandingBadge>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function LandingHero({ go }) {
+  return (
+    <section id="home" className="relative overflow-hidden" style={{ backgroundImage: "linear-gradient(125deg,#7B1E15 0%,#A52A1E 38%,#C0392B 76%,#E74C3C 100%)", backgroundSize: "180% 180%", animation: "evShift 18s ease infinite" }}>
+      <div className="pointer-events-none absolute -top-[120px] -right-[80px] w-[420px] h-[420px] rounded-full" style={{ background: "radial-gradient(circle, rgba(255,215,0,0.30), transparent 65%)" }}></div>
+      <div className="pointer-events-none absolute -bottom-[160px] -left-[120px] w-[460px] h-[460px] rounded-full" style={{ background: "radial-gradient(circle, rgba(120,18,18,0.55), transparent 60%)" }}></div>
+      <div className="relative max-w-[1200px] mx-auto px-4 sm:px-6 py-14 sm:py-16 lg:py-24 grid lg:grid-cols-[1.05fr_0.95fr] gap-10 lg:gap-14 items-center">
+        <div>
+          <div className="inline-flex items-center gap-2 bg-white/12 border border-white/20 text-white text-[13px] font-semibold px-3.5 py-1.5 rounded-full backdrop-blur">
+            <span className="w-[7px] h-[7px] rounded-full bg-gold" style={{ boxShadow: "0 0 0 4px rgba(255,215,0,0.25)" }}></span>
+            Guided Digital Pre-Verification Portal
+          </div>
+          <h1 className="font-heading font-extrabold text-white mt-5 leading-[1.02] tracking-tight text-[clamp(36px,5.6vw,68px)]">
+            Verify before you visit.
+            <span className="block text-transparent bg-clip-text" style={{ backgroundImage: "linear-gradient(90deg,#FFE26B,#FFF1B0)" }}>Walk in. Walk out. Done.</span>
+          </h1>
+          <p className="mt-5 max-w-[520px] text-white/90 leading-relaxed text-[clamp(16px,1.7vw,19px)]">
+            Complete your admission document checks online before orientation. EduVerify guides you step by step — so campus day is just a quick walk-in confirmation, not a queue.
+          </p>
+          <div className="flex flex-wrap gap-3 mt-8">
+            <button type="button" onClick={() => go("student")} className="inline-flex items-center gap-2.5 bg-white text-crimson-dark font-bold text-[16px] px-6 py-[15px] rounded-xl shadow-xl hover:-translate-y-0.5 transition-transform">
+              Student Login <i data-lucide="arrow-right" className="w-[18px] h-[18px]"></i>
+            </button>
+            <button type="button" onClick={() => go("admin")} className="inline-flex items-center gap-2.5 bg-white/10 border border-white/30 text-white font-semibold text-[16px] px-6 py-[15px] rounded-xl backdrop-blur hover:bg-white/15 transition-colors">
+              <i data-lucide="building-2" className="w-[18px] h-[18px]"></i> Verification Cell Login
+            </button>
+          </div>
+          <div className="flex items-center gap-3.5 mt-9">
+            <div className="flex">
+              {["#FFD700,#C0392B", "#E0A35A,#7B1E15", "#F0C24B,#C0392B", "#B0291D,#7B1E15"].map((g, i) => (
+                <span key={i} className={"w-[34px] h-[34px] rounded-full border-2 border-crimson-mid " + (i ? "-ml-[11px]" : "")} style={{ background: "linear-gradient(135deg," + g + ")" }}></span>
+              ))}
+            </div>
+            <div className="text-[14px] text-white/90 leading-snug">
+              <strong className="text-white">2,400+ students</strong> verified at<br />MAHE, Bengaluru Campus this intake
+            </div>
+          </div>
+        </div>
+        <div className="relative hidden sm:block">
+          <div className="relative bg-white/95 rounded-[20px] p-6 shadow-2xl" style={{ animation: "evFloat 7s ease-in-out infinite" }}>
+            <div className="flex items-center justify-between gap-3 pb-4 border-b border-[#e6edf2]">
+              <div className="flex items-center gap-3">
+                <span className="w-10 h-10 rounded-[11px] grid place-items-center" style={{ background: "linear-gradient(135deg,#E74C3C,#7B1E15)" }}><i data-lucide="user-round" className="text-white w-5 h-5"></i></span>
+                <div>
+                  <div className="font-heading font-bold text-[16px] text-[#2a1311]">Aanya Sharma</div>
+                  <div className="text-[12.5px] text-[#7a5c58]">B.Tech · Computer Science</div>
+                </div>
+              </div>
+              <span className="inline-flex items-center gap-1.5 bg-[#fbe9e7] text-crimson-deep text-[12px] font-bold px-2.5 py-1.5 rounded-full">
+                <span className="w-1.5 h-1.5 rounded-full bg-crimson"></span> In progress
+              </span>
+            </div>
+            <div className="flex items-center justify-between mt-4 mb-2">
+              <span className="text-[13px] font-semibold text-[#2a1311]">Verification progress</span>
+              <span className="text-[13px] font-bold text-crimson-deep">3 / 6</span>
+            </div>
+            <div className="h-2 rounded-full bg-[#e6edf2] overflow-hidden">
+              <div className="w-1/2 h-full rounded-full" style={{ background: "linear-gradient(90deg,#7B1E15,#E74C3C)" }}></div>
+            </div>
+            <div className="flex flex-col gap-2.5 mt-[18px]">
+              {[
+                { t: "Admission validated", s: "done" },
+                { t: "Checklist generated", s: "done" },
+                { t: "Uploading documents…", s: "active" },
+                { t: "Sign self-declaration", s: "pending", n: "4" },
+              ].map((r, i) => (
+                <div key={i} className={"flex items-center gap-3 px-3 py-2.5 rounded-[11px] " + (r.s === "active" ? "bg-[#fff7ed] border border-[#fde6c8]" : r.s === "pending" ? "bg-[#f6f8fa]" : "bg-[#fbf1f0]")}>
+                  {r.s === "done" && <span className="w-6 h-6 rounded-full bg-crimson grid place-items-center"><i data-lucide="check" className="text-white w-3.5 h-3.5"></i></span>}
+                  {r.s === "active" && <span className="w-6 h-6 rounded-full grid place-items-center" style={{ background: "#e8930c" }}><i data-lucide="upload" className="text-white w-[13px] h-[13px]"></i></span>}
+                  {r.s === "pending" && <span className="w-6 h-6 rounded-full grid place-items-center text-[11px] font-bold text-white" style={{ background: "#d8c4c0" }}>{r.n}</span>}
+                  <span className={"text-[13.5px] font-semibold " + (r.s === "pending" ? "text-[#9a7e7a]" : r.s === "active" ? "text-[#2a1311] font-bold" : "text-[#2a1311]")}>{r.t}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+          <div className="absolute -top-[22px] -left-[26px] bg-white rounded-[14px] px-[15px] py-3 shadow-xl flex items-center gap-2.5" style={{ animation: "evFloatB 6s ease-in-out infinite" }}>
+            <span className="w-[30px] h-[30px] rounded-[9px] bg-[#fbe9e7] grid place-items-center"><i data-lucide="lock" className="text-crimson-deep w-4 h-4"></i></span>
+            <div className="text-[12px] leading-tight text-[#2a1311]"><strong>Encrypted</strong><br /><span className="text-[#7a5c58]">end-to-end</span></div>
+          </div>
+          <div className="absolute -bottom-5 -right-[18px] bg-white rounded-[14px] px-[15px] py-3 shadow-xl flex items-center gap-2.5" style={{ animation: "evFloat 8s ease-in-out infinite" }}>
+            <span className="w-[30px] h-[30px] rounded-[9px] bg-[#f4e7e5] grid place-items-center"><i data-lucide="timer" className="text-crimson-dark w-4 h-4"></i></span>
+            <div className="text-[12px] leading-tight text-[#2a1311]"><strong>~8 min</strong><br /><span className="text-[#7a5c58]">to complete</span></div>
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function LandingSectionHead({ eyebrow, title, sub, center }) {
+  return (
+    <div className={"reveal max-w-[680px] " + (center ? "mx-auto text-center" : "")}>
+      <div className="text-[13px] font-bold tracking-[0.08em] uppercase text-crimson dark:text-gold">{eyebrow}</div>
+      <h2 className="font-heading font-extrabold mt-3.5 leading-[1.06] tracking-tight text-[clamp(30px,4vw,46px)]">{title}</h2>
+      {sub && <p className="mt-4 text-[17px] leading-relaxed text-[#6e5350] dark:text-[#c9a9a5]">{sub}</p>}
+    </div>
+  );
+}
+
+function LandingWhy() {
+  return (
+    <section className="bg-white dark:bg-[#1a0c0a] py-16 lg:py-28">
+      <div className="max-w-[1200px] mx-auto px-4 sm:px-6">
+        <LandingSectionHead eyebrow="Why EduVerify" title="A calmer way to start campus life" sub="Designed with new students and parents in mind — no jargon, no surprises, no second trips." />
+        <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-[22px] mt-11">
+          {LANDING_BENEFITS.map((b) => (
+            <div key={b.n} className="reveal relative overflow-hidden bg-white dark:bg-[#281412] border border-[#ead9d6] dark:border-[#3d201d] rounded-[18px] p-[30px] hover:-translate-y-1 hover:border-crimson dark:hover:border-gold transition-all hover:shadow-xl">
+              <div className="absolute top-[18px] right-[22px] font-heading font-extrabold text-[64px] leading-none text-[#f4e7e5] dark:text-[#2e1715]">{b.n}</div>
+              <span className="inline-flex w-[46px] h-[46px] rounded-[13px] items-center justify-center" style={{ background: "linear-gradient(135deg,#C0392B,#7B1E15)" }}><i data-lucide={b.i} className="text-white w-[22px] h-[22px]"></i></span>
+              <h3 className="font-heading font-bold text-[21px] mt-5">{b.t}</h3>
+              <p className="mt-2.5 text-[15px] leading-relaxed text-[#6e5350] dark:text-[#c9a9a5]">{b.d}</p>
+            </div>
+          ))}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function LandingHow() {
+  return (
+    <section id="how" className="bg-[#fbf5f4] dark:bg-[#241211] py-16 lg:py-28">
+      <div className="max-w-[1200px] mx-auto px-4 sm:px-6">
+        <LandingSectionHead eyebrow="How It Works" title="Six guided steps to a verified seat" sub="From admission confirmation to the campus walk-in — EduVerify keeps you moving forward, one clear step at a time." />
+        <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-[18px] mt-11">
+          {LANDING_STEPS.map((s) => (
+            <div key={s.n} className={"reveal bg-white dark:bg-[#281412] border rounded-[16px] p-[26px] hover:-translate-y-1 transition-all " + (s.active ? "border-crimson dark:border-gold shadow-xl" : "border-[#ead9d6] dark:border-[#3d201d] hover:shadow-xl hover:border-crimson dark:hover:border-gold")}>
+              <div className="flex items-center justify-between">
+                <span className="font-heading font-extrabold text-[15px] text-crimson dark:text-gold">{s.n}</span>
+                <i data-lucide={s.i} className={"w-[22px] h-[22px] " + (s.active ? "text-crimson dark:text-gold" : "text-[#6e5350] dark:text-[#c9a9a5]")}></i>
+              </div>
+              <h3 className="font-heading font-bold text-[19px] mt-4">{s.t}</h3>
+              <p className="mt-2 text-[14.5px] leading-relaxed text-[#6e5350] dark:text-[#c9a9a5]">{s.d}</p>
+            </div>
+          ))}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function LandingTrust() {
+  return (
+    <section className="bg-white dark:bg-[#1a0c0a] py-16 lg:py-28">
+      <div className="max-w-[1200px] mx-auto px-4 sm:px-6">
+        <div className="reveal relative overflow-hidden rounded-[24px] p-8 sm:p-12 lg:p-[60px]" style={{ background: "linear-gradient(125deg,#7B1E15,#A52A1E 55%,#C0392B)" }}>
+          <div className="absolute -top-[90px] -right-[60px] w-[320px] h-[320px] rounded-full" style={{ background: "radial-gradient(circle, rgba(255,215,0,0.28), transparent 65%)" }}></div>
+          <div className="relative grid lg:grid-cols-2 gap-10 items-center">
+            <div>
+              <i data-lucide="quote" className="w-10 h-10 text-gold"></i>
+              <p className="font-heading font-medium text-white mt-[18px] leading-[1.35] tracking-tight text-[clamp(21px,2.6vw,30px)]">
+                "I finished everything from home the night before. On orientation day I walked in, showed my originals, and was done in under ten minutes. My parents couldn't believe it."
+              </p>
+              <div className="flex items-center gap-3 mt-6">
+                <span className="w-[46px] h-[46px] rounded-full" style={{ background: "linear-gradient(135deg,#FFD700,#7B1E15)" }}></span>
+                <div>
+                  <div className="font-bold text-white text-[15px]">Rohan Mehta</div>
+                  <div className="text-[13px] text-white/70">First-year B.Tech · MAHE, Bengaluru Campus</div>
+                </div>
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              {LANDING_STATS.map((s) => (
+                <div key={s.l} className="bg-white/10 border border-white/15 rounded-[16px] p-[22px]">
+                  <div className="font-heading font-extrabold text-[34px] text-gold">{s.v}</div>
+                  <div className="text-[13.5px] text-white/80 mt-1">{s.l}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function LandingFaq() {
+  return (
+    <section id="faq" className="bg-[#fbf5f4] dark:bg-[#241211] py-16 lg:py-28">
+      <div className="max-w-[820px] mx-auto px-4 sm:px-6">
+        <LandingSectionHead eyebrow="FAQ" title="Questions, answered" center />
+        <div className="reveal mt-9 flex flex-col gap-3.5">
+          {LANDING_FAQS.map((f, i) => (
+            <details key={i} className="group bg-white dark:bg-[#281412] border border-[#ead9d6] dark:border-[#3d201d] rounded-[14px] px-[22px]">
+              <summary className="flex items-center justify-between gap-4 py-5">
+                <span className="font-bold text-[17px] group-open:text-crimson-deep dark:group-open:text-gold">{f.q}</span>
+                <i data-lucide="chevron-down" className="faq-chev w-5 h-5 text-crimson dark:text-gold transition-transform shrink-0"></i>
+              </summary>
+              <p className="pb-5 text-[15px] leading-relaxed text-[#6e5350] dark:text-[#c9a9a5]">{f.a}</p>
+            </details>
+          ))}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function LandingFooter() {
+  const tel = SUPPORT.phone.replace(/[^\d+]/g, "");
+  return (
+    <footer id="contact" className="bg-white dark:bg-[#1a0c0a] border-t border-[#ead9d6] dark:border-[#3d201d] pt-14 lg:pt-20 pb-8">
+      <div className="max-w-[1200px] mx-auto px-4 sm:px-6">
+        <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-10 items-start">
+          <div className="max-w-[340px]">
+            <a href="#home" className="flex items-center gap-3">
+              <span className="w-[34px] h-[34px] rounded-[9px] grid place-items-center" style={{ background: "linear-gradient(135deg,#E74C3C,#7B1E15)" }}><i data-lucide="shield-check" className="text-white w-[19px] h-[19px]"></i></span>
+              <span className="font-heading font-extrabold text-[21px] tracking-tight">EduVerify</span>
+            </a>
+            <p className="mt-4 text-[14.5px] leading-relaxed text-[#6e5350] dark:text-[#c9a9a5]">The official Guided Digital Pre-Verification Portal of Manipal Academy of Higher Education, Bengaluru Campus.</p>
+            <span className="mt-[18px] inline-flex bg-white dark:bg-[#281412] rounded-lg px-3 py-1.5 items-center shadow-sm"><MaheLogo /></span>
+          </div>
+          <div>
+            <div className="text-[13px] font-bold tracking-[0.06em] uppercase text-[#6e5350] dark:text-[#c9a9a5]">Explore</div>
+            <div className="flex flex-col gap-2.5 mt-4 text-[15px] font-medium">
+              <a className="nav-link relative w-fit" href="#home">Home</a>
+              <a className="nav-link relative w-fit" href="#how">How It Works</a>
+              <a className="nav-link relative w-fit" href="#faq">FAQ</a>
+            </div>
+          </div>
+          <div>
+            <div className="text-[13px] font-bold tracking-[0.06em] uppercase text-[#6e5350] dark:text-[#c9a9a5]">Helpdesk</div>
+            <div className="flex flex-col gap-3 mt-4 text-[15px]">
+              <a href={"tel:" + tel} className="flex items-center gap-2.5"><i data-lucide="phone" className="w-[17px] h-[17px] text-crimson dark:text-gold"></i> {SUPPORT.phone}</a>
+              <a href={"mailto:" + SUPPORT.email} className="flex items-center gap-2.5"><i data-lucide="mail" className="w-[17px] h-[17px] text-crimson dark:text-gold"></i> {SUPPORT.email}</a>
+            </div>
+          </div>
+        </div>
+        <div className="mt-12 pt-6 border-t border-[#ead9d6] dark:border-[#3d201d] flex flex-wrap gap-2.5 justify-between items-center text-[13.5px] text-[#6e5350] dark:text-[#c9a9a5]">
+          <span>© 2026 EduVerify · Guided Digital Pre-Verification Portal</span>
+          <span>Helpdesk: {SUPPORT.phone} · {SUPPORT.email}</span>
+        </div>
+      </div>
+    </footer>
+  );
 }
 
 function Landing({ go }) {
-  const steps = USE_REPORTING_SLOTS
-    ? [["01","Validate","Confirm admission & program"],["02","Checklist","Personalised document list"],["03","Upload","Secure, encrypted uploads"],["04","Self-verify","Confirm clarity & authenticity"],["05","Book slot","Pick a reporting time"],["06","Walk-in","Originals matched in minutes"]]
-    : [["01","Validate","Confirm admission & program"],["02","Checklist","Personalised document list"],["03","Upload","Secure, encrypted uploads"],["04","Declare","Sign self-declaration"],["05","Auto slot","Orientation verification assigned"],["06","Walk-in","Originals verified on campus"]];
-  return (<div className="fade-in"><section className="bg-gradient-to-br from-indigo-700 via-blue-600 to-cyan-500 text-white"><div className="max-w-7xl mx-auto px-4 sm:px-6 py-16 grid md:grid-cols-2 gap-10 items-center"><div><span className="inline-block px-3 py-1 bg-white/15 rounded-full text-xs uppercase tracking-wider">Guided · Real-time · Secure</span><h1 className="text-3xl sm:text-4xl md:text-5xl font-bold mt-4 leading-tight">Verify before you visit.<br/>Walk in. Walk out. Done.</h1><p className="mt-4 text-white/90 max-w-lg">{USE_REPORTING_SLOTS ? "Validate your admission, upload your documents securely, complete a guided self-check, and book a reporting slot — all online, before campus reporting day." : "Validate your admission, upload your documents securely, sign your self-declaration, and receive an automatic orientation document-verification slot — all online, before you visit campus."}</p><div className="mt-6 flex flex-wrap gap-3"><button onClick={() => go("student")} className="bg-white text-indigo-700 font-semibold px-5 py-3 rounded-xl shadow hover:shadow-lg">Student Login →</button><button onClick={() => go("admin")} className="bg-white/10 border border-white/30 text-white font-semibold px-5 py-3 rounded-xl hover:bg-white/20">Verification Cell Login</button></div></div><div className="grid grid-cols-2 gap-3">{steps.map(x=>(<div key={x[0]} className="bg-white/10 backdrop-blur rounded-xl p-4 border border-white/20"><div className="text-2xl font-bold text-white/80">{x[0]}</div><div className="font-semibold mt-1">{x[1]}</div><div className="text-xs text-white/80 mt-1">{x[2]}</div></div>))}</div></div></section></div>);
+  useLandingEffects();
+  return (
+    <div className="font-sans bg-white text-[#2a1311] dark:bg-[#1a0c0a] dark:text-[#f7ecea] antialiased min-h-screen">
+      <InstitutionStrip />
+      <LandingHeader go={go} />
+      <main id="main">
+        <LandingHero go={go} />
+        <LandingWhy />
+        <LandingHow />
+        <LandingTrust />
+        <LandingFaq />
+      </main>
+      <LandingFooter />
+    </div>
+  );
 }
 
+function AuthScreen({ onAuth }) {
+  const [mode, setMode] = useState("home");
+  if (mode === "home") return <Landing go={setMode} />;
+  return (
+    <div className="min-h-screen flex flex-col bg-[#f7f8fc]">
+      <TopBar />
+      <main id="main" className="flex-1">
+        {mode === "student" && <StudentLogin onAuth={onAuth} back={() => setMode("home")} />}
+        {mode === "admin" && <AdminLogin onAuth={onAuth} back={() => setMode("home")} />}
+      </main>
+      <AppFooter />
+    </div>
+  );
+}
 function StudentLogin({ onAuth, back }) {
   const [step, setStep] = useState("identify"); const [appNo, setAppNo] = useState(""); const [dob, setDob] = useState(""); const [name, setName] = useState(""); const [pwd, setPwd] = useState(""); const [pwd2, setPwd2] = useState(""); const [err, setErr] = useState(""); const [busy, setBusy] = useState(false);
   const check = async (e) => { e.preventDefault(); setErr(""); setBusy(true); try { const r = await API.post("/api/auth/student/check", { appNo, dob }); setName(r.name); setStep(r.firstLogin ? "setPwd" : "login"); } catch (ex) { setErr(ex.message); } setBusy(false); };
@@ -545,7 +972,7 @@ function StudentApp({ auth, logout }) {
   else if (screen==="slot")      body = USE_REPORTING_SLOTS ? <SReportingSlot data={data} reload={reload} go={go} /> : <SSlot data={data} reload={reload} go={go} />;
   else if (screen==="summary")   body = <SSummary data={data} go={go} />;
   else if (screen==="faq")       body = <SFaq go={go} />;
-  return (<div className="min-h-screen flex flex-col"><TopBar subtitle="Student Portal" right={right} /><main id="main" className="flex-1">{body}</main><Footer />{showTemplates && data?.student?.contactCompleted && <TemplatesModal close={()=>setShowTemplates(false)} />}</div>);
+  return (<div className="min-h-screen flex flex-col"><TopBar subtitle="Student Portal" right={right} /><main id="main" className="flex-1">{body}</main><AppFooter />{showTemplates && data?.student?.contactCompleted && <TemplatesModal close={()=>setShowTemplates(false)} />}</div>);
 }
 
 function SContactDetails({ data, reload, go, locked, firstStep }) {
@@ -1101,7 +1528,7 @@ function AdminApp({ auth, logout }) {
     } catch (ex) { setErr(ex.message); }
     setExportBusy(false);
   };
-  return (<div className="min-h-screen flex flex-col"><TopBar subtitle="Verification Cell" right={right} /><main id="main" className="flex-1"><div className="max-w-7xl mx-auto px-4 sm:px-6 py-8 fade-in"><div className="flex items-center justify-between flex-wrap gap-3"><h2 className="text-2xl font-bold text-slate-800">Verification Cell — Live Dashboard</h2><div className="flex gap-2 flex-wrap">{isSupervisor && <button onClick={()=>setShowAdd(true)} className="text-sm bg-indigo-600 text-white px-3 py-2 rounded-lg hover:bg-indigo-700">+ Add Student</button>}{isSupervisor && <button onClick={()=>setShowBulk(true)} className="text-sm bg-white border border-indigo-300 text-indigo-700 px-3 py-2 rounded-lg hover:bg-indigo-50">📤 Bulk Upload</button>}{isSupervisor && selectedAppNos.length>0 && <button onClick={()=>setShowDeleteConfirm(true)} className="text-sm bg-rose-600 text-white px-3 py-2 rounded-lg hover:bg-rose-700">🗑 Delete ({selectedAppNos.length})</button>}<button disabled={exportBusy} onClick={downloadLoginRoster} className="text-sm bg-white border border-indigo-300 text-indigo-800 px-3 py-2 rounded-lg hover:bg-indigo-50 disabled:opacity-60">{exportBusy?"Preparing…":"⤓ App No + DOB"}</button><button disabled={exportBusy} onClick={downloadExport} className="text-sm bg-white border border-emerald-300 text-emerald-800 px-3 py-2 rounded-lg hover:bg-emerald-50 disabled:opacity-60">{exportBusy?"Preparing…":"⤓ Download Excel"}</button><a href="/verify.html" className="text-sm bg-emerald-600 text-white px-3 py-2 rounded-lg hover:bg-emerald-700">📅 Verification Dashboard</a>{isSupervisor && USE_REPORTING_SLOTS && <button onClick={()=>setShowSlots(true)} className="text-sm bg-white border border-indigo-300 text-indigo-700 px-3 py-2 rounded-lg hover:bg-indigo-50">🕒 Slot Management</button>}<button onClick={()=>setShowBlacklist(true)} className="text-sm bg-white border border-rose-300 text-rose-700 px-3 py-2 rounded-lg hover:bg-rose-50">⚑ Non-recognised Institutions</button>{isSupervisor && <button onClick={()=>setShowStaff(true)} className="text-sm bg-white border border-slate-300 px-3 py-2 rounded-lg hover:bg-slate-50">Manage Staff</button>}</div></div><ErrorNote msg={err} /><div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-3 gap-3 mt-5"><Stat label="Students" value={stats?stats.total:"…"} color="bg-slate-100 text-slate-800" /><Stat label="Docs Ready" value={stats?stats.docsReady:"…"} color="bg-emerald-100 text-emerald-800" /><Stat label="Open Issues" value={stats?stats.openIssues:"…"} color="bg-amber-100 text-amber-800" /><Stat label="Slots Booked" value={stats?stats.booked:"…"} color="bg-yellow-100 text-yellow-800" /><Stat label="Cleared" value={stats?stats.cleared:"…"} color="bg-green-100 text-green-800" /><Stat label="Reported" value={stats?stats.reported:"…"} color="bg-indigo-100 text-indigo-800" /><Stat label="⚑ Flagged" value={stats?stats.flagged:"…"} color="bg-rose-100 text-rose-800" /><Stat label="Contact Missing" value={stats?stats.contactIncomplete:"…"} color="bg-orange-100 text-orange-900" /><Stat label="Contact Unverified" value={stats?stats.contactUnverified:"…"} color="bg-amber-100 text-amber-900" /></div><div className="mt-5 bg-white border border-slate-200 rounded-2xl p-3 flex flex-wrap gap-2 items-center"><span className="text-xs font-semibold text-slate-500 uppercase tracking-wide px-1">Filter</span><select value={filters.department} onChange={e=>setF("department",e.target.value)} className="ev-input w-auto"><option value="">All Departments</option>{meta.departments.map(d=><option key={d} value={d}>{d}</option>)}</select><select value={filters.section} onChange={e=>setF("section",e.target.value)} className="ev-input w-auto"><option value="">All Sections</option>{meta.sections.map(s=><option key={s} value={s}>Section {s}</option>)}</select><select value={filters.batch} onChange={e=>setF("batch",e.target.value)} className="ev-input w-auto"><option value="">All Batches</option>{meta.batches.map(b=><option key={b} value={b}>Batch {b}</option>)}</select><select value={filters.status} onChange={e=>setF("status",e.target.value)} className="ev-input w-auto"><option value="">All Statuses</option>{["In Progress","Docs Ready","Needs Attention","Slot Assigned","Verified","Absent","Reassigned","Flagged"].map(s=><option key={s} value={s}>{s}</option>)}</select><select value={filters.contact} onChange={e=>setF("contact",e.target.value)} className="ev-input w-auto"><option value="">All Contacts</option><option value="incomplete">Contact Missing</option><option value="completed">Contact Submitted</option><option value="unverified">Awaiting Campus Check</option></select><input value={filters.q} onChange={e=>setF("q",e.target.value)} placeholder="Search name / app no" className="ev-input w-auto flex-1 min-w-[160px]" />{(filters.department||filters.section||filters.batch||filters.status||filters.contact||filters.q) && <button onClick={()=>setFilters({department:"",section:"",batch:"",status:"",contact:"",q:""})} className="text-xs text-slate-500 hover:text-slate-800 px-2">Clear</button>}</div><div className="mt-4 bg-white border border-slate-200 rounded-2xl overflow-hidden"><div className="px-5 py-3 border-b border-slate-200 flex items-center justify-between flex-wrap gap-2"><div><div className="font-semibold text-slate-800">Student Pipeline</div><div className="text-[11px] text-slate-500 mt-0.5">Download <b>App No + DOB</b> for student login help, or full Excel with contacts and progress.</div></div><div className="flex items-center gap-2 flex-wrap"><div className="text-xs text-slate-500">{rows.length} of {students?students.length:0} shown</div><button disabled={exportBusy} onClick={downloadLoginRoster} className="text-xs bg-indigo-600 text-white px-3 py-1.5 rounded-md hover:bg-indigo-700 disabled:opacity-60">{exportBusy?"Exporting…":"⤓ App No + DOB"}</button><button disabled={exportBusy} onClick={downloadExport} className="text-xs bg-emerald-600 text-white px-3 py-1.5 rounded-md hover:bg-emerald-700 disabled:opacity-60">{exportBusy?"Exporting…":"⤓ Export Excel"}</button></div></div><div className="hidden md:block overflow-x-auto"><table className="min-w-full text-sm"><thead className="bg-slate-50 text-slate-600 text-xs uppercase tracking-wider"><tr>{isSupervisor && <th className="px-4 py-3 w-10"><input type="checkbox" aria-label="Select all visible students" checked={allVisibleSelected} onChange={e=>toggleSelectAllVisible(e.target.checked)} /></th>}<th className="text-left px-4 py-3">Application</th><th className="text-left px-4 py-3">DOB</th><th className="text-left px-4 py-3">Name</th><th className="text-left px-4 py-3">Program / Dept</th><th className="text-left px-4 py-3">Section</th><th className="text-left px-4 py-3">Uploaded</th><th className="text-left px-4 py-3">Verified</th><th className="text-left px-4 py-3">Contact</th><th className="text-left px-4 py-3">Status</th><th className="text-left px-4 py-3">Verification</th><th className="text-left px-4 py-3">Action</th></tr></thead><tbody>{!students && <tr><td colSpan={isSupervisor ? 12 : 11} className="px-4 py-10 text-center text-slate-500"><div className="font-medium">Loading students…</div><div className="text-xs mt-1">Fetching the latest pipeline data.</div></td></tr>}{students && rows.length===0 && <tr><td colSpan={isSupervisor ? 12 : 11} className="px-4 py-10 text-center text-slate-500"><div className="font-medium">No students match these filters.</div><div className="text-xs mt-1">Try clearing one filter or use the search box.</div></td></tr>}{rows.map(r=>{const label = pipelineStatus(r); return (<tr key={r.appNo} className={`border-t border-slate-100 hover:bg-slate-50 cursor-pointer ${r.flagged>0?'bg-rose-50/40':''}`} onClick={()=>setSelected(r.appNo)}>{isSupervisor && <td className="px-4 py-3" onClick={e=>e.stopPropagation()}><input type="checkbox" aria-label={`Select ${r.appNo}`} checked={selectedAppNos.includes(r.appNo)} onChange={e=>toggleSelectAppNo(r.appNo, e.target.checked)} /></td>}<td className="px-4 py-3 font-mono text-xs">{r.appNo}</td><td className="px-4 py-3 text-xs text-slate-600 whitespace-nowrap">{fmtDate(r.dob)}</td><td className="px-4 py-3 font-medium text-slate-800">{r.flagged>0 && <span className="text-rose-600 mr-1">⚑</span>}{r.name}</td><td className="px-4 py-3 text-slate-600">{r.program}<div className="text-[11px] text-slate-400">{r.department||"—"}</div></td><td className="px-4 py-3 text-slate-600">{r.section||"—"}</td><td className="px-4 py-3 text-xs text-slate-600">{r.uploaded}/{r.total}</td><td className="px-4 py-3"><div className="flex items-center gap-2"><div className="w-16 h-1.5 bg-slate-100 rounded-full overflow-hidden"><div className={`h-full ${r.verified===r.total&&r.total>0?'bg-green-500':r.rejected>0?'bg-red-500':'bg-yellow-400'}`} style={{width:`${(r.verified/Math.max(r.total,1))*100}%`}}></div></div><span className="text-xs text-slate-500">{r.verified}/{r.total}</span></div></td><td className="px-4 py-3">{(() => { const cp = contactPill(r); return <span className={`text-[10px] font-semibold px-2 py-0.5 rounded ${cp.cls}`}>{cp.label}</span>; })()}</td><td className="px-4 py-3"><span className={`text-xs font-semibold px-2 py-1 rounded ${statusPill(label)}`}>{label}</span></td><td className="px-4 py-3 text-xs">{r.assignedVerificationDate ? <div><div className="text-slate-700">{fmtDate(r.assignedVerificationDate)}</div><div className={`inline-block mt-0.5 text-[10px] px-1.5 py-0.5 rounded ${r.verifyStatus==="verified"?"bg-green-100 text-green-700":r.verifyStatus==="booked"?"bg-blue-100 text-blue-700":r.verifyStatus==="absent"?"bg-rose-100 text-rose-700":r.verifyStatus==="reassigned"?"bg-purple-100 text-purple-700":"bg-slate-100 text-slate-500"}`}>{r.verifyStatus || "awaiting upload"}</div></div> : <span className="text-slate-300">—</span>}</td><td className="px-4 py-3"><button onClick={(e)=>{e.stopPropagation();setSelected(r.appNo);}} className="text-xs bg-indigo-600 text-white px-3 py-1.5 rounded-md hover:bg-indigo-700 whitespace-nowrap">Open &amp; Verify</button></td></tr>);})}</tbody></table></div><div className="md:hidden p-3 space-y-3">{isSupervisor && students && rows.length > 0 && (<label className="flex items-center gap-2 text-sm text-slate-700 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2"><input type="checkbox" checked={allVisibleSelected} onChange={e=>toggleSelectAllVisible(e.target.checked)} className="w-4 h-4 accent-indigo-600" /><span>Select all visible ({rows.length})</span></label>)}{!students && <div className="text-center py-10 text-slate-500"><div className="font-medium">Loading students…</div><div className="text-xs mt-1">Fetching the latest pipeline data.</div></div>}{students && rows.length===0 && <div className="text-center py-10 text-slate-500"><div className="font-medium">No students match these filters.</div><div className="text-xs mt-1">Try clearing one filter or use the search box.</div></div>}{students && rows.map(r=>{const label = pipelineStatus(r); return (<div key={r.appNo} className={`w-full text-left bg-white border rounded-xl p-4 hover:shadow transition ${r.flagged>0 ? 'border-rose-300 bg-rose-50/40' : 'border-slate-200'}`}><div className="flex items-start gap-3"><div className="flex items-start gap-2 min-w-0 flex-1"><button type="button" onClick={()=>setSelected(r.appNo)} className="min-w-0 flex-1 text-left"><div className="font-mono text-[10px] text-slate-500">{r.appNo}{r.dob ? ` · DOB ${fmtDate(r.dob)}` : ""}</div><div className="font-semibold text-slate-800 text-base truncate">{r.flagged>0 && <span className="text-rose-600 mr-1">⚑</span>}{r.name}</div></button></div>{isSupervisor && (<input type="checkbox" aria-label={`Select ${r.appNo}`} checked={selectedAppNos.includes(r.appNo)} onChange={e=>toggleSelectAppNo(r.appNo, e.target.checked)} className="w-5 h-5 mt-1 accent-indigo-600 shrink-0" />)}</div><div className="mt-1 flex justify-end"><span className={`text-[10px] font-semibold px-2 py-1 rounded whitespace-nowrap ${statusPill(label)}`}>{label}</span></div><div className="mt-2 text-xs text-slate-600">{r.program}</div><div className="text-[11px] text-slate-500">{r.department || "—"} · Section {r.section || "—"}{r.batch ? ` · Batch ${r.batch}` : ""}</div>{(() => { const cp = contactPill(r); return <div className="mt-2"><span className={`text-[10px] font-semibold px-2 py-0.5 rounded ${cp.cls}`}>{cp.label}</span></div>; })()}<div className="mt-3 grid grid-cols-2 gap-2 text-xs"><div className="bg-slate-50 rounded px-2 py-1.5"><div className="text-[10px] text-slate-500 uppercase tracking-wider">Uploaded</div><div className="font-semibold text-slate-800">{r.uploaded}/{r.total}</div></div><div className="bg-slate-50 rounded px-2 py-1.5"><div className="text-[10px] text-slate-500 uppercase tracking-wider">Verified</div><div className="font-semibold text-slate-800">{r.verified}/{r.total}</div></div></div>{r.assignedVerificationDate && (<div className="mt-2 flex items-center justify-between text-xs"><div><span className="text-slate-500">Verification: </span><b className="text-slate-700">{fmtDate(r.assignedVerificationDate)}</b></div><span className={`text-[10px] px-2 py-0.5 rounded ${r.verifyStatus === "verified" ? "bg-green-100 text-green-700" : r.verifyStatus === "booked" ? "bg-blue-100 text-blue-700" : r.verifyStatus === "absent" ? "bg-rose-100 text-rose-700" : r.verifyStatus === "reassigned" ? "bg-purple-100 text-purple-700" : "bg-slate-100 text-slate-500"}`}>{r.verifyStatus || "awaiting upload"}</span></div>)}<button type="button" onClick={()=>setSelected(r.appNo)} className="mt-3 w-full text-center bg-indigo-600 text-white py-2.5 rounded-lg font-medium text-sm">Open &amp; Verify →</button></div>);})}</div></div></div>{selected && <AdminDetail appNo={selected} role={auth.adminRole} close={()=>setSelected(null)} onChange={loadAll} />}{showAdd && <AddStudentModal profiles={meta.profiles} categories={meta.categories} close={()=>setShowAdd(false)} onAdded={()=>{ setShowAdd(false); loadAll(); }} />}{showBulk && <BulkUploadModal close={()=>setShowBulk(false)} onImported={()=>{ setShowBulk(false); loadAll(); }} />}{showStaff && <StaffModal close={()=>setShowStaff(false)} />}{showBlacklist && <BlacklistModal close={()=>setShowBlacklist(false)} isSupervisor={isSupervisor} />}{showSlots && <SlotMgmtModal close={()=>setShowSlots(false)} isSupervisor={isSupervisor} />}{showDeleteConfirm && <DeleteStudentsModal appNos={selectedAppNos} busy={deleteBusy} close={()=>setShowDeleteConfirm(false)} onConfirm={doDeleteSelected} />}</main><Footer /></div>);
+  return (<div className="min-h-screen flex flex-col"><TopBar subtitle="Verification Cell" right={right} /><main id="main" className="flex-1"><div className="max-w-7xl mx-auto px-4 sm:px-6 py-8 fade-in"><div className="flex items-center justify-between flex-wrap gap-3"><h2 className="text-2xl font-bold text-slate-800">Verification Cell — Live Dashboard</h2><div className="flex gap-2 flex-wrap">{isSupervisor && <button onClick={()=>setShowAdd(true)} className="text-sm bg-indigo-600 text-white px-3 py-2 rounded-lg hover:bg-indigo-700">+ Add Student</button>}{isSupervisor && <button onClick={()=>setShowBulk(true)} className="text-sm bg-white border border-indigo-300 text-indigo-700 px-3 py-2 rounded-lg hover:bg-indigo-50">📤 Bulk Upload</button>}{isSupervisor && selectedAppNos.length>0 && <button onClick={()=>setShowDeleteConfirm(true)} className="text-sm bg-rose-600 text-white px-3 py-2 rounded-lg hover:bg-rose-700">🗑 Delete ({selectedAppNos.length})</button>}<button disabled={exportBusy} onClick={downloadLoginRoster} className="text-sm bg-white border border-indigo-300 text-indigo-800 px-3 py-2 rounded-lg hover:bg-indigo-50 disabled:opacity-60">{exportBusy?"Preparing…":"⤓ App No + DOB"}</button><button disabled={exportBusy} onClick={downloadExport} className="text-sm bg-white border border-emerald-300 text-emerald-800 px-3 py-2 rounded-lg hover:bg-emerald-50 disabled:opacity-60">{exportBusy?"Preparing…":"⤓ Download Excel"}</button><a href="/verify.html" className="text-sm bg-emerald-600 text-white px-3 py-2 rounded-lg hover:bg-emerald-700">📅 Verification Dashboard</a>{isSupervisor && USE_REPORTING_SLOTS && <button onClick={()=>setShowSlots(true)} className="text-sm bg-white border border-indigo-300 text-indigo-700 px-3 py-2 rounded-lg hover:bg-indigo-50">🕒 Slot Management</button>}<button onClick={()=>setShowBlacklist(true)} className="text-sm bg-white border border-rose-300 text-rose-700 px-3 py-2 rounded-lg hover:bg-rose-50">⚑ Non-recognised Institutions</button>{isSupervisor && <button onClick={()=>setShowStaff(true)} className="text-sm bg-white border border-slate-300 px-3 py-2 rounded-lg hover:bg-slate-50">Manage Staff</button>}</div></div><ErrorNote msg={err} /><div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-3 gap-3 mt-5"><Stat label="Students" value={stats?stats.total:"…"} color="bg-slate-100 text-slate-800" /><Stat label="Docs Ready" value={stats?stats.docsReady:"…"} color="bg-emerald-100 text-emerald-800" /><Stat label="Open Issues" value={stats?stats.openIssues:"…"} color="bg-amber-100 text-amber-800" /><Stat label="Slots Booked" value={stats?stats.booked:"…"} color="bg-yellow-100 text-yellow-800" /><Stat label="Cleared" value={stats?stats.cleared:"…"} color="bg-green-100 text-green-800" /><Stat label="Reported" value={stats?stats.reported:"…"} color="bg-indigo-100 text-indigo-800" /><Stat label="⚑ Flagged" value={stats?stats.flagged:"…"} color="bg-rose-100 text-rose-800" /><Stat label="Contact Missing" value={stats?stats.contactIncomplete:"…"} color="bg-orange-100 text-orange-900" /><Stat label="Contact Unverified" value={stats?stats.contactUnverified:"…"} color="bg-amber-100 text-amber-900" /></div><div className="mt-5 bg-white border border-slate-200 rounded-2xl p-3 flex flex-wrap gap-2 items-center"><span className="text-xs font-semibold text-slate-500 uppercase tracking-wide px-1">Filter</span><select value={filters.department} onChange={e=>setF("department",e.target.value)} className="ev-input w-auto"><option value="">All Departments</option>{meta.departments.map(d=><option key={d} value={d}>{d}</option>)}</select><select value={filters.section} onChange={e=>setF("section",e.target.value)} className="ev-input w-auto"><option value="">All Sections</option>{meta.sections.map(s=><option key={s} value={s}>Section {s}</option>)}</select><select value={filters.batch} onChange={e=>setF("batch",e.target.value)} className="ev-input w-auto"><option value="">All Batches</option>{meta.batches.map(b=><option key={b} value={b}>Batch {b}</option>)}</select><select value={filters.status} onChange={e=>setF("status",e.target.value)} className="ev-input w-auto"><option value="">All Statuses</option>{["In Progress","Docs Ready","Needs Attention","Slot Assigned","Verified","Absent","Reassigned","Flagged"].map(s=><option key={s} value={s}>{s}</option>)}</select><select value={filters.contact} onChange={e=>setF("contact",e.target.value)} className="ev-input w-auto"><option value="">All Contacts</option><option value="incomplete">Contact Missing</option><option value="completed">Contact Submitted</option><option value="unverified">Awaiting Campus Check</option></select><input value={filters.q} onChange={e=>setF("q",e.target.value)} placeholder="Search name / app no" className="ev-input w-auto flex-1 min-w-[160px]" />{(filters.department||filters.section||filters.batch||filters.status||filters.contact||filters.q) && <button onClick={()=>setFilters({department:"",section:"",batch:"",status:"",contact:"",q:""})} className="text-xs text-slate-500 hover:text-slate-800 px-2">Clear</button>}</div><div className="mt-4 bg-white border border-slate-200 rounded-2xl overflow-hidden"><div className="px-5 py-3 border-b border-slate-200 flex items-center justify-between flex-wrap gap-2"><div><div className="font-semibold text-slate-800">Student Pipeline</div><div className="text-[11px] text-slate-500 mt-0.5">Download <b>App No + DOB</b> for student login help, or full Excel with contacts and progress.</div></div><div className="flex items-center gap-2 flex-wrap"><div className="text-xs text-slate-500">{rows.length} of {students?students.length:0} shown</div><button disabled={exportBusy} onClick={downloadLoginRoster} className="text-xs bg-indigo-600 text-white px-3 py-1.5 rounded-md hover:bg-indigo-700 disabled:opacity-60">{exportBusy?"Exporting…":"⤓ App No + DOB"}</button><button disabled={exportBusy} onClick={downloadExport} className="text-xs bg-emerald-600 text-white px-3 py-1.5 rounded-md hover:bg-emerald-700 disabled:opacity-60">{exportBusy?"Exporting…":"⤓ Export Excel"}</button></div></div><div className="hidden md:block overflow-x-auto"><table className="min-w-full text-sm"><thead className="bg-slate-50 text-slate-600 text-xs uppercase tracking-wider"><tr>{isSupervisor && <th className="px-4 py-3 w-10"><input type="checkbox" aria-label="Select all visible students" checked={allVisibleSelected} onChange={e=>toggleSelectAllVisible(e.target.checked)} /></th>}<th className="text-left px-4 py-3">Application</th><th className="text-left px-4 py-3">DOB</th><th className="text-left px-4 py-3">Name</th><th className="text-left px-4 py-3">Program / Dept</th><th className="text-left px-4 py-3">Section</th><th className="text-left px-4 py-3">Uploaded</th><th className="text-left px-4 py-3">Verified</th><th className="text-left px-4 py-3">Contact</th><th className="text-left px-4 py-3">Status</th><th className="text-left px-4 py-3">Verification</th><th className="text-left px-4 py-3">Action</th></tr></thead><tbody>{!students && <tr><td colSpan={isSupervisor ? 12 : 11} className="px-4 py-10 text-center text-slate-500"><div className="font-medium">Loading students…</div><div className="text-xs mt-1">Fetching the latest pipeline data.</div></td></tr>}{students && rows.length===0 && <tr><td colSpan={isSupervisor ? 12 : 11} className="px-4 py-10 text-center text-slate-500"><div className="font-medium">No students match these filters.</div><div className="text-xs mt-1">Try clearing one filter or use the search box.</div></td></tr>}{rows.map(r=>{const label = pipelineStatus(r); return (<tr key={r.appNo} className={`border-t border-slate-100 hover:bg-slate-50 cursor-pointer ${r.flagged>0?'bg-rose-50/40':''}`} onClick={()=>setSelected(r.appNo)}>{isSupervisor && <td className="px-4 py-3" onClick={e=>e.stopPropagation()}><input type="checkbox" aria-label={`Select ${r.appNo}`} checked={selectedAppNos.includes(r.appNo)} onChange={e=>toggleSelectAppNo(r.appNo, e.target.checked)} /></td>}<td className="px-4 py-3 font-mono text-xs">{r.appNo}</td><td className="px-4 py-3 text-xs text-slate-600 whitespace-nowrap">{fmtDate(r.dob)}</td><td className="px-4 py-3 font-medium text-slate-800">{r.flagged>0 && <span className="text-rose-600 mr-1">⚑</span>}{r.name}</td><td className="px-4 py-3 text-slate-600">{r.program}<div className="text-[11px] text-slate-400">{r.department||"—"}</div></td><td className="px-4 py-3 text-slate-600">{r.section||"—"}</td><td className="px-4 py-3 text-xs text-slate-600">{r.uploaded}/{r.total}</td><td className="px-4 py-3"><div className="flex items-center gap-2"><div className="w-16 h-1.5 bg-slate-100 rounded-full overflow-hidden"><div className={`h-full ${r.verified===r.total&&r.total>0?'bg-green-500':r.rejected>0?'bg-red-500':'bg-yellow-400'}`} style={{width:`${(r.verified/Math.max(r.total,1))*100}%`}}></div></div><span className="text-xs text-slate-500">{r.verified}/{r.total}</span></div></td><td className="px-4 py-3">{(() => { const cp = contactPill(r); return <span className={`text-[10px] font-semibold px-2 py-0.5 rounded ${cp.cls}`}>{cp.label}</span>; })()}</td><td className="px-4 py-3"><span className={`text-xs font-semibold px-2 py-1 rounded ${statusPill(label)}`}>{label}</span></td><td className="px-4 py-3 text-xs">{r.assignedVerificationDate ? <div><div className="text-slate-700">{fmtDate(r.assignedVerificationDate)}</div><div className={`inline-block mt-0.5 text-[10px] px-1.5 py-0.5 rounded ${r.verifyStatus==="verified"?"bg-green-100 text-green-700":r.verifyStatus==="booked"?"bg-blue-100 text-blue-700":r.verifyStatus==="absent"?"bg-rose-100 text-rose-700":r.verifyStatus==="reassigned"?"bg-purple-100 text-purple-700":"bg-slate-100 text-slate-500"}`}>{r.verifyStatus || "awaiting upload"}</div></div> : <span className="text-slate-300">—</span>}</td><td className="px-4 py-3"><button onClick={(e)=>{e.stopPropagation();setSelected(r.appNo);}} className="text-xs bg-indigo-600 text-white px-3 py-1.5 rounded-md hover:bg-indigo-700 whitespace-nowrap">Open &amp; Verify</button></td></tr>);})}</tbody></table></div><div className="md:hidden p-3 space-y-3">{isSupervisor && students && rows.length > 0 && (<label className="flex items-center gap-2 text-sm text-slate-700 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2"><input type="checkbox" checked={allVisibleSelected} onChange={e=>toggleSelectAllVisible(e.target.checked)} className="w-4 h-4 accent-indigo-600" /><span>Select all visible ({rows.length})</span></label>)}{!students && <div className="text-center py-10 text-slate-500"><div className="font-medium">Loading students…</div><div className="text-xs mt-1">Fetching the latest pipeline data.</div></div>}{students && rows.length===0 && <div className="text-center py-10 text-slate-500"><div className="font-medium">No students match these filters.</div><div className="text-xs mt-1">Try clearing one filter or use the search box.</div></div>}{students && rows.map(r=>{const label = pipelineStatus(r); return (<div key={r.appNo} className={`w-full text-left bg-white border rounded-xl p-4 hover:shadow transition ${r.flagged>0 ? 'border-rose-300 bg-rose-50/40' : 'border-slate-200'}`}><div className="flex items-start gap-3"><div className="flex items-start gap-2 min-w-0 flex-1"><button type="button" onClick={()=>setSelected(r.appNo)} className="min-w-0 flex-1 text-left"><div className="font-mono text-[10px] text-slate-500">{r.appNo}{r.dob ? ` · DOB ${fmtDate(r.dob)}` : ""}</div><div className="font-semibold text-slate-800 text-base truncate">{r.flagged>0 && <span className="text-rose-600 mr-1">⚑</span>}{r.name}</div></button></div>{isSupervisor && (<input type="checkbox" aria-label={`Select ${r.appNo}`} checked={selectedAppNos.includes(r.appNo)} onChange={e=>toggleSelectAppNo(r.appNo, e.target.checked)} className="w-5 h-5 mt-1 accent-indigo-600 shrink-0" />)}</div><div className="mt-1 flex justify-end"><span className={`text-[10px] font-semibold px-2 py-1 rounded whitespace-nowrap ${statusPill(label)}`}>{label}</span></div><div className="mt-2 text-xs text-slate-600">{r.program}</div><div className="text-[11px] text-slate-500">{r.department || "—"} · Section {r.section || "—"}{r.batch ? ` · Batch ${r.batch}` : ""}</div>{(() => { const cp = contactPill(r); return <div className="mt-2"><span className={`text-[10px] font-semibold px-2 py-0.5 rounded ${cp.cls}`}>{cp.label}</span></div>; })()}<div className="mt-3 grid grid-cols-2 gap-2 text-xs"><div className="bg-slate-50 rounded px-2 py-1.5"><div className="text-[10px] text-slate-500 uppercase tracking-wider">Uploaded</div><div className="font-semibold text-slate-800">{r.uploaded}/{r.total}</div></div><div className="bg-slate-50 rounded px-2 py-1.5"><div className="text-[10px] text-slate-500 uppercase tracking-wider">Verified</div><div className="font-semibold text-slate-800">{r.verified}/{r.total}</div></div></div>{r.assignedVerificationDate && (<div className="mt-2 flex items-center justify-between text-xs"><div><span className="text-slate-500">Verification: </span><b className="text-slate-700">{fmtDate(r.assignedVerificationDate)}</b></div><span className={`text-[10px] px-2 py-0.5 rounded ${r.verifyStatus === "verified" ? "bg-green-100 text-green-700" : r.verifyStatus === "booked" ? "bg-blue-100 text-blue-700" : r.verifyStatus === "absent" ? "bg-rose-100 text-rose-700" : r.verifyStatus === "reassigned" ? "bg-purple-100 text-purple-700" : "bg-slate-100 text-slate-500"}`}>{r.verifyStatus || "awaiting upload"}</span></div>)}<button type="button" onClick={()=>setSelected(r.appNo)} className="mt-3 w-full text-center bg-indigo-600 text-white py-2.5 rounded-lg font-medium text-sm">Open &amp; Verify →</button></div>);})}</div></div></div>{selected && <AdminDetail appNo={selected} role={auth.adminRole} close={()=>setSelected(null)} onChange={loadAll} />}{showAdd && <AddStudentModal profiles={meta.profiles} categories={meta.categories} close={()=>setShowAdd(false)} onAdded={()=>{ setShowAdd(false); loadAll(); }} />}{showBulk && <BulkUploadModal close={()=>setShowBulk(false)} onImported={()=>{ setShowBulk(false); loadAll(); }} />}{showStaff && <StaffModal close={()=>setShowStaff(false)} />}{showBlacklist && <BlacklistModal close={()=>setShowBlacklist(false)} isSupervisor={isSupervisor} />}{showSlots && <SlotMgmtModal close={()=>setShowSlots(false)} isSupervisor={isSupervisor} />}{showDeleteConfirm && <DeleteStudentsModal appNos={selectedAppNos} busy={deleteBusy} close={()=>setShowDeleteConfirm(false)} onConfirm={doDeleteSelected} />}</main><AppFooter /></div>);
 }
 function Stat({ label, value, color }) { return (<div className={`rounded-2xl p-4 ${color}`}><div className="text-xs uppercase tracking-wider">{label}</div><div className="text-3xl font-bold mt-1">{value}</div></div>); }
 
