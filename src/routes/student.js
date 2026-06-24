@@ -84,7 +84,9 @@ async function loadState(studentId) {
     student: {
       appNo: s.app_no, name: s.name, program: s.program, category: s.category, section: s.section,
       profile: s.profile, orientationDate: s.orientation_date, admissionStatus: s.admission_status,
-      declared: s.declared, slotConfirmed: s.slot_confirmed,
+      declared: s.declared,
+      declaredAt: s.declared_at || null,
+      slotConfirmed: s.slot_confirmed,
       slotRejected: s.slot_rejected, slotRejectReason: s.slot_reject_reason || null,
       pendingDocs: s.pending_docs || null,
       submissionDeadline: s.submission_deadline || null,
@@ -295,6 +297,10 @@ router.post("/declare", async (req, res, next) => {
   try {
     if (!await requireContactCompleted(req.student.id)) {
       return res.status(403).json({ error: CONTACT_REQUIRED_MSG });
+    }
+    const existing = await pool.query("SELECT declared FROM students WHERE id=$1", [req.student.id]);
+    if (existing.rows[0]?.declared) {
+      return res.status(400).json({ error: "You have already signed the self-declaration. It is locked unless staff reject a document." });
     }
     const sr = await pool.query("SELECT profile, category FROM students WHERE id=$1", [req.student.id]);
     const profile = sr.rows[0]?.profile;

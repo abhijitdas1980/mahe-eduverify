@@ -21,6 +21,7 @@ const {
 } = require("../lib/docs");
 const {
   CHECKLISTS, DOC_META, CATEGORIES, OPTIONAL_DOCS, LEGACY_DOC_CODES, PROFILES, isValidProfile,
+  checklistFor,
 } = require("../config/checklists");
 const { fetchAssetBuffer } = require("../config/cloudinary");
 const { streamDoc } = require("../lib/docStream");
@@ -652,6 +653,14 @@ router.patch("/documents/:id", async (req, res, next) => {
         [note || "Rejected by verification staff.", req.admin.id,
          note || "Rejected by verification staff. Please re-upload a correct copy.", id, physicalSubmission]
       );
+      const sr = await pool.query("SELECT profile, category FROM students WHERE id=$1", [doc.student_id]);
+      const mandatory = checklistFor(sr.rows[0]?.profile, sr.rows[0]?.category);
+      if (mandatory.includes(doc.doc_code)) {
+        await pool.query(
+          "UPDATE students SET declared=false, declared_at=NULL WHERE id=$1",
+          [doc.student_id]
+        );
+      }
     } else if (status === "verified") {
       await pool.query(
         `UPDATE documents SET staff_status='verified', staff_note=$1, verified_by=$2, verified_at=now(),
