@@ -172,8 +172,8 @@ router.post("/documents/:code/upload", uploadLimiter, singleFile("file"), async 
     const dr = await pool.query("SELECT * FROM documents WHERE student_id=$1 AND doc_code=$2", [req.student.id, code]);
     const doc = dr.rows[0];
     if (!doc) return res.status(404).json({ error: "This document is not part of your checklist." });
-    if (doc.file_public_id && doc.staff_status !== "rejected") {
-      return res.status(400).json({ error: "This document is already submitted. Replacement is allowed only if staff reject it." });
+    if (doc.file_public_id && doc.staff_status === "verified") {
+      return res.status(400).json({ error: "This document has been accepted by staff and cannot be replaced." });
     }
     if (doc.file_public_id) await destroyAsset(doc.file_public_id, doc.file_resource_type);
     const result = await uploadBuffer(req.file.buffer, req.student.appNo, code);

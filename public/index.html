@@ -686,7 +686,8 @@ function DocModal({ doc, reload, close, openTemplates }) {
   const isReady = doc.studentStatus === "ready";
   const isVerified = doc.staffStatus === "verified";
   const isRejected = doc.staffStatus === "rejected";
-  const canUpload = !doc.hasFile || isRejected;
+  const isStaffLocked = doc.staffStatus === "verified";
+  const canUpload = !doc.hasFile || !isStaffLocked;
   const isPhotosDoc = code === "PHOTOS";
   const hasTemplate = ["ANTI_RAG_S","ANTI_RAG_P","ANTI_SUB","NRI_AFFIDAVIT"].includes(code);
   const isNriAffidavit = code === "NRI_AFFIDAVIT";
@@ -728,7 +729,8 @@ function DocModal({ doc, reload, close, openTemplates }) {
       {isNriAffidavit && (<div className="mb-4 text-sm bg-indigo-50 border border-indigo-200 rounded-xl p-4 text-indigo-900"><div className="font-semibold">NRI Affidavit — prescribed format</div><div className="mt-1 text-xs text-indigo-800">Download the official format, print on stamp paper, fill and sign, get notarised if required, then scan and upload here.</div><a href={NRI_AFFIDAVIT_PDF} download="NRI-Affidavit-Format.pdf" className="mt-2 inline-block text-xs bg-indigo-600 text-white px-3 py-1.5 rounded-md hover:bg-indigo-700">Download PDF format</a></div>)}
       <div className="border-2 border-dashed border-slate-300 rounded-xl p-6 text-center bg-slate-50">
         <div className="text-3xl">⤴</div><div className="font-semibold mt-2 text-slate-700">Upload scanned copy</div><div className="text-xs text-slate-500">Accepted: {cat.formats}</div>
-        {canUpload ? (<label className={`mt-3 inline-block px-4 py-2 rounded-lg cursor-pointer ${busy?'bg-slate-300 text-slate-500':'bg-indigo-600 text-white hover:bg-indigo-700'}`}>{busy?"Uploading…":(doc.hasFile?"Replace file":"Choose file")}<input type="file" className="hidden" accept={isPhotosDoc ? "image/jpeg,image/png,.jpg,.jpeg,.png" : ".pdf,.jpg,.jpeg,.png,image/jpeg,image/png,application/pdf"} disabled={busy} onChange={doUpload} /></label>) : (<div className="mt-3 text-sm text-slate-600 bg-slate-100 border border-slate-200 rounded-lg px-4 py-2">🔒 Locked — you already uploaded this file. Staff must reject it before you can replace it.</div>)}
+        {canUpload ? (<label className={`mt-3 inline-block px-4 py-2 rounded-lg cursor-pointer ${busy?'bg-slate-300 text-slate-500':'bg-indigo-600 text-white hover:bg-indigo-700'}`}>{busy?"Uploading…":(doc.hasFile?"Replace file":"Choose file")}<input type="file" className="hidden" accept={isPhotosDoc ? "image/jpeg,image/png,.jpg,.jpeg,.png" : ".pdf,.jpg,.jpeg,.png,image/jpeg,image/png,application/pdf"} disabled={busy} onChange={doUpload} /></label>) : (<div className="mt-3 text-sm text-slate-600 bg-slate-100 border border-slate-200 rounded-lg px-4 py-2">🔒 Locked — staff has accepted this document. Contact the verification cell if you need to change it.</div>)}
+        {canUpload && doc.hasFile && isReady && !isStaffLocked && (<div className="mt-2 text-xs text-blue-700 bg-blue-50 border border-blue-200 rounded-lg p-2">You self-verified this document. You may still <b>Replace file</b> until staff accepts it — then confirm again on the Self-Verify tab.</div>)}
         {doc.hasFile && (<div className="mt-3 text-sm text-slate-700 flex items-center justify-center gap-2 flex-wrap">Current file: <b>{doc.fileName}</b><button onClick={()=>setPreview(true)} className="text-xs px-2 py-1 rounded-md border border-indigo-300 text-indigo-700 hover:bg-indigo-50">👁 Preview my upload</button></div>)}
       </div>
       {isPhotosDoc && (<div className="mt-4 text-xs text-blue-700 bg-blue-50 border border-blue-200 rounded-lg p-3"><b>Photograph tips:</b><ul className="list-disc list-inside mt-1 space-y-0.5"><li>Plain <b>white background</b> if possible.</li><li>Passport-size, recent (under 6 months), no selfies, sunglasses or hats.</li><li><b>JPG or PNG only</b> (no PDF, no iPhone HEIC) — ≤ 6 MB.</li><li>If your phone saves HEIC, use Gallery → Share/Save as JPG before uploading.</li></ul></div>)}
