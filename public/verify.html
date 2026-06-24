@@ -4,18 +4,42 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>EduVerify — Verification Schedule (Orientation Week)</title>
+<link rel="preconnect" href="https://api.fontshare.com">
+<link href="https://api.fontshare.com/v2/css?f[]=satoshi@400,500,700,900&f[]=cabinet-grotesk@500,700,800,900&display=swap" rel="stylesheet">
 <script src="https://unpkg.com/react@18.2.0/umd/react.production.min.js"></script>
 <script src="https://unpkg.com/react-dom@18.2.0/umd/react-dom.production.min.js"></script>
 <script src="https://unpkg.com/@babel/standalone@7.22.20/babel.min.js"></script>
 <script src="https://cdn.tailwindcss.com/3.4.3"></script>
+<script>
+  tailwind.config = {
+    darkMode: 'class',
+    theme: {
+      extend: {
+        colors: {
+          crimson: { DEFAULT: '#C0392B', deep: '#A93226', dark: '#7B1E15', mid: '#A52A1E', bright: '#E74C3C' },
+          gold:    { DEFAULT: '#FFD700', light: '#FFE26B', pale: '#FFF1B0' },
+        },
+        fontFamily: {
+          heading: ['Cabinet Grotesk', 'sans-serif'],
+          sans:    ['Satoshi', 'system-ui', 'sans-serif'],
+        },
+      },
+    },
+  };
+</script>
+<script src="https://unpkg.com/lucide@latest"></script>
 <style>
-  body { font-family:'Inter',system-ui,-apple-system,sans-serif; background:#f7f8fc; }
+  body { font-family:'Satoshi',system-ui,-apple-system,sans-serif; background:#fbf5f4; }
+  .dark body { background:#1a0c0a; color:#f7ecea; }
+  .icon-sun { display: none; } .dark .icon-sun { display: inline-flex; }
+  .icon-moon { display: inline-flex; } .dark .icon-moon { display: none; }
   .spin { animation: spin 1s linear infinite; }
   @keyframes spin { to { transform: rotate(360deg); } }
   ::-webkit-scrollbar { width:8px;height:8px; }
   ::-webkit-scrollbar-thumb { background:#cbd5e1;border-radius:8px; }
   .ev-input{width:100%;border:1px solid #cbd5e1;border-radius:.5rem;padding:.5rem .65rem;outline:none;font-size:.875rem}
-  .ev-input:focus{box-shadow:0 0 0 3px #c7d2fe}
+  .ev-input:focus{box-shadow:0 0 0 3px rgba(192,57,43,.28)}
+  .dark .ev-input{background:#1a0c0a;border-color:#3d201d;color:#f7ecea}
   table.tight th, table.tight td { padding:6px 10px; }
   @media (max-width: 640px) {
     table.tight th, table.tight td { padding:8px 10px; }
@@ -28,6 +52,35 @@
 
 <script type="text/babel" data-presets="env,react">
 const { useState, useEffect, useCallback, useMemo } = React;
+
+function useEvTheme() {
+  useEffect(() => {
+    let t = null;
+    try { t = localStorage.getItem("theme"); } catch (e) {}
+    if (!t) t = (window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches) ? "dark" : "light";
+    document.documentElement.classList.toggle("dark", t === "dark");
+    const tryIcons = (n) => {
+      if (window.lucide && window.lucide.createIcons) window.lucide.createIcons();
+      else if (n < 50) setTimeout(() => tryIcons(n + 1), 100);
+    };
+    tryIcons(0);
+  }, []);
+}
+function MaheLogo() {
+  return <img src="/assets/mahe-logo.png" alt="Manipal Academy of Higher Education, Bengaluru Campus" className="h-[30px] w-auto block" />;
+}
+function InstitutionStrip() {
+  return (
+    <div className="bg-[#fbf5f4] dark:bg-[#241211] border-b border-[#ead9d6] dark:border-[#3d201d]">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 py-2.5 flex items-center justify-between gap-3 flex-wrap">
+        <div className="flex items-center gap-3">
+          <span className="bg-white dark:bg-[#281412] rounded-lg px-2.5 py-1.5 inline-flex items-center shadow-sm"><MaheLogo /></span>
+          <span className="hidden sm:inline text-[12.5px] font-medium text-[#6e5350] dark:text-[#c9a9a5]">The official pre-verification portal of MAHE</span>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 /* ====================== shared API ====================== */
 const AUTH_KEY = "ev_auth";
@@ -106,6 +159,7 @@ function addMinutesToTimeInput(val, minutes) {
 
 /* ====================== root ====================== */
 function App() {
+  useEvTheme();
   const [auth, setAuth] = useState(() => loadAuth());
   useEffect(() => {
     setAuth(loadAuth());
@@ -116,10 +170,13 @@ function App() {
 
   if (!auth || auth.role !== "admin") {
     return (
-      <div className="max-w-md mx-auto mt-20 p-6 bg-white border border-slate-200 rounded-2xl text-center">
-        <div className="text-lg font-bold text-slate-800">Verification Cell login required</div>
-        <div className="text-sm text-slate-600 mt-2">Open the main portal and sign in as an admin, then return here.</div>
-        <a href="/" className="inline-block mt-4 px-4 py-2 bg-indigo-600 text-white rounded-lg">← Back to portal</a>
+      <div className="min-h-screen bg-[#fbf5f4] dark:bg-[#1a0c0a] font-sans antialiased">
+        <InstitutionStrip />
+        <div className="max-w-md mx-auto mt-16 px-4 p-6 bg-white dark:bg-[#281412] border border-[#ead9d6] dark:border-[#3d201d] rounded-2xl text-center">
+          <div className="text-lg font-heading font-bold text-[#2a1311] dark:text-[#f7ecea]">Verification Cell login required</div>
+          <div className="text-sm text-[#6e5350] dark:text-[#c9a9a5] mt-2">Open the main portal and sign in as an admin, then return here.</div>
+          <a href="/" className="inline-block mt-4 px-4 py-2 bg-crimson text-white rounded-lg hover:bg-crimson-deep shadow-lg shadow-crimson/20">← Back to portal</a>
+        </div>
       </div>
     );
   }
@@ -149,35 +206,49 @@ function App() {
     return () => clearInterval(id);
   }, [reload, tab, pauseRefresh]);
 
+  const toggleTheme = () => {
+    const html = document.documentElement;
+    const dark = html.classList.toggle("dark");
+    try { localStorage.setItem("theme", dark ? "dark" : "light"); } catch (e) {}
+    if (window.lucide && window.lucide.createIcons) window.lucide.createIcons();
+  };
+
   return (
-    <div className="min-h-screen flex flex-col">
-      <header className="bg-white border-b border-slate-200 sticky top-0 z-30">
+    <div className="min-h-screen flex flex-col bg-[#fbf5f4] dark:bg-[#1a0c0a] text-[#2a1311] dark:text-[#f7ecea] font-sans antialiased">
+      <InstitutionStrip />
+      <header className="sticky top-0 z-30 bg-white/80 dark:bg-[#1a0c0a]/80 backdrop-blur-xl border-b border-[#ead9d6] dark:border-[#3d201d]">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 py-3 flex items-center justify-between gap-3 flex-wrap">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-indigo-600 to-blue-500 grid place-content-center text-white font-bold">EV</div>
+            <span className="w-10 h-10 rounded-[9px] grid place-items-center shadow-lg shadow-crimson/30" style={{ background: "linear-gradient(135deg,#E74C3C,#7B1E15)" }}>
+              <i data-lucide="shield-check" className="text-white w-[19px] h-[19px]"></i>
+            </span>
             <div>
-              <div className="font-bold text-slate-800 leading-tight">EduVerify · Verification Schedule</div>
-              <div className="text-[11px] text-slate-500 -mt-0.5">Orientation week · 4 days · 15 rooms · 32 students/room</div>
+              <div className="font-heading font-bold text-[#2a1311] dark:text-[#f7ecea] leading-tight">EduVerify · Verification Schedule</div>
+              <div className="text-[11px] text-[#6e5350] dark:text-[#c9a9a5] -mt-0.5">Orientation week · 4 days · 15 rooms · 32 students/room</div>
             </div>
           </div>
           <div className="flex items-center gap-3 text-sm">
-            <span className="hidden sm:inline-flex items-center gap-2 bg-indigo-50 text-indigo-700 px-3 py-1.5 rounded-lg">
-              <span className="w-2 h-2 rounded-full bg-indigo-500"></span>
+            <span className="hidden sm:inline-flex items-center gap-2 bg-[#fdf5f4] dark:bg-[#281412] border border-[#ead9d6] dark:border-[#3d201d] text-crimson-deep px-3 py-1.5 rounded-lg">
+              <span className="w-2 h-2 rounded-full bg-crimson"></span>
               {auth.name} · {auth.staffId}
-              <span className="text-[10px] uppercase bg-indigo-200 px-1.5 py-0.5 rounded">{auth.adminRole}</span>
+              <span className="text-[10px] uppercase bg-gold/30 text-crimson-dark dark:text-gold px-1.5 py-0.5 rounded">{auth.adminRole}</span>
             </span>
-            <a href="/" className="text-slate-500 hover:text-slate-800">← Main portal</a>
+            <button type="button" onClick={toggleTheme} aria-label="Toggle dark mode" className="w-9 h-9 rounded-[10px] border border-[#ead9d6] dark:border-[#3d201d] bg-[#fbf5f4] dark:bg-[#241211] grid place-items-center ev-touch">
+              <i data-lucide="moon" className="icon-moon w-[16px] h-[16px]"></i>
+              <i data-lucide="sun" className="icon-sun w-[16px] h-[16px]"></i>
+            </button>
+            <a href="/" className="text-[#6e5350] dark:text-[#c9a9a5] hover:text-[#2a1311] dark:hover:text-[#f7ecea]">← Main portal</a>
           </div>
         </div>
         <div className="max-w-7xl mx-auto px-4 sm:px-6 -mb-px">
           <nav className="flex gap-1 flex-wrap">
             {[["overview","Overview"],["day","Day Detail"],["export","Export"]].map(([k,l]) => (
               <button key={k} onClick={()=>setTab(k)}
-                className={`px-4 py-2 text-sm border-b-2 ${tab===k?'border-indigo-600 text-indigo-700 font-semibold':'border-transparent text-slate-500'}`}>
+                className={`px-4 py-2 text-sm border-b-2 ${tab===k?'border-crimson text-crimson-deep font-semibold':'border-transparent text-[#6e5350] dark:text-[#c9a9a5]'}`}>
                 {l}
               </button>
             ))}
-            <div className="ml-auto py-2 text-xs text-slate-400">{refreshing ? "Refreshing…" : <button onClick={reload} className="hover:underline">↻ Refresh</button>}</div>
+            <div className="ml-auto py-2 text-xs text-[#6e5350] dark:text-[#c9a9a5]">{refreshing ? "Refreshing…" : <button onClick={reload} className="hover:underline">↻ Refresh</button>}</div>
           </nav>
         </div>
       </header>
@@ -189,8 +260,8 @@ function App() {
         {tab === "export"   && <ExportTab meta={meta} />}
       </main>
 
-      <footer className="bg-white border-t border-slate-200">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 py-3 text-xs text-slate-500">© EduVerify · Verification schedule module</div>
+      <footer className="border-t border-[#ead9d6] dark:border-[#3d201d] bg-white/80 dark:bg-[#1a0c0a]/80">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 py-3 text-xs text-[#6e5350] dark:text-[#c9a9a5]">© EduVerify · Verification schedule module</div>
       </footer>
     </div>
   );
@@ -219,7 +290,7 @@ function Overview({ stats }) {
       <section>
         <h2 className="text-lg font-bold text-slate-800">Day-wise breakdown</h2>
         <div className="grid md:grid-cols-2 xl:grid-cols-4 gap-3 mt-3">
-          {stats.byDate.length === 0 && <div className="text-sm text-slate-500">No schedule data yet. Add students with a <b>verification_date</b> via <a href="/" className="text-indigo-600 underline">Bulk Upload</a> on the main portal.</div>}
+          {stats.byDate.length === 0 && <div className="text-sm text-[#6e5350] dark:text-[#c9a9a5]">No schedule data yet. Add students with a <b>verification_date</b> via <a href="/" className="text-crimson underline">Bulk Upload</a> on the main portal.</div>}
           {stats.byDate.map((d) => (
             <div key={d.date} className="border border-slate-200 bg-white rounded-2xl p-4">
               <div className="flex items-center justify-between">
@@ -252,7 +323,7 @@ function Overview({ stats }) {
 
 function Tile({ label, v, tone, big }) {
   const map = {
-    slate:"bg-slate-50 text-slate-800", indigo:"bg-indigo-50 text-indigo-700",
+    slate:"bg-slate-50 text-slate-800", indigo:"bg-[#fdf5f4] dark:bg-[#281412] text-crimson-deep",
     green:"bg-green-50 text-green-700", yellow:"bg-yellow-50 text-yellow-800",
     blue:"bg-blue-50 text-blue-700", rose:"bg-rose-50 text-rose-700",
     purple:"bg-purple-50 text-purple-700",
@@ -522,7 +593,7 @@ function ExportTab({ meta }) {
             {(meta?.statuses || []).filter(s=>s!=="open").map(s => <option key={s} value={s}>{s}</option>)}
           </select>
         </div>
-        <button onClick={download} className="mt-4 text-sm bg-indigo-600 text-white px-4 py-2 rounded-lg">⤓ Download CSV</button>
+        <button onClick={download} className="mt-4 text-sm bg-crimson text-white px-4 py-2 rounded-lg hover:bg-crimson-deep shadow-sm shadow-crimson/20">⤓ Download CSV</button>
       </section>
       <section className="bg-white border border-slate-200 rounded-2xl p-5">
         <h3 className="font-bold text-slate-800">Excel</h3>
@@ -535,8 +606,8 @@ function ExportTab({ meta }) {
 /* ====================== misc ====================== */
 function Spinner({ label }) {
   return (
-    <div className="grid place-items-center py-20 text-slate-500">
-      <div className="w-8 h-8 border-4 border-slate-200 border-t-indigo-600 rounded-full spin"></div>
+    <div className="grid place-items-center py-20 text-[#6e5350] dark:text-[#c9a9a5]">
+      <div className="w-8 h-8 border-4 border-[#ead9d6] dark:border-[#3d201d] border-t-crimson rounded-full spin"></div>
       <div className="mt-3 text-sm">{label || "Loading…"}</div>
     </div>
   );
