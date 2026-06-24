@@ -530,7 +530,7 @@ function StudentApp({ auth, logout }) {
   let body;
   if (loading) body = <Spinner label="Loading your portal…" />;
   else if (!data) body = <div className="max-w-md mx-auto py-16 text-center"><ErrorNote msg={err || "Could not load your data."} /><button onClick={reload} className="mt-3 text-indigo-600 text-sm">Retry</button></div>;
-  else if (!data.student.contactCompleted) body = <SContactDetails data={data} reload={reload} locked />;
+  else if (!data.student.contactCompleted) body = <SContactDetails data={data} reload={reload} firstStep />;
   else if (screen==="contact") body = <SContactDetails data={data} reload={reload} go={()=>go("dashboard")} locked={isContactEditLocked(data.student, data.verifySlot)} />;
   else if (screen==="dashboard") body = <SDashboard data={data} go={go} openTemplates={()=>setShowTemplates(true)} />;
   else if (screen==="checklist") body = <SChecklist data={data} reload={reload} go={go} openTemplates={()=>setShowTemplates(true)} />;
@@ -541,7 +541,7 @@ function StudentApp({ auth, logout }) {
   return (<div className="min-h-screen flex flex-col"><TopBar subtitle="Student Portal" right={right} /><main id="main" className="flex-1">{body}</main><Footer />{showTemplates && data?.student?.contactCompleted && <TemplatesModal close={()=>setShowTemplates(false)} />}</div>);
 }
 
-function SContactDetails({ data, reload, go, locked }) {
+function SContactDetails({ data, reload, go, locked, firstStep }) {
   const { student, verifySlot } = data;
   const [form, setForm] = useState({
     email: student.email || "",
@@ -565,9 +565,9 @@ function SContactDetails({ data, reload, go, locked }) {
     } catch (ex) { setErr(ex.message); }
     setBusy(false);
   };
-  const readOnly = locked || isContactEditLocked(student, verifySlot);
+  const readOnly = !!locked || isContactEditLocked(student, verifySlot);
   return (<div className="max-w-2xl mx-auto px-6 py-8 fade-in">
-    {locked && !readOnly && (<div className="bg-indigo-50 border border-indigo-200 rounded-2xl p-4 text-sm text-indigo-900 mb-5"><div className="font-semibold">Step 1 — Contact details (required)</div><div className="mt-1 text-indigo-800">Before you can upload documents, please confirm your email, mobile number, and parent/guardian contact details.</div></div>)}
+    {firstStep && !readOnly && (<div className="bg-indigo-50 border border-indigo-200 rounded-2xl p-4 text-sm text-indigo-900 mb-5"><div className="font-semibold">Step 1 — Contact details (required)</div><div className="mt-1 text-indigo-800">Before you can upload documents, please confirm your email, mobile number, and parent/guardian contact details.</div></div>)}
     <h2 className="text-2xl font-bold text-slate-800">Contact Details{readOnly ? " — locked" : ""}</h2>
     <p className="text-sm text-slate-500 mt-1">For admission updates, verification reminders, and emergency communication.</p>
     {readOnly && (<div className="mt-3 text-sm bg-green-50 border border-green-200 text-green-800 rounded-lg p-3">🔒 <b>Locked after staff verification.</b> Your contact details cannot be changed online. To request an update, contact the verification cell.</div>)}
@@ -587,7 +587,7 @@ function SContactDetails({ data, reload, go, locked }) {
       {!readOnly && (<label className="flex items-start gap-2 p-3 bg-slate-50 rounded-lg border border-slate-200 cursor-pointer"><input type="checkbox" className="mt-1 w-4 h-4 accent-indigo-600" checked={agree} onChange={e=>setAgree(e.target.checked)} /><span className="text-sm text-slate-800">I confirm that the contact details above are correct and may be used by the institution for admission-related communication.</span></label>)}
       <ErrorNote msg={err} />
       <div className="flex gap-3 flex-wrap">
-        {!readOnly && (<button type="submit" disabled={busy || !agree} className={`px-5 py-2.5 rounded-lg font-semibold ${(busy||!agree)?'bg-slate-200 text-slate-400 cursor-not-allowed':'bg-indigo-600 text-white hover:bg-indigo-700'}`}>{busy?"Saving…":locked?"Save & Continue to Documents →":"Update Contact Details"}</button>)}
+        {!readOnly && (<button type="submit" disabled={busy || !agree} className={`px-5 py-2.5 rounded-lg font-semibold ${(busy||!agree)?'bg-slate-200 text-slate-400 cursor-not-allowed':'bg-indigo-600 text-white hover:bg-indigo-700'}`}>{busy?"Saving…":firstStep?"Save & Continue to Documents →":"Update Contact Details"}</button>)}
         {go && student.contactCompleted && (<button type="button" onClick={()=>go("dashboard")} className="px-4 py-2.5 rounded-lg border border-slate-300 text-slate-700 hover:bg-slate-50">{readOnly ? "← Back to Dashboard" : "← Back to Dashboard"}</button>)}
       </div>
     </form>
