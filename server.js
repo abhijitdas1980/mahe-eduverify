@@ -36,7 +36,7 @@ app.use(
         fontSrc: ["'self'", "https://fonts.gstatic.com", "data:"],
         imgSrc: ["'self'", "data:", "blob:", "https://res.cloudinary.com"],
         connectSrc: ["'self'", "https://res.cloudinary.com"],
-        frameSrc: ["'self'", "https://res.cloudinary.com"],
+        frameSrc: ["'self'", "blob:", "https://res.cloudinary.com"],
       },
     },
     crossOriginEmbedderPolicy: false,

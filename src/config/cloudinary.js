@@ -45,11 +45,27 @@ function signedUrl(doc, attachment = false) {
 
 /** Fetch a stored document's bytes (used to build bulk-download ZIPs). */
 async function fetchAssetBuffer(doc) {
-  const url = signedUrl(doc, false);
-  if (!url) return null;
-  const resp = await fetch(url);
-  if (!resp.ok) throw new Error(`fetch failed (${resp.status}) for ${doc.doc_code}`);
-  return Buffer.from(await resp.arrayBuffer());
+  if (!doc || !doc.file_public_id) return null;
+  const primary = doc.file_resource_type || "image";
+  const types = [primary, "image", "raw"].filter((t, i, a) => t && a.indexOf(t) === i);
+  let lastErr;
+  for (const resourceType of types) {
+    const url = cloudinary.url(doc.file_public_id, {
+      type: "authenticated",
+      resource_type: resourceType,
+      format: doc.file_format || undefined,
+      secure: true,
+      sign_url: true,
+    });
+    try {
+      const resp = await fetch(url);
+      if (resp.ok) return Buffer.from(await resp.arrayBuffer());
+      lastErr = new Error(`fetch failed (${resp.status}) for ${doc.doc_code} as ${resourceType}`);
+    } catch (e) {
+      lastErr = e;
+    }
+  }
+  throw lastErr || new Error(`fetch failed for ${doc.doc_code}`);
 }
 
 /** Permanently delete a stored file (used when a student re-uploads). */

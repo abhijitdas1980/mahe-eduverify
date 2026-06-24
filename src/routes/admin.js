@@ -23,6 +23,7 @@ const {
   CHECKLISTS, DOC_META, CATEGORIES, OPTIONAL_DOCS, LEGACY_DOC_CODES, PROFILES, isValidProfile,
 } = require("../config/checklists");
 const { fetchAssetBuffer } = require("../config/cloudinary");
+const { streamDoc } = require("../lib/docStream");
 const { normalize } = require("../lib/blacklist");
 const { serializeContact } = require("../lib/contact");
 const { buildExportBuffer, buildLoginRosterBuffer, queryStudentExportRows } = require("../lib/studentExportExcel");
@@ -614,6 +615,17 @@ router.patch("/students/:appNo", requireSupervisor, async (req, res, next) => {
 });
 
 /* ---- DOCUMENT VERIFY / REJECT ---- */
+router.get("/documents/:id/preview", async (req, res, next) => {
+  try {
+    const id = parseInt(req.params.id, 10);
+    if (!id) return res.status(400).json({ error: "Invalid document id." });
+    const dr = await pool.query("SELECT * FROM documents WHERE id=$1", [id]);
+    const doc = dr.rows[0];
+    if (!doc) return res.status(404).json({ error: "Document not found." });
+    await streamDoc(res, doc, { attachment: false });
+  } catch (e) { next(e); }
+});
+
 router.patch("/documents/:id", async (req, res, next) => {
   try {
     const id = parseInt(req.params.id, 10);

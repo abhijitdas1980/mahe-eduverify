@@ -13,6 +13,7 @@ const { requireStudent } = require("../middleware/auth");
 const { uploadLimiter } = require("../middleware/security");
 const { singleFile, formatForMime } = require("../middleware/upload");
 const { uploadBuffer, destroyAsset, isConfigured } = require("../config/cloudinary");
+const { streamDoc } = require("../lib/docStream");
 const { audit } = require("../lib/audit");
 const {
   ensureDocuments, filterVisible, serializeDoc, isConfirmed, CONFIRM_KEY,
@@ -137,6 +138,17 @@ router.get("/me", async (req, res, next) => {
   } catch (e) { next(e); }
 });
 
+router.get("/documents/:code/preview", async (req, res, next) => {
+  try {
+    const code = String(req.params.code || "").toUpperCase();
+    if (isLegacyCode(code)) return res.status(404).json({ error: "Document not found." });
+    const dr = await pool.query("SELECT * FROM documents WHERE student_id=$1 AND doc_code=$2", [req.student.id, code]);
+    const doc = dr.rows[0];
+    if (!doc) return res.status(404).json({ error: "Document not found in your checklist." });
+    await streamDoc(res, doc, { attachment: false });
+  } catch (e) { next(e); }
+});
+
 router.post("/contact", async (req, res, next) => {
   try {
     const sr = await pool.query("SELECT contact_verified_at FROM students WHERE id=$1", [req.student.id]);
@@ -172,8 +184,8 @@ router.post("/documents/:code/upload", uploadLimiter, singleFile("file"), async 
     const dr = await pool.query("SELECT * FROM documents WHERE student_id=$1 AND doc_code=$2", [req.student.id, code]);
     const doc = dr.rows[0];
     if (!doc) return res.status(404).json({ error: "This document is not part of your checklist." });
-    if (doc.file_public_id && doc.staff_status === "verified") {
-      return res.status(400).json({ error: "This document has been accepted by staff and cannot be replaced." });
+    if (doc.file_public_id && doc.student_status === "ready" && doc.staff_status !== "rejected") {
+      return res.status(400).json({ error: "This document has been self-verified and cannot be replaced. Contact the verification cell if you need to change it." });
     }
     if (doc.file_public_id) await destroyAsset(doc.file_public_id, doc.file_resource_type);
     const result = await uploadBuffer(req.file.buffer, req.student.appNo, code);
