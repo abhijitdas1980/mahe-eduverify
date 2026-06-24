@@ -151,9 +151,19 @@ router.get("/documents/:code/preview", async (req, res, next) => {
 
 router.post("/contact", async (req, res, next) => {
   try {
-    const sr = await pool.query("SELECT contact_verified_at FROM students WHERE id=$1", [req.student.id]);
-    if (sr.rows[0]?.contact_verified_at) {
-      return res.status(400).json({ error: "Contact details were verified at campus and cannot be changed online. Contact the verification cell." });
+    const sr = await pool.query(
+      `SELECT s.contact_verified_at, s.physical_reporting_completed, vs.status AS verify_status
+         FROM students s
+         LEFT JOIN verify_schedule vs ON vs.id = s.verify_schedule_id
+         WHERE s.id=$1`,
+      [req.student.id]
+    );
+    const row = sr.rows[0];
+    if (row?.contact_verified_at) {
+      return res.status(400).json({ error: "Contact details were verified by staff and cannot be changed online. Contact the verification cell." });
+    }
+    if (row?.verify_status === "verified" || row?.physical_reporting_completed) {
+      return res.status(400).json({ error: "Contact details are locked after campus verification. Contact the verification cell to request changes." });
     }
     const v = validateContactPayload(req.body || {});
     if (!v.ok) return res.status(400).json({ error: v.errors[0], errors: v.errors });
