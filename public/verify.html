@@ -168,7 +168,9 @@ function App() {
     return () => window.removeEventListener("storage", onStorage);
   }, []);
 
-  if (!auth || auth.role !== "admin") {
+  const isAdmin = !!(auth && auth.role === "admin");
+
+  if (!isAdmin) {
     return (
       <div className="min-h-screen bg-[#fbf5f4] dark:bg-[#1a0c0a] font-sans antialiased">
         <InstitutionStrip />
@@ -180,6 +182,10 @@ function App() {
       </div>
     );
   }
+  return <VerifyApp auth={auth} />;
+}
+
+function VerifyApp({ auth }) {
   const [tab, setTab] = useState("overview");
   const isSupervisor = auth.adminRole === "supervisor";
 
@@ -198,7 +204,6 @@ function App() {
     setRefreshing(false);
   }, []);
   useEffect(() => { reload(); }, [reload]);
-  /* v10 — auto-refresh stats every 10 s on Overview and Day Detail (paused while reassigning) */
   useEffect(() => {
     if (pauseRefresh) return;
     if (tab !== "overview" && tab !== "day") return;

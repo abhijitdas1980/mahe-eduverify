@@ -35,8 +35,8 @@ app.use(
       directives: {
         defaultSrc: ["'self'"],
         scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'", "https://unpkg.com", "https://cdn.tailwindcss.com"],
-        styleSrc: ["'self'", "'unsafe-inline'", "https://cdn.tailwindcss.com", "https://fonts.googleapis.com"],
-        fontSrc: ["'self'", "https://fonts.gstatic.com", "data:"],
+        styleSrc: ["'self'", "'unsafe-inline'", "https://cdn.tailwindcss.com", "https://fonts.googleapis.com", "https://api.fontshare.com"],
+        fontSrc: ["'self'", "https://fonts.gstatic.com", "https://api.fontshare.com", "data:"],
         imgSrc: ["'self'", "data:", "blob:", "https://res.cloudinary.com"],
         connectSrc: ["'self'", "https://res.cloudinary.com"],
         frameSrc: ["'self'", "blob:", "https://res.cloudinary.com"],
@@ -73,7 +73,9 @@ app.get(/^(?!\/api).*/, (_req, res) => {
 app.use(errorHandler);
 
 async function start() {
-  if (process.env.AUTO_SETUP !== "false") {
+  if (!process.env.DATABASE_URL) {
+    console.warn("[boot] DATABASE_URL is not set — skipping auto-setup. The UI will load but API/login will not work until PostgreSQL is configured.");
+  } else if (process.env.AUTO_SETUP !== "false") {
     console.log("[boot] Running database setup (idempotent) ...");
     try {
       await runSetup({ closePool: false });
