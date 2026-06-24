@@ -21,7 +21,15 @@ async function streamDoc(res, doc, { attachment = false } = {}) {
   if (!doc?.file_public_id) {
     return res.status(404).json({ error: "No file uploaded for this document." });
   }
-  const buf = await fetchAssetBuffer(doc);
+  let buf;
+  try {
+    buf = await fetchAssetBuffer(doc);
+  } catch (e) {
+    console.error("streamDoc fetch failed:", doc.doc_code, e.message);
+    return res.status(503).json({
+      error: "Could not load this file from storage. Please try again or contact the verification cell.",
+    });
+  }
   if (!buf) {
     return res.status(404).json({ error: "File not found in storage." });
   }

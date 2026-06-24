@@ -13,6 +13,25 @@ cloudinary.config({
 
 const FOLDER = "eduverify/documents";
 
+function inferFormat(doc) {
+  const fmt = String(doc?.file_format || "").toLowerCase().replace(/^\./, "");
+  if (fmt) return fmt;
+  const name = String(doc?.file_name || "").toLowerCase();
+  const m = name.match(/\.([a-z0-9]+)$/i);
+  return m ? m[1].toLowerCase() : "";
+}
+
+function resourceTypesFor(doc) {
+  return [...new Set([doc?.file_resource_type, "image", "raw"].filter(Boolean))];
+}
+
+async function tryFetchUrl(url) {
+  const resp = await fetch(url);
+  if (!resp.ok) return null;
+  const buf = Buffer.from(await resp.arrayBuffer());
+  return buf.length > 0 ? buf : null;
+}
+
 /** Upload a file buffer to Cloudinary as an authenticated (signed) asset. */
 function uploadBuffer(buffer, appNo, docCode) {
   return new Promise((resolve, reject) => {
@@ -33,39 +52,76 @@ function uploadBuffer(buffer, appNo, docCode) {
 /** Build a signed delivery URL for an authenticated asset. */
 function signedUrl(doc, attachment = false) {
   if (!doc || !doc.file_public_id) return null;
-  return cloudinary.url(doc.file_public_id, {
+  const resourceType = doc.file_resource_type || "image";
+  const format = inferFormat(doc) || undefined;
+  const expiresAt = Math.floor(Date.now() / 1000) + 3600;
+  return cloudinary.utils.private_download_url(doc.file_public_id, format, {
+    resource_type: resourceType,
     type: "authenticated",
-    resource_type: doc.file_resource_type || "image",
-    format: doc.file_format || undefined,
-    secure: true,
-    sign_url: true,
-    flags: attachment ? "attachment" : undefined,
+    expires_at: expiresAt,
+    attachment: attachment || undefined,
   });
 }
 
 /** Fetch a stored document's bytes (used to build bulk-download ZIPs). */
 async function fetchAssetBuffer(doc) {
   if (!doc || !doc.file_public_id) return null;
-  const primary = doc.file_resource_type || "image";
-  const types = [primary, "image", "raw"].filter((t, i, a) => t && a.indexOf(t) === i);
-  let lastErr;
-  for (const resourceType of types) {
-    const url = cloudinary.url(doc.file_public_id, {
-      type: "authenticated",
-      resource_type: resourceType,
-      format: doc.file_format || undefined,
-      secure: true,
-      sign_url: true,
-    });
+  if (!isConfigured()) throw new Error("Document storage is not configured");
+
+  const format = inferFormat(doc);
+  const errors = [];
+
+  for (const resourceType of resourceTypesFor(doc)) {
     try {
-      const resp = await fetch(url);
-      if (resp.ok) return Buffer.from(await resp.arrayBuffer());
-      lastErr = new Error(`fetch failed (${resp.status}) for ${doc.doc_code} as ${resourceType}`);
+      const url = cloudinary.utils.private_download_url(doc.file_public_id, format, {
+        resource_type: resourceType,
+        type: "authenticated",
+        expires_at: Math.floor(Date.now() / 1000) + 3600,
+      });
+      const buf = await tryFetchUrl(url);
+      if (buf) return buf;
+      errors.push(`private_download ${resourceType}: HTTP not ok`);
     } catch (e) {
-      lastErr = e;
+      errors.push(`private_download ${resourceType}: ${e.message}`);
+    }
+
+    try {
+      const url = cloudinary.url(doc.file_public_id, {
+        type: "authenticated",
+        resource_type: resourceType,
+        format: format || undefined,
+        secure: true,
+        sign_url: true,
+      });
+      const buf = await tryFetchUrl(url);
+      if (buf) return buf;
+      errors.push(`signed_url ${resourceType}: HTTP not ok`);
+    } catch (e) {
+      errors.push(`signed_url ${resourceType}: ${e.message}`);
     }
   }
-  throw lastErr || new Error(`fetch failed for ${doc.doc_code}`);
+
+  for (const resourceType of ["image", "raw", "video"]) {
+    try {
+      const meta = await cloudinary.api.resource(doc.file_public_id, {
+        resource_type: resourceType,
+        type: "authenticated",
+      });
+      const fmt = meta.format || format;
+      const url = cloudinary.utils.private_download_url(doc.file_public_id, fmt, {
+        resource_type: resourceType,
+        type: "authenticated",
+        expires_at: Math.floor(Date.now() / 1000) + 3600,
+      });
+      const buf = await tryFetchUrl(url);
+      if (buf) return buf;
+    } catch (e) {
+      errors.push(`api ${resourceType}: ${e.message}`);
+    }
+  }
+
+  console.error("fetchAssetBuffer failed:", doc.doc_code, doc.file_public_id, errors.join("; "));
+  throw new Error(`fetch failed for ${doc.doc_code}`);
 }
 
 /** Permanently delete a stored file (used when a student re-uploads). */
