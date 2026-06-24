@@ -34,7 +34,8 @@ async function runSetup({ closePool = false, quiet = false } = {}) {
       throw new Error("SEED_ADMIN_PASSWORD must be set in production.");
     }
     const adminHash = await bcrypt.hash(adminPass, 12);
-    const syncPassword = process.env.SEED_ADMIN_SYNC_PASSWORD === "true";
+    /* Production: always apply SEED_ADMIN_PASSWORD so Render env changes take effect on redeploy. */
+    const syncPassword = isProduction() || process.env.SEED_ADMIN_SYNC_PASSWORD === "true";
     if (syncPassword) {
       await client.query(
         `INSERT INTO admins (staff_id, name, password_hash, role)
