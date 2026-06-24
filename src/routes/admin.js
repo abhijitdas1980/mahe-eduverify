@@ -25,7 +25,7 @@ const {
 const { fetchAssetBuffer } = require("../config/cloudinary");
 const { normalize } = require("../lib/blacklist");
 const { serializeContact } = require("../lib/contact");
-const { buildExportBuffer, queryStudentExportRows } = require("../lib/studentExportExcel");
+const { buildExportBuffer, buildLoginRosterBuffer, queryStudentExportRows } = require("../lib/studentExportExcel");
 const {
   PHYSICAL_SUBMISSION_VALUES,
   listFollowupRemarks,
@@ -379,7 +379,7 @@ router.get("/students", async (req, res, next) => {
   try {
     const q = String(req.query.q || "").trim().toLowerCase();
     const r = await pool.query(
-      `SELECT s.app_no, s.name, s.program, s.department, s.section, s.batch,
+      `SELECT s.app_no, s.name, s.dob, s.program, s.department, s.section, s.batch,
               s.profile, s.declared, s.slot_confirmed, s.slot_rejected, s.physical_reporting_completed,
               s.assigned_verification_date, s.assigned_batch, s.upload_completed_at,
               s.contact_completed_at, s.contact_verified_at,
@@ -405,7 +405,7 @@ router.get("/students", async (req, res, next) => {
     let rows = r.rows.map((x) => {
       const total = Number(x.total), verified = Number(x.verified), flagged = Number(x.flagged);
       return {
-        appNo: x.app_no, name: x.name, program: x.program,
+        appNo: x.app_no, name: x.name, dob: x.dob, program: x.program,
         department: x.department, section: x.section, batch: x.batch, profile: x.profile,
         declared: x.declared, slotConfirmed: x.slot_confirmed, slotRejected: x.slot_rejected,
         physicalReportingCompleted: x.physical_reporting_completed,
@@ -444,6 +444,27 @@ router.get("/students/export.xlsx", async (req, res, next) => {
     res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
     res.setHeader("Content-Disposition", `attachment; filename="students-export-${stamp}.xlsx"`);
     await audit(req, "admin", req.admin.staffId, "STUDENTS_EXPORT", `rows=${rows.length}`);
+    res.send(buf);
+  } catch (e) { next(e); }
+});
+
+/** GET /api/admin/students/login-roster.xlsx — application number + DOB (+ name) for all students. */
+router.get("/students/login-roster.xlsx", async (req, res, next) => {
+  try {
+    const filters = {
+      department: String(req.query.department || "").trim(),
+      section: String(req.query.section || "").trim(),
+      batch: String(req.query.batch || "").trim(),
+      status: String(req.query.status || "").trim(),
+      contact: String(req.query.contact || "").trim(),
+      q: String(req.query.q || "").trim(),
+    };
+    const rows = await queryStudentExportRows(pool, filters, EXCLUDE_FROM_COUNTS);
+    const buf = await buildLoginRosterBuffer(rows);
+    const stamp = new Date().toISOString().slice(0, 10);
+    res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+    res.setHeader("Content-Disposition", `attachment; filename="student-login-roster-${stamp}.xlsx"`);
+    await audit(req, "admin", req.admin.staffId, "LOGIN_ROSTER_EXPORT", `rows=${rows.length}`);
     res.send(buf);
   } catch (e) { next(e); }
 });

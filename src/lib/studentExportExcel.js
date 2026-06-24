@@ -195,11 +195,44 @@ async function buildExportBuffer(rows) {
   return Buffer.from(buf);
 }
 
+const LOGIN_ROSTER_COLUMNS = ["application_number", "full_name", "date_of_birth"];
+const LOGIN_ROSTER_LABELS = {
+  application_number: "Application Number",
+  full_name: "Full Name",
+  date_of_birth: "Date of Birth (dd-mm-yyyy)",
+};
+
+async function buildLoginRosterBuffer(rows) {
+  const wb = new ExcelJS.Workbook();
+  wb.creator = "EduVerify";
+  const ws = wb.addWorksheet("Login Roster");
+  ws.views = [{ state: "frozen", ySplit: 1 }];
+
+  const headerRow = ws.addRow(LOGIN_ROSTER_COLUMNS.map((c) => LOGIN_ROSTER_LABELS[c] || c));
+  headerRow.font = { bold: true, color: { argb: "FFFFFFFF" } };
+  headerRow.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF4338CA" } };
+  headerRow.alignment = { vertical: "middle", horizontal: "center", wrapText: true };
+  headerRow.height = 24;
+
+  ws.getColumn(1).width = 22;
+  ws.getColumn(2).width = 32;
+  ws.getColumn(3).width = 22;
+
+  for (const r of rows) {
+    const mapped = mapRow(r);
+    ws.addRow(LOGIN_ROSTER_COLUMNS.map((c) => mapped[c] ?? ""));
+  }
+
+  const buf = await wb.xlsx.writeBuffer();
+  return Buffer.from(buf);
+}
+
 module.exports = {
   EXPORT_COLUMNS,
   pipelineStatus,
   mapRow,
   buildExportBuffer,
+  buildLoginRosterBuffer,
   queryStudentExportRows,
 };
 
