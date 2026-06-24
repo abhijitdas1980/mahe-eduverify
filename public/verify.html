@@ -14,9 +14,13 @@
   @keyframes spin { to { transform: rotate(360deg); } }
   ::-webkit-scrollbar { width:8px;height:8px; }
   ::-webkit-scrollbar-thumb { background:#cbd5e1;border-radius:8px; }
-  .ev-input{width:100%;border:1px solid #cbd5e1;border-radius:.5rem;padding:.45rem .65rem;outline:none;font-size:.85rem}
+  .ev-input{width:100%;border:1px solid #cbd5e1;border-radius:.5rem;padding:.5rem .65rem;outline:none;font-size:.875rem}
   .ev-input:focus{box-shadow:0 0 0 3px #c7d2fe}
   table.tight th, table.tight td { padding:6px 10px; }
+  @media (max-width: 640px) {
+    table.tight th, table.tight td { padding:8px 10px; }
+    .ev-touch { min-height: 2.25rem; }
+  }
 </style>
 </head>
 <body>
@@ -28,11 +32,15 @@ const { useState, useEffect, useCallback, useMemo } = React;
 /* ====================== shared API ====================== */
 const AUTH_KEY = "ev_auth";
 function loadAuth() { try { return JSON.parse(localStorage.getItem(AUTH_KEY) || "null"); } catch (e) { return null; } }
-const auth = loadAuth();
+function getAuthToken() {
+  const a = loadAuth();
+  return a?.token || null;
+}
 
 async function api(method, path, body) {
   const headers = {};
-  if (auth?.token) headers["Authorization"] = "Bearer " + auth.token;
+  const token = getAuthToken();
+  if (token) headers["Authorization"] = "Bearer " + token;
   if (body !== undefined) headers["Content-Type"] = "application/json";
   const res = await fetch(path, { method, headers, body: body !== undefined ? JSON.stringify(body) : undefined });
   let data = {}; try { data = await res.json(); } catch (e) {}
@@ -98,6 +106,14 @@ function addMinutesToTimeInput(val, minutes) {
 
 /* ====================== root ====================== */
 function App() {
+  const [auth, setAuth] = useState(() => loadAuth());
+  useEffect(() => {
+    setAuth(loadAuth());
+    const onStorage = (e) => { if (e.key === AUTH_KEY) setAuth(loadAuth()); };
+    window.addEventListener("storage", onStorage);
+    return () => window.removeEventListener("storage", onStorage);
+  }, []);
+
   if (!auth || auth.role !== "admin") {
     return (
       <div className="max-w-md mx-auto mt-20 p-6 bg-white border border-slate-200 rounded-2xl text-center">
@@ -174,7 +190,7 @@ function App() {
       </main>
 
       <footer className="bg-white border-t border-slate-200">
-        <div className="max-w-7xl mx-auto px-6 py-3 text-xs text-slate-500">© EduVerify · Verification schedule module</div>
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 py-3 text-xs text-slate-500">© EduVerify · Verification schedule module</div>
       </footer>
     </div>
   );
@@ -316,20 +332,20 @@ function DayDetail({ stats, meta, reload, isSupervisor, pauseRefresh, setPauseRe
       <section>
         <div className="flex items-center justify-between flex-wrap gap-2 mb-2">
           <h3 className="font-semibold text-slate-700 text-sm">Student list ({list.total})</h3>
-          <div className="flex gap-2 flex-wrap">
-            <select value={filters.room} onChange={e=>setFilters({...filters, room:e.target.value})} className="ev-input w-auto">
+        <div className="flex gap-2 flex-wrap w-full sm:w-auto">
+            <select value={filters.room} onChange={e=>setFilters({...filters, room:e.target.value})} className="ev-input w-full sm:w-auto flex-1 min-w-[120px]">
               <option value="">All rooms</option>
               {rooms.map(r => <option key={r} value={r}>{r}</option>)}
             </select>
-            <select value={filters.status} onChange={e=>setFilters({...filters, status:e.target.value})} className="ev-input w-auto">
+            <select value={filters.status} onChange={e=>setFilters({...filters, status:e.target.value})} className="ev-input w-full sm:w-auto flex-1 min-w-[120px]">
               <option value="">All statuses</option>
               {(meta?.statuses || []).filter(s => s !== "open").map(s => <option key={s} value={s}>{s}</option>)}
             </select>
-            <input value={filters.q} onChange={e=>setFilters({...filters, q:e.target.value})} placeholder="Search name / app no" className="ev-input w-60" />
+            <input value={filters.q} onChange={e=>setFilters({...filters, q:e.target.value})} placeholder="Search name / app no" className="ev-input w-full sm:w-60" />
           </div>
         </div>
         {listErr && <div className="text-sm text-red-700 bg-red-50 border border-red-200 rounded p-2 mb-2">{listErr}</div>}
-        <div className="overflow-x-auto bg-white border border-slate-200 rounded-2xl">
+        <div className="hidden md:block overflow-x-auto bg-white border border-slate-200 rounded-2xl">
           <table className="min-w-full text-sm tight">
             <thead className="bg-slate-50 text-slate-600 text-xs uppercase">
               <tr>
@@ -361,6 +377,23 @@ function DayDetail({ stats, meta, reload, isSupervisor, pauseRefresh, setPauseRe
             </tbody>
           </table>
         </div>
+        <div className="md:hidden space-y-3">
+          {loading && <div className="text-center py-8 text-slate-400 text-sm">Loading…</div>}
+          {!loading && list.rows.length === 0 && <div className="text-center py-8 text-slate-400 text-sm">No rows match.</div>}
+          {!loading && list.rows.map((r) => (
+            <div key={r.id} className="bg-white border border-slate-200 rounded-xl p-4">
+              <div className="flex items-start justify-between gap-2">
+                <div className="min-w-0">
+                  <div className="font-mono text-xs text-slate-500">{r.student?.appNo || "—"}</div>
+                  <div className="font-semibold text-slate-800 truncate">{r.student?.name || <span className="text-slate-400">— empty —</span>}</div>
+                  <div className="text-xs text-slate-600 mt-1">{r.student?.program || "—"} · {r.room || "—"} · {r.startTime || "—"}</div>
+                </div>
+                <StatusPill s={r.status} />
+              </div>
+              <div className="mt-3"><ActionMenu row={r} isSupervisor={isSupervisor} setStatus={setStatus} reload={reload} loadList={loadList} setPauseRefresh={setPauseRefresh} /></div>
+            </div>
+          ))}
+        </div>
       </section>
     </div>
   );
@@ -372,11 +405,11 @@ function ActionMenu({ row, isSupervisor, setStatus, reload, loadList, setPauseRe
   const openReassign = () => { setPauseRefresh(true); setShowReassign(true); };
   const closeReassign = () => { setShowReassign(false); setPauseRefresh(false); };
   return (
-    <div className="flex items-center gap-1 flex-wrap">
-      {row.status !== "verified" && <button onClick={()=>setStatus(row.id, "verified")} className="text-[11px] bg-green-600 text-white px-2 py-0.5 rounded">✓ Verify</button>}
-      {row.status !== "pending" && row.status !== "open" && <button onClick={()=>setStatus(row.id, "pending")} className="text-[11px] bg-yellow-500 text-white px-2 py-0.5 rounded">⏳ Pending</button>}
-      {row.status !== "absent" && row.status !== "open" && <button onClick={()=>setStatus(row.id, "absent")} className="text-[11px] bg-rose-600 text-white px-2 py-0.5 rounded">⌀ Absent</button>}
-      <button onClick={openReassign} className="text-[11px] border border-purple-300 text-purple-700 px-2 py-0.5 rounded">↻ Reassign</button>
+    <div className="flex items-center gap-1.5 flex-wrap">
+      {row.status !== "verified" && <button onClick={()=>setStatus(row.id, "verified")} className="ev-touch text-xs sm:text-[11px] bg-green-600 text-white px-3 py-2 sm:px-2 sm:py-1 rounded">✓ Verify</button>}
+      {row.status !== "pending" && row.status !== "open" && <button onClick={()=>setStatus(row.id, "pending")} className="ev-touch text-xs sm:text-[11px] bg-yellow-500 text-white px-3 py-2 sm:px-2 sm:py-1 rounded">⏳ Pending</button>}
+      {row.status !== "absent" && row.status !== "open" && <button onClick={()=>setStatus(row.id, "absent")} className="ev-touch text-xs sm:text-[11px] bg-rose-600 text-white px-3 py-2 sm:px-2 sm:py-1 rounded">⌀ Absent</button>}
+      <button onClick={openReassign} className="ev-touch text-xs sm:text-[11px] border border-purple-300 text-purple-700 px-3 py-2 sm:px-2 sm:py-1 rounded">↻ Reassign</button>
       {showReassign && (
         <ReassignForm row={row} close={closeReassign} onDone={()=>{ loadList(); reload(); }} />
       )}
@@ -459,7 +492,7 @@ function ExportTab({ meta }) {
     /* Use form-style direct-link download so the browser handles the filename. */
     const url = "/api/admin/verify/export.csv?" + p.toString();
     /* Add bearer via a temporary fetch+blob since auth is header-based. */
-    fetch(url, { headers: { "Authorization": "Bearer " + auth.token } })
+    fetch(url, { headers: { "Authorization": "Bearer " + getAuthToken() } })
       .then(r => r.ok ? r.blob() : r.json().then(d => Promise.reject(new Error(d.error || ("HTTP " + r.status)))))
       .then(blob => {
         const a = document.createElement("a");
