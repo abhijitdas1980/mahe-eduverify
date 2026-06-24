@@ -10,6 +10,7 @@
   "scripts": {
     "start": "node server.js",
     "setup": "node src/db/setup.js",
+    "reset-admin": "node scripts/reset-admin-password.js",
     "dev": "node server.js"
   },
   "dependencies": {
