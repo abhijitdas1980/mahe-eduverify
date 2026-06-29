@@ -41,6 +41,24 @@
   summary::-webkit-details-marker { display: none; }
   details[open] .faq-chev { transform: rotate(180deg); }
   @keyframes evShift { 0%{background-position:0% 50%} 50%{background-position:100% 50%} 100%{background-position:0% 50%} }
+  .hero-campus-watermark {
+    position: absolute; inset: 0; z-index: 0;
+    background-image: url(/assets/campus-hero.png);
+    background-size: cover;
+    background-position: center 42%;
+    opacity: 0.32;
+    filter: saturate(0.92);
+  }
+  .dark .hero-campus-watermark { opacity: 0.2; filter: saturate(0.75) brightness(0.7); }
+  .hero-campus-overlay {
+    position: absolute; inset: 0; z-index: 1;
+    background-image: linear-gradient(125deg, rgba(123,30,21,0.86) 0%, rgba(165,42,30,0.80) 38%, rgba(192,57,43,0.76) 76%, rgba(231,76,60,0.72) 100%);
+    background-size: 180% 180%;
+    animation: evShift 18s ease infinite;
+  }
+  .dark .hero-campus-overlay {
+    background-image: linear-gradient(125deg, rgba(26,12,10,0.92) 0%, rgba(123,30,21,0.88) 45%, rgba(92,26,20,0.85) 100%);
+  }
   @keyframes evFloat { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-12px)} }
   @keyframes evFloatB { 0%,100%{transform:translateY(0) rotate(-3deg)} 50%{transform:translateY(-9px) rotate(-3deg)} }
   .nav-link::after { content:''; position:absolute; left:0; bottom:-6px; height:2px; width:0; background:#C0392B; transition:width .25s ease; }
@@ -730,10 +748,12 @@ function InstitutionStrip() {
 
 function LandingHero({ go }) {
   return (
-    <section id="home" className="relative overflow-hidden" style={{ backgroundImage: "linear-gradient(125deg,#7B1E15 0%,#A52A1E 38%,#C0392B 76%,#E74C3C 100%)", backgroundSize: "180% 180%", animation: "evShift 18s ease infinite" }}>
-      <div className="pointer-events-none absolute -top-[120px] -right-[80px] w-[420px] h-[420px] rounded-full" style={{ background: "radial-gradient(circle, rgba(255,215,0,0.30), transparent 65%)" }}></div>
-      <div className="pointer-events-none absolute -bottom-[160px] -left-[120px] w-[460px] h-[460px] rounded-full" style={{ background: "radial-gradient(circle, rgba(120,18,18,0.55), transparent 60%)" }}></div>
-      <div className="relative max-w-[1200px] mx-auto px-4 sm:px-6 py-14 sm:py-16 lg:py-24 grid lg:grid-cols-[1.05fr_0.95fr] gap-10 lg:gap-14 items-center">
+    <section id="home" className="relative overflow-hidden bg-crimson-dark">
+      <div className="hero-campus-watermark" aria-hidden="true"></div>
+      <div className="hero-campus-overlay" aria-hidden="true"></div>
+      <div className="pointer-events-none absolute -top-[120px] -right-[80px] w-[420px] h-[420px] rounded-full z-[2]" style={{ background: "radial-gradient(circle, rgba(255,215,0,0.30), transparent 65%)" }}></div>
+      <div className="pointer-events-none absolute -bottom-[160px] -left-[120px] w-[460px] h-[460px] rounded-full z-[2]" style={{ background: "radial-gradient(circle, rgba(120,18,18,0.55), transparent 60%)" }}></div>
+      <div className="relative z-[3] max-w-[1200px] mx-auto px-4 sm:px-6 py-14 sm:py-16 lg:py-24 grid lg:grid-cols-[1.05fr_0.95fr] gap-10 lg:gap-14 items-center">
         <div>
           <div className="inline-flex items-center gap-2 bg-white/12 border border-white/20 text-white text-[13px] font-semibold px-3.5 py-1.5 rounded-full backdrop-blur">
             <span className="w-[7px] h-[7px] rounded-full bg-gold" style={{ boxShadow: "0 0 0 4px rgba(255,215,0,0.25)" }}></span>
