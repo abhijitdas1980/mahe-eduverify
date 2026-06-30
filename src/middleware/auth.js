@@ -19,7 +19,7 @@ function readToken(req) {
   const m = h.match(/^Bearer\s+(.+)$/i);
   if (!m) return null;
   try {
-    return jwt.verify(m[1], SECRET);
+    return jwt.verify(m[1], SECRET, { algorithms: ["HS256"] });
   } catch {
     return null;
   }

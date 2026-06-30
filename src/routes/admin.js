@@ -521,7 +521,7 @@ router.get("/students/export.xlsx", async (req, res, next) => {
 });
 
 /** GET /api/admin/students/login-roster.xlsx — application number + DOB (+ name) for all students. */
-router.get("/students/login-roster.xlsx", async (req, res, next) => {
+router.get("/students/login-roster.xlsx", requireSupervisor, async (req, res, next) => {
   try {
     const filters = {
       department: String(req.query.department || "").trim(),

@@ -19,6 +19,15 @@ const authLimiter = rateLimit({
   message: { error: "Too many login attempts. Please wait 15 minutes and try again." },
 });
 
+// Stricter limit for student password reset (DOB-only recovery): 5 / hour / IP
+const resetPasswordLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  max: 5,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: "Too many password reset attempts. Please wait an hour and try again." },
+});
+
 // Upload limit: 60 uploads / hour / IP
 const uploadLimiter = rateLimit({
   windowMs: 60 * 60 * 1000,
@@ -28,4 +37,4 @@ const uploadLimiter = rateLimit({
   message: { error: "Upload limit reached. Please try again later." },
 });
 
-module.exports = { apiLimiter, authLimiter, uploadLimiter };
+module.exports = { apiLimiter, authLimiter, uploadLimiter, resetPasswordLimiter };

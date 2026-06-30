@@ -9,7 +9,7 @@ const express = require("express");
 const bcrypt = require("bcryptjs");
 const { pool } = require("../config/db");
 const { sign } = require("../middleware/auth");
-const { authLimiter } = require("../middleware/security");
+const { authLimiter, resetPasswordLimiter } = require("../middleware/security");
 const { audit } = require("../lib/audit");
 
 const router = express.Router();
@@ -88,7 +88,7 @@ router.post("/student/login", async (req, res, next) => {
 });
 
 /* FORGOT PASSWORD - re-verify application number + DOB, then set a new password. */
-router.post("/student/reset-password", async (req, res, next) => {
+router.post("/student/reset-password", resetPasswordLimiter, async (req, res, next) => {
   try {
     const appNo = String(req.body.appNo || "").trim();
     const dob = String(req.body.dob || "").trim();
@@ -128,7 +128,7 @@ router.post("/admin/login", async (req, res, next) => {
       await audit(req, "admin", staffId, "LOGIN_FAIL", "Bad credentials");
       return res.status(401).json({ error: "Incorrect staff ID or password." });
     }
-    if (a.enabled === false) {
+    if ("enabled" in a && a.enabled === false) {
       await audit(req, "admin", staffId, "LOGIN_FAIL", "Account disabled");
       return res.status(403).json({ error: "This staff account has been disabled. Contact a supervisor." });
     }

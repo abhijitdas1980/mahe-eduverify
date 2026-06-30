@@ -48,6 +48,9 @@
   }) {
     if (!window.jspdf) {
       const msg = "PDF library not loaded. Please refresh the page and try again.";
+      // #region agent log
+      fetch('http://127.0.0.1:7412/ingest/96947b93-38f7-483c-b9f7-e456e9d89bb3',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'e101d5'},body:JSON.stringify({sessionId:'e101d5',location:'verification-pdf.js:jspdf',message:'jspdf_missing',data:{hasStudent:!!student?.appNo},timestamp:Date.now(),hypothesisId:'H4',runId:'audit'})}).catch(()=>{});
+      // #endregion
       if (onError) onError(msg);
       return;
     }
@@ -276,6 +279,9 @@
     drawCopy("UNIVERSITY VERIFIER COPY", "For verification cell — retain after checking originals.", 1);
 
     pdf.save(`Verification-${student.appNo}.pdf`);
+    // #region agent log
+    fetch('http://127.0.0.1:7412/ingest/96947b93-38f7-483c-b9f7-e456e9d89bb3',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'e101d5'},body:JSON.stringify({sessionId:'e101d5',location:'verification-pdf.js:save',message:'pdf_saved',data:{appNo:student.appNo,docCount:(documents||[]).length,hasVerifySlot:!!verifySlot},timestamp:Date.now(),hypothesisId:'H4',runId:'audit'})}).catch(()=>{});
+    // #endregion
   }
 
   global.downloadVerificationPdf = downloadVerificationPdf;
