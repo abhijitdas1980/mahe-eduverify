@@ -155,13 +155,20 @@ router.get("/stats", async (_req, res, next) => {
 /* ---- STAFF (Supervisor) ---- */
 router.get("/staff", requireSupervisor, async (_req, res, next) => {
   try {
-    const r = await pool.query("SELECT staff_id,name,role,enabled,created_at FROM admins ORDER BY id");
+    let r;
+    try {
+      r = await pool.query("SELECT staff_id,name,role,enabled,created_at FROM admins ORDER BY id");
+    } catch (e) {
+      if (e.code !== "42703") throw e;
+      r = await pool.query("SELECT staff_id,name,role,created_at FROM admins ORDER BY id");
+    }
+    const hasEnabled = (r.fields || []).some((f) => f.name === "enabled");
     res.json({
       staff: r.rows.map((a) => ({
         staffId: a.staff_id,
         name: a.name,
         role: a.role,
-        enabled: a.enabled !== false,
+        enabled: hasEnabled ? a.enabled !== false : true,
         createdAt: a.created_at,
       })),
     });
@@ -196,6 +203,27 @@ router.patch("/staff/:staffId", requireSupervisor, async (req, res, next) => {
       ok: true,
       staff: { staffId: a.staff_id, name: a.name, role: a.role, enabled },
     });
+  } catch (e) { next(e); }
+});
+router.delete("/staff/:staffId", requireSupervisor, async (req, res, next) => {
+  try {
+    const staffId = String(req.params.staffId || "").trim();
+    const r = await pool.query(
+      "SELECT id, staff_id, name, role FROM admins WHERE LOWER(staff_id)=LOWER($1)",
+      [staffId]
+    );
+    const a = r.rows[0];
+    if (!a) return res.status(404).json({ error: "Staff account not found." });
+    if (a.role === "supervisor") {
+      return res.status(403).json({ error: "Supervisor accounts cannot be deleted." });
+    }
+    if (a.staff_id.toLowerCase() === String(req.admin.staffId || "").toLowerCase()) {
+      return res.status(403).json({ error: "You cannot delete your own account." });
+    }
+    await pool.query("UPDATE verify_schedule SET verified_by=NULL WHERE verified_by=$1", [a.id]);
+    await pool.query("DELETE FROM admins WHERE id=$1", [a.id]);
+    await audit(req, "admin", req.admin.staffId, "STAFF_DELETED", a.staff_id);
+    res.json({ ok: true, staffId: a.staff_id, name: a.name });
   } catch (e) { next(e); }
 });
 router.post("/staff", requireSupervisor, async (req, res, next) => {

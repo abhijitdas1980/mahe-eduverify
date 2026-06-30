@@ -51,12 +51,21 @@ async function requireActiveAdmin(req, res, next) {
     return res.status(401).json({ error: "Please log in as verification-cell staff to continue." });
   }
   try {
-    const r = await pool.query(
-      "SELECT enabled, role FROM admins WHERE id = $1",
-      [req.admin.id]
-    );
+    let r;
+    try {
+      r = await pool.query(
+        "SELECT enabled, role FROM admins WHERE id = $1",
+        [req.admin.id]
+      );
+    } catch (e) {
+      if (e.code !== "42703") throw e;
+      r = await pool.query("SELECT role FROM admins WHERE id = $1", [req.admin.id]);
+    }
     const row = r.rows[0];
-    if (!row || row.enabled === false) {
+    if (!row) {
+      return res.status(403).json({ error: "Your staff account was not found. Please log in again." });
+    }
+    if ("enabled" in row && row.enabled === false) {
       return res.status(403).json({ error: "Your staff account has been disabled. Contact a supervisor." });
     }
     req.admin.role = row.role;

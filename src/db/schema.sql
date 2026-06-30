@@ -161,7 +161,7 @@ CREATE TABLE IF NOT EXISTS verify_schedule (
   student_id    INT REFERENCES students(id) ON DELETE SET NULL,
   status        VARCHAR(20) NOT NULL DEFAULT 'open',
   verified_at   TIMESTAMPTZ,
-  verified_by   INT REFERENCES admins(id),
+  verified_by   INT REFERENCES admins(id) ON DELETE SET NULL,
   remarks       TEXT,
   created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
@@ -212,6 +212,12 @@ CREATE INDEX IF NOT EXISTS idx_followup_created ON student_followup_remarks(crea
 
 -- ====== v36: enable / disable verifier staff accounts ======
 ALTER TABLE admins ADD COLUMN IF NOT EXISTS enabled BOOLEAN NOT NULL DEFAULT true;
+
+-- ====== v37: allow deleting admins referenced from verify_schedule ======
+ALTER TABLE verify_schedule DROP CONSTRAINT IF EXISTS verify_schedule_verified_by_fkey;
+ALTER TABLE verify_schedule
+  ADD CONSTRAINT verify_schedule_verified_by_fkey
+  FOREIGN KEY (verified_by) REFERENCES admins(id) ON DELETE SET NULL;
 
 -- ====== v27: heal stale students.verify_schedule_id references ======
 -- A pre-v26 reassign would leave students.verify_schedule_id pointing at the
