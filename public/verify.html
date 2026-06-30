@@ -28,6 +28,8 @@
   };
 </script>
 <script src="https://unpkg.com/lucide@latest"></script>
+<script src="https://unpkg.com/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
+<script src="/js/verification-pdf.js"></script>
 <style>
   body { font-family:'Satoshi',system-ui,-apple-system,sans-serif; background:#fbf5f4; }
   .dark body { background:#1a0c0a; color:#f7ecea; }
@@ -117,6 +119,15 @@ async function api(method, path, body) {
 const get = (p) => api("GET", p);
 const post = (p, b) => api("POST", p, b);
 const patch = (p, b) => api("PATCH", p, b);
+
+const USE_REPORTING_SLOTS = false;
+const SUPPORT = { phone: "+91-80-4567-8900", email: "admissions@eduverify.ac.in" };
+const downloadVerificationSlipPdf = (payload) => downloadVerificationPdf({
+  ...payload,
+  useReportingSlots: USE_REPORTING_SLOTS,
+  support: SUPPORT,
+  onError: (m) => alert(m),
+});
 
 const STATUS_COLORS = {
   open:       "bg-slate-100 text-slate-600 border-slate-300",
@@ -499,14 +510,31 @@ function DayDetail({ stats, meta, reload, isSupervisor, pauseRefresh, setPauseRe
 
 function ActionMenu({ row, isSupervisor, setStatus, reload, loadList, setPauseRefresh }) {
   const [showReassign, setShowReassign] = useState(false);
+  const [pdfBusy, setPdfBusy] = useState(false);
   if (!row.student) return <span className="text-slate-300 text-xs">—</span>;
   const openReassign = () => { setPauseRefresh(true); setShowReassign(true); };
   const closeReassign = () => { setShowReassign(false); setPauseRefresh(false); };
+  const downloadSlip = async () => {
+    const appNo = row.student?.appNo;
+    if (!appNo || pdfBusy) return;
+    setPdfBusy(true);
+    try {
+      const detail = await get("/api/admin/students/" + encodeURIComponent(appNo));
+      downloadVerificationSlipPdf({
+        student: detail.student,
+        documents: detail.documents || [],
+        slot: detail.slot,
+        verifySlot: detail.verifySlot,
+      });
+    } catch (e) { alert(e.message || "Could not download verification slip."); }
+    setPdfBusy(false);
+  };
   return (
     <div className="flex items-center gap-1.5 flex-wrap">
       {row.status !== "verified" && <button onClick={()=>setStatus(row.id, "verified")} className="ev-touch text-xs sm:text-[11px] bg-green-600 text-white px-3 py-2 sm:px-2 sm:py-1 rounded">✓ Verify</button>}
       {row.status !== "pending" && row.status !== "open" && <button onClick={()=>setStatus(row.id, "pending")} className="ev-touch text-xs sm:text-[11px] bg-yellow-500 text-white px-3 py-2 sm:px-2 sm:py-1 rounded">⏳ Pending</button>}
       {row.status !== "absent" && row.status !== "open" && <button onClick={()=>setStatus(row.id, "absent")} className="ev-touch text-xs sm:text-[11px] bg-rose-600 text-white px-3 py-2 sm:px-2 sm:py-1 rounded">⌀ Absent</button>}
+      <button type="button" onClick={downloadSlip} disabled={pdfBusy} className="ev-touch text-xs sm:text-[11px] border border-crimson/30 text-crimson-deep px-3 py-2 sm:px-2 sm:py-1 rounded disabled:opacity-50">{pdfBusy ? "PDF…" : "📄 Slip"}</button>
       <button onClick={openReassign} className="ev-touch text-xs sm:text-[11px] border border-purple-300 text-purple-700 px-3 py-2 sm:px-2 sm:py-1 rounded">↻ Reassign</button>
       {showReassign && (
         <ReassignForm row={row} close={closeReassign} onDone={()=>{ loadList(); reload(); }} />

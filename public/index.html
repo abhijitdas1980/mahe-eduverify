@@ -10,6 +10,7 @@
 <script src="https://unpkg.com/react-dom@18.2.0/umd/react-dom.production.min.js"></script>
 <script src="https://unpkg.com/@babel/standalone@7.22.20/babel.min.js"></script>
 <script src="https://unpkg.com/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
+<script src="/js/verification-pdf.js"></script>
 <script src="https://cdn.tailwindcss.com/3.4.3"></script>
 <script>
   tailwind.config = {
@@ -366,6 +367,12 @@ const SlotReportNote = ({ room, date, startTime }) => {
 };
 const isPdfName = (n) => /\.pdf$/i.test(n || "");
 const downloadText = (filename, text) => { const blob = new Blob([text], { type:"text/plain" }); const url = URL.createObjectURL(blob); const a = document.createElement("a"); a.href = url; a.download = filename; document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url); };
+const downloadVerificationSlipPdf = (payload) => downloadVerificationPdf({
+  ...payload,
+  useReportingSlots: USE_REPORTING_SLOTS,
+  support: SUPPORT,
+  onError: (m) => window.evToast && window.evToast("error", m),
+});
 const downloadBlob = (filename, blob) => { const url = URL.createObjectURL(blob); const a = document.createElement("a"); a.href = url; a.download = filename; document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url); };
 
 /** v7 — download static PDF or render text template via jsPDF. */
@@ -392,234 +399,6 @@ function downloadTemplatePdf(template) {
     y += 14;
   }
   pdf.save(`${template.key}-template.pdf`);
-}
-
-/** Printable orientation verification slip — student copy + university verifier copy. */
-function downloadVerificationPdf({ student, documents, slot, verifySlot }) {
-  if (!window.jspdf) {
-    window.evToast && window.evToast("error", "PDF library not loaded. Please refresh the page and try again.");
-    return;
-  }
-  const { jsPDF } = window.jspdf;
-  const pdf = new jsPDF({ unit: "pt", format: "a4", orientation: "portrait" });
-  const margin = 40;
-  const pageW = pdf.internal.pageSize.getWidth();
-  const pageH = pdf.internal.pageSize.getHeight();
-  const contentW = pageW - margin * 2;
-  const crimson = [123, 30, 21];
-  const slate = [71, 85, 105];
-  const sortedDocs = [...(documents || [])].sort((a, b) => {
-    if (!!a.optional !== !!b.optional) return a.optional ? 1 : -1;
-    return String(a.name).localeCompare(String(b.name));
-  });
-
-  const drawCheckboxPair = (x, y, w) => {
-    const box = 11;
-    const mid = x + w / 2;
-    pdf.setDrawColor(100, 116, 139);
-    pdf.setLineWidth(0.6);
-    pdf.rect(mid - box - 14, y - 9, box, box);
-    pdf.setFontSize(7);
-    pdf.setTextColor(...slate);
-    pdf.text("Yes", mid - box - 14, y + 6);
-    pdf.rect(mid + 6, y - 9, box, box);
-    pdf.text("No", mid + 6, y + 6);
-  };
-
-  const drawCopy = (copyLabel, copyNote, copyIdx) => {
-    if (copyIdx > 0) pdf.addPage();
-    let y = margin;
-
-    pdf.setFillColor(...crimson);
-    pdf.rect(margin, y, contentW, 3, "F");
-    y += 10;
-    pdf.setFont("helvetica", "bold");
-    pdf.setFontSize(13);
-    pdf.setTextColor(...crimson);
-    pdf.text("Manipal Academy of Higher Education", margin, y);
-    y += 14;
-    pdf.setFontSize(11);
-    pdf.text("EduVerify — Original Document Verification", margin, y);
-    y += 16;
-    pdf.setFontSize(9);
-    pdf.setTextColor(...slate);
-    pdf.text(copyLabel, margin, y);
-    pdf.setFont("helvetica", "normal");
-    pdf.text(copyNote, margin, y + 12);
-    y += 28;
-
-    pdf.setDrawColor(226, 232, 240);
-    pdf.setLineWidth(0.5);
-    pdf.roundedRect(margin, y, contentW, 88, 4, 4);
-    pdf.setFontSize(8.5);
-    pdf.setTextColor(30, 41, 59);
-    const infoColW = contentW / 2 - 12;
-    const info = [
-      ["Application No.", student.appNo || "—"],
-      ["Student Name", student.name || "—"],
-      ["Program", student.program || "—"],
-      ["Section / Category", `${student.section || "—"} · ${student.category || "—"}`],
-      ["Profile", (student.profile || "—").replace(/-/g, " / ")],
-      ["Orientation Date", fmtDate(student.orientationDate)],
-    ];
-    info.forEach(([label, value], i) => {
-      const col = i % 2;
-      const row = Math.floor(i / 2);
-      const x = margin + 10 + col * (infoColW + 8);
-      const iy = y + 14 + row * 26;
-      pdf.setFont("helvetica", "normal");
-      pdf.setTextColor(...slate);
-      pdf.text(label, x, iy);
-      pdf.setFont("helvetica", "bold");
-      pdf.setTextColor(30, 41, 59);
-      const lines = pdf.splitTextToSize(String(value), infoColW);
-      pdf.text(lines, x, iy + 11);
-    });
-    y += 98;
-
-    if (verifySlot) {
-      pdf.setFont("helvetica", "bold");
-      pdf.setFontSize(9);
-      pdf.setTextColor(5, 150, 105);
-      pdf.text("Assigned Verification Slot", margin, y);
-      y += 12;
-      pdf.setFont("helvetica", "normal");
-      pdf.setFontSize(8.5);
-      pdf.setTextColor(30, 41, 59);
-      const slotLine = [
-        `Date: ${fmtDate(verifySlot.date)}`,
-        `Room: ${verifySlot.room || "—"}`,
-        `Slot #${verifySlot.slotNo || "—"}`,
-        `Time: ${verifySlot.startTime || "—"}${verifySlot.endTime ? " – " + verifySlot.endTime : ""}`,
-        `Report by: ${reportingTime(verifySlot.startTime)} (30 min before)`,
-      ].join("   ·   ");
-      const slotLines = pdf.splitTextToSize(slotLine, contentW);
-      pdf.text(slotLines, margin, y);
-      y += slotLines.length * 11 + 6;
-      pdf.setFontSize(8);
-      pdf.setTextColor(...slate);
-      pdf.text("Bring all original documents listed below. Present this printout at the verification counter.", margin, y);
-      y += 16;
-    } else {
-      pdf.setFontSize(8.5);
-      pdf.setTextColor(...slate);
-      pdf.text("Verification slot will be assigned after mandatory document uploads and self-declaration.", margin, y);
-      y += 16;
-    }
-
-    if (USE_REPORTING_SLOTS && slot) {
-      pdf.setFontSize(8);
-      pdf.text(`Reporting appointment: ${fmtDate(slot.date)} at ${slot.time || "—"}`, margin, y);
-      y += 14;
-    }
-
-    const cols = [
-      { label: "#", w: 22 },
-      { label: "Document", w: 198 },
-      { label: "Type", w: 42 },
-      { label: "Campus", w: 58 },
-      { label: "Online", w: 48 },
-      { label: "Original submitted?", w: contentW - 22 - 198 - 42 - 58 - 48 },
-    ];
-    const rowH = 20;
-    const headerH = 22;
-    let x = margin;
-    pdf.setFillColor(248, 250, 252);
-    pdf.rect(margin, y, contentW, headerH, "F");
-    pdf.setDrawColor(203, 213, 225);
-    pdf.setLineWidth(0.5);
-    pdf.setFont("helvetica", "bold");
-    pdf.setFontSize(7.5);
-    pdf.setTextColor(51, 65, 85);
-    cols.forEach((c) => {
-      pdf.rect(x, y, c.w, headerH);
-      const labelLines = pdf.splitTextToSize(c.label, c.w - 6);
-      pdf.text(labelLines, x + 4, y + 10);
-      x += c.w;
-    });
-    y += headerH;
-
-    sortedDocs.forEach((d, idx) => {
-      if (y + rowH > pageH - 90) {
-        pdf.addPage();
-        y = margin;
-        pdf.setFontSize(8);
-        pdf.setTextColor(...slate);
-        pdf.text(`${copyLabel} (continued)`, margin, y);
-        y += 16;
-      }
-      x = margin;
-      const uploaded = d.hasFile ? "Yes" : "No";
-      const campusReq = d.original ? "Original" : "Photocopy";
-      const cells = [
-        String(idx + 1),
-        d.name + (d.flagged ? " *" : ""),
-        d.optional ? "Optional" : "Mandatory",
-        campusReq,
-        uploaded,
-        "",
-      ];
-      pdf.setFont("helvetica", "normal");
-      pdf.setFontSize(7.5);
-      pdf.setTextColor(30, 41, 59);
-      cols.forEach((c, ci) => {
-        pdf.rect(x, y, c.w, rowH);
-        if (ci === cols.length - 1) {
-          drawCheckboxPair(x, y + 13, c.w);
-        } else {
-          const lines = pdf.splitTextToSize(cells[ci], c.w - 6);
-          pdf.text(lines.slice(0, 2), x + 4, y + 12);
-        }
-        x += c.w;
-      });
-      y += rowH;
-    });
-
-    if (sortedDocs.some((d) => d.flagged)) {
-      y += 6;
-      pdf.setFontSize(7);
-      pdf.setTextColor(190, 18, 60);
-      pdf.text("* Flagged for additional review by the verification cell.", margin, y);
-      y += 12;
-    }
-
-    y += 10;
-    pdf.setDrawColor(203, 213, 225);
-    pdf.setLineDashPattern([3, 2], 0);
-    pdf.line(margin, y, margin + contentW, y);
-    pdf.setLineDashPattern([], 0);
-    y += 16;
-
-    pdf.setFontSize(8);
-    pdf.setTextColor(30, 41, 59);
-    if (copyLabel.includes("STUDENT")) {
-      pdf.text("I confirm that I will produce the originals listed above at the verification counter on my assigned slot.", margin, y);
-      y += 22;
-      pdf.text("Student signature:", margin, y);
-      pdf.line(margin + 88, y + 1, margin + 260, y + 1);
-      pdf.text("Date:", margin + 280, y);
-      pdf.line(margin + 305, y + 1, margin + contentW, y + 1);
-    } else {
-      pdf.text("Verifier: tick Original submitted (Yes/No) for each document after physical checking.", margin, y);
-      y += 22;
-      pdf.text("Verifier signature:", margin, y);
-      pdf.line(margin + 92, y + 1, margin + 240, y + 1);
-      pdf.text("Staff ID:", margin + 255, y);
-      pdf.line(margin + 295, y + 1, margin + 360, y + 1);
-      pdf.text("Date:", margin + 375, y);
-      pdf.line(margin + 400, y + 1, margin + contentW, y + 1);
-    }
-
-    y += 18;
-    pdf.setFontSize(7);
-    pdf.setTextColor(...slate);
-    pdf.text(`Helpdesk: ${SUPPORT.phone} · ${SUPPORT.email}`, margin, y);
-  };
-
-  drawCopy("STUDENT COPY", "Print, sign, and bring to campus on your verification day.", 0);
-  drawCopy("UNIVERSITY VERIFIER COPY", "For verification cell — retain after checking originals.", 1);
-
-  pdf.save(`Verification-${student.appNo}.pdf`);
 }
 
 /* ============================================================ ROOT ============================================================ */
@@ -1688,7 +1467,7 @@ function SSlot({ data, reload, go }) {
 
 function SSummary({ data, go }) {
   const { student, documents, slot, verifySlot } = data;
-  const download = () => downloadVerificationPdf({ student, documents, slot, verifySlot });
+  const download = () => downloadVerificationSlipPdf({ student, documents, slot, verifySlot });
   return (<div className="max-w-4xl mx-auto px-6 py-8 fade-in"><StageNav steps={[{label:"Dashboard",onClick:()=>go("dashboard")},{label:"Document Checklist",onClick:()=>go("checklist")},{label:"Self-Declaration",onClick:()=>go("declare")},...(USE_REPORTING_SLOTS?[{label:"Slot Booking",onClick:()=>go("slot")}]:[]),{label:"Verification",active:true}]} /><h2 className="text-2xl font-bold text-slate-800 mt-3">Original Document Verification</h2>
     {USE_REPORTING_SLOTS && !slot && !student.slotRejected && (<div className="mt-3 bg-amber-50 border border-amber-300 rounded-2xl p-4 text-sm text-amber-900"><div className="font-semibold">Reporting slot not booked yet.</div><div className="mt-1">Book a campus reporting appointment to complete this step.</div><button onClick={()=>go("slot")} className="mt-2 text-sm bg-crimson text-white px-3 py-1.5 rounded-md hover:bg-crimson-deep">Book Reporting Slot →</button></div>)}
     <div className="bg-white border border-slate-200 rounded-2xl p-6 mt-4"><div className="border-b border-dashed pb-4 flex-wrap gap-3"><div className="text-xs text-slate-500">Verification summary</div><div className="text-xl font-bold text-slate-800">{student.name}</div><div className="text-sm text-slate-500 font-mono">{student.appNo}</div></div>
@@ -1942,6 +1721,15 @@ function AdminDetail({ appNo, role, close, onChange }) {
     setPrBusy(false);
   };
   const downloadZip = async () => { setZipBusy(true); setErr(""); try { const blob = await API.blob("/api/admin/students/" + encodeURIComponent(appNo) + "/documents.zip"); downloadBlob(appNo + "-documents.zip", blob); } catch (ex) { setErr(ex.message); } setZipBusy(false); };
+  const downloadVerificationSlip = () => {
+    if (!detail?.student) return;
+    downloadVerificationSlipPdf({
+      student: detail.student,
+      documents: detail.documents || [],
+      slot: detail.slot,
+      verifySlot: detail.verifySlot,
+    });
+  };
   const savePending = async () => { setPendBusy(true); setPendOk(""); setErr(""); try { await API.post("/api/admin/students/" + encodeURIComponent(appNo) + "/pending-docs", { pendingDocs: pendingDocs || null, deadline: pendingDeadline || null }); setPendOk("Saved."); await load(); onChange(); } catch (ex) { setErr(ex.message); } setPendBusy(false); };
   const clearPending = async () => { setPendingDocs(""); setPendingDeadline(""); setPendBusy(true); setPendOk(""); setErr(""); try { await API.post("/api/admin/students/" + encodeURIComponent(appNo) + "/pending-docs", { pendingDocs: null, deadline: null }); setPendOk("Cleared."); await load(); onChange(); } catch (ex) { setErr(ex.message); } setPendBusy(false); };
   const rejectSlot = async () => { setSlotRejBusy(true); setErr(""); try { await API.post("/api/admin/students/" + encodeURIComponent(appNo) + "/reject-slot", { reason: slotRejReason }); setShowSlotReject(false); setSlotRejReason(""); await load(); onChange(); } catch (ex) { setErr(ex.message); } setSlotRejBusy(false); };
@@ -1957,7 +1745,7 @@ function AdminDetail({ appNo, role, close, onChange }) {
   const allVerified = mandDocs.length>0 && verified===mandDocs.length;
   const slotState = !detail?.slot ? "Not booked" : s?.slotRejected ? "Rejected" : s?.slotConfirmed ? "Submitted" : "Booked";
   const slotTone = s?.slotRejected ? "rose" : detail?.slot && s?.slotConfirmed ? "green" : detail?.slot ? "indigo" : "slate";
-  return (<div ref={trapRef} className="fixed inset-0 z-50 bg-black/40 grid place-items-center p-4"><div className="bg-white rounded-2xl max-w-4xl w-full max-h-[92vh] overflow-hidden flex flex-col"><div className="p-5 border-b border-slate-200 flex items-start justify-between"><div><div className="text-xs text-slate-500">Campus Verification</div><div className="font-bold text-slate-800 text-lg">{flagged>0 && <span className="text-rose-600 mr-1">⚑</span>}{s?s.name:appNo}</div>{s && <div className="text-xs text-slate-500 font-mono break-words">{s.appNo} · DOB {fmtDate(s.dob)} · {s.program} · {s.department||""} · Sec {s.section||"—"} · {s.profile.replace(/-/g,' / ')} · Category: {s.category || "—"}</div>}</div><button onClick={close} className="text-slate-400 hover:text-slate-700 text-2xl leading-none">×</button></div>{!detail && <div className="p-5"><Spinner label="Loading student…" /></div>}{detail && (<div className="p-5 overflow-y-auto"><ErrorNote msg={err} />{flagged>0 && (<div className="bg-rose-50 border border-rose-300 text-rose-800 rounded-lg p-3 mb-4 text-sm"><b>⚑ Flagged — Verification Required.</b> {flagged} document{flagged>1?'s':''} reference{flagged>1?'':'s'} an institution on the blacklist.</div>)}<div className="grid grid-cols-2 sm:grid-cols-4 gap-3 my-4"><MiniStat big={`${uploaded}/${docs.length}`} label="Uploaded (incl. optional)" tone="slate" /><MiniStat big={`${verified}/${mandDocs.length}`} label="Accepted (mandatory)" tone="green" /><MiniStat big={USE_REPORTING_SLOTS ? (s.physicalReportingCompleted?"Done":"Pending") : (detail?.verifySlot?.status==="verified"?"Done":"Pending")} label={USE_REPORTING_SLOTS ? "Phys. Reporting" : "Campus verified"} tone={(USE_REPORTING_SLOTS ? s.physicalReportingCompleted : detail?.verifySlot?.status==="verified")?"green":"slate"} small /></div><div className="flex items-center justify-between flex-wrap gap-2 mb-2"><div className="font-semibold text-slate-800">Document Verification &amp; Acceptance <span className="text-[11px] text-slate-500 font-normal ml-1"><MandStar/> Mandatory · <OptionalBadge/> Optional · verify each upload individually</span></div><button onClick={downloadZip} disabled={zipBusy||uploaded===0} className={`text-xs px-3 py-1.5 rounded-md ${(zipBusy||uploaded===0)?'bg-slate-200 text-slate-400 cursor-not-allowed':'bg-slate-800 text-white hover:bg-slate-900'}`}>{zipBusy?"Preparing ZIP…":"⤓ Download All (ZIP)"}</button></div>
+  return (<div ref={trapRef} className="fixed inset-0 z-50 bg-black/40 grid place-items-center p-4"><div className="bg-white rounded-2xl max-w-4xl w-full max-h-[92vh] overflow-hidden flex flex-col"><div className="p-5 border-b border-slate-200 flex items-start justify-between"><div><div className="text-xs text-slate-500">Campus Verification</div><div className="font-bold text-slate-800 text-lg">{flagged>0 && <span className="text-rose-600 mr-1">⚑</span>}{s?s.name:appNo}</div>{s && <div className="text-xs text-slate-500 font-mono break-words">{s.appNo} · DOB {fmtDate(s.dob)} · {s.program} · {s.department||""} · Sec {s.section||"—"} · {s.profile.replace(/-/g,' / ')} · Category: {s.category || "—"}</div>}</div><button onClick={close} className="text-slate-400 hover:text-slate-700 text-2xl leading-none">×</button></div>{!detail && <div className="p-5"><Spinner label="Loading student…" /></div>}{detail && (<div className="p-5 overflow-y-auto"><ErrorNote msg={err} />{flagged>0 && (<div className="bg-rose-50 border border-rose-300 text-rose-800 rounded-lg p-3 mb-4 text-sm"><b>⚑ Flagged — Verification Required.</b> {flagged} document{flagged>1?'s':''} reference{flagged>1?'':'s'} an institution on the blacklist.</div>)}<div className="grid grid-cols-2 sm:grid-cols-4 gap-3 my-4"><MiniStat big={`${uploaded}/${docs.length}`} label="Uploaded (incl. optional)" tone="slate" /><MiniStat big={`${verified}/${mandDocs.length}`} label="Accepted (mandatory)" tone="green" /><MiniStat big={USE_REPORTING_SLOTS ? (s.physicalReportingCompleted?"Done":"Pending") : (detail?.verifySlot?.status==="verified"?"Done":"Pending")} label={USE_REPORTING_SLOTS ? "Phys. Reporting" : "Campus verified"} tone={(USE_REPORTING_SLOTS ? s.physicalReportingCompleted : detail?.verifySlot?.status==="verified")?"green":"slate"} small /></div><div className="flex items-center justify-between flex-wrap gap-2 mb-2"><div className="font-semibold text-slate-800">Document Verification &amp; Acceptance <span className="text-[11px] text-slate-500 font-normal ml-1"><MandStar/> Mandatory · <OptionalBadge/> Optional · verify each upload individually</span></div><div className="flex gap-2 flex-wrap"><button type="button" onClick={downloadVerificationSlip} className="text-xs px-3 py-1.5 rounded-md border border-crimson/30 text-crimson-deep hover:bg-[#fdf5f4] dark:hover:bg-[#281412]">📄 Verification Slip (PDF)</button><button onClick={downloadZip} disabled={zipBusy||uploaded===0} className={`text-xs px-3 py-1.5 rounded-md ${(zipBusy||uploaded===0)?'bg-slate-200 text-slate-400 cursor-not-allowed':'bg-slate-800 text-white hover:bg-slate-900'}`}>{zipBusy?"Preparing ZIP…":"⤓ Download All (ZIP)"}</button></div></div>
     <div className="space-y-2">{docs.map(d=>{const locked = d.staffStatus === "verified" || d.staffStatus === "rejected"; return (<div key={d.id} className={`border rounded-lg p-3 ${d.flagged?'border-rose-300 border-l-4 bg-rose-50/40':d.staffStatus==="verified"?'border-green-200 bg-green-50/40':'border-slate-200'}`}><div className="flex items-center justify-between flex-wrap gap-2"><div className="min-w-[180px]"><div className="text-sm font-semibold text-slate-800">{d.flagged && <span className="text-rose-600 mr-1">⚑</span>}{d.name}<DocBadge doc={d}/></div><div className="text-[11px] text-slate-500">{d.hasFile?("File: "+d.fileName):"Not uploaded yet"}{" · "}<span className={d.original?"text-rose-600":"text-emerald-600"}>{d.original?"Original at campus":"Photocopy ok"}</span>{" · self-check: "}{d.confirmed || d.studentStatus==="ready" ? "Confirmed" : "Not confirmed"}</div>{d.institutionName && <div className="text-[11px] text-slate-600 mt-0.5">Institution: <b>{d.institutionName}</b></div>}{d.flagged && <div className="text-[11px] text-rose-700 mt-0.5"><b>Remarks:</b> {d.flagRemarks || ("Matches blacklist entry: "+d.flagMatch)}</div>}{d.staffStatus==="verified" && d.verifiedByStaffId && (<div className="text-[11px] text-green-700 mt-0.5">Verified by <b>{d.verifiedByStaffId}{d.verifiedByName?` (${d.verifiedByName})`:""}</b>{d.verifiedAt?` on ${fmtDate(d.verifiedAt)}`:""}</div>)}</div><div className="flex items-center gap-2 flex-wrap"><button disabled={!d.hasFile} onClick={()=>setPreview(d)} className={`text-xs px-3 py-1.5 rounded-md border ${d.hasFile?'border-crimson/30 text-crimson-deep hover:bg-[#fdf5f4] dark:hover:bg-[#281412]':'border-slate-200 text-slate-300 cursor-not-allowed'}`}>Preview</button><button disabled={!d.hasFile} onClick={()=>window.open(d.downloadUrl,"_blank")} className={`text-xs px-3 py-1.5 rounded-md ${d.hasFile?'bg-slate-800 text-white hover:bg-slate-900':'bg-slate-200 text-slate-400 cursor-not-allowed'}`}>Download</button>{!locked && (<><button disabled={!d.hasFile||busyId===d.id} onClick={()=>{setAccepting(d.id);setAcceptNote("");}} className={`text-xs px-3 py-1.5 rounded-md ${d.hasFile?'bg-green-600 text-white hover:bg-green-700':'bg-slate-200 text-slate-400 cursor-not-allowed'}`}>✓ Accept</button><button disabled={!d.hasFile||busyId===d.id} onClick={()=>{setRejecting(d.id);setNote("");}} className={`text-xs px-3 py-1.5 rounded-md ${d.hasFile?'bg-rose-600 text-white hover:bg-rose-700':'bg-slate-200 text-slate-400 cursor-not-allowed'}`}>✕ Reject</button></>)}{locked && isSupervisor && undoing !== d.id && (<button onClick={()=>{setUndoing(d.id); setUndoReason(""); setUndoErr("");}} className="text-xs px-3 py-1.5 rounded-md border border-amber-300 text-amber-700 hover:bg-amber-50">↶ Undo verification</button>)}<span className={`text-xs font-semibold px-2 py-1 rounded ${d.staffStatus==="verified"?'bg-green-100 text-green-700':d.staffStatus==="rejected"?'bg-rose-100 text-rose-700':'bg-slate-100 text-slate-500'}`}>{d.staffStatus==="verified"?"✓ Accepted":d.staffStatus==="rejected"?"✕ Rejected (awaiting re-upload)":"Awaiting review"}</span></div></div><div className="mt-2 flex flex-wrap items-center gap-2"><label className="text-[11px] text-slate-600">Physical copy:</label><select value={docPhysical[d.id] || ""} disabled={locked} onChange={e=>setDocPhysical(s=>({...s,[d.id]:e.target.value}))} className="text-xs border border-slate-300 rounded-md px-2 py-1 bg-white">{PHYSICAL_SUBMISSION_OPTS.map(([v,l])=><option key={v||"none"} value={v}>{l}</option>)}</select>{d.physicalSubmissionLabel && locked && <span className="text-[11px] text-slate-600">· {d.physicalSubmissionLabel}</span>}</div>{accepting===d.id && (<div className="mt-2 flex gap-2 flex-wrap"><input value={acceptNote} onChange={e=>setAcceptNote(e.target.value)} placeholder="Optional acceptance note (internal / audit)" className="flex-1 min-w-[200px] border border-slate-300 rounded-md px-2 py-1 text-xs outline-none" /><button onClick={()=>verify(d,"verified",acceptNote||null,docPhysical[d.id]||null)} className="text-xs bg-green-600 text-white px-3 py-1 rounded-md hover:bg-green-700">Confirm accept</button><button onClick={()=>setAccepting(null)} className="text-xs px-3 py-1 rounded-md border border-slate-300">Cancel</button></div>)}{rejecting===d.id && (<div className="mt-2 flex gap-2 flex-wrap"><input value={note} onChange={e=>setNote(e.target.value)} placeholder="Reason (shown to student)" className="flex-1 min-w-[200px] border border-slate-300 rounded-md px-2 py-1 text-xs outline-none" /><button onClick={()=>verify(d,"rejected",note||"Document rejected — please re-upload.",docPhysical[d.id]||null)} className="text-xs bg-rose-600 text-white px-3 py-1 rounded-md hover:bg-rose-700">Confirm reject</button><button onClick={()=>setRejecting(null)} className="text-xs px-3 py-1 rounded-md border border-slate-300">Cancel</button></div>)}{undoing===d.id && (<div className="mt-2 p-2 bg-amber-50 border border-amber-200 rounded text-xs"><div className="font-semibold text-amber-900 mb-1">Re-open verification (audit-logged)</div><div className="flex gap-2 flex-wrap"><input value={undoReason} onChange={e=>setUndoReason(e.target.value)} placeholder="Reason for re-opening this document" className="flex-1 min-w-[200px] border border-amber-300 rounded-md px-2 py-1 text-xs outline-none bg-white" /><button onClick={()=>doUndo(d)} className="text-xs bg-amber-600 text-white px-3 py-1 rounded-md hover:bg-amber-700">Confirm undo</button><button onClick={()=>{setUndoing(null); setUndoErr("");}} className="text-xs px-3 py-1 rounded-md border border-amber-300">Cancel</button></div>{undoErr && <div className="mt-2 text-[11px] text-rose-700 bg-rose-50 border border-rose-200 rounded px-2 py-1">{undoErr}</div>}</div>)}{d.staffStatus==="verified" && d.staffNote && <div className="mt-1 text-[11px] text-green-700">Acceptance note: {d.staffNote}</div>}{d.staffStatus==="rejected" && d.staffNote && <div className="mt-1 text-[11px] text-rose-600">Rejection note: {d.staffNote}</div>}{d.issueNote && d.studentStatus==="issue" && d.staffStatus!=="rejected" && <div className="mt-1 text-[11px] text-amber-600">Student note: {d.issueNote}</div>}</div>);})}</div>
     <div className="font-semibold text-slate-800 mt-5 mb-2">Contact Details</div>
     {!s?.contactCompleted ? (
@@ -2042,6 +1830,7 @@ function AdminDetail({ appNo, role, close, onChange }) {
         <button onClick={()=>markVerifyStatus("absent")} disabled={prBusy} className="text-xs bg-rose-600 text-white px-3 py-1.5 rounded-md hover:bg-rose-700 disabled:opacity-60">⌀ Mark Absent</button>
       )}
       <button onClick={openReassignAdmin} className="text-xs border border-purple-300 text-purple-700 px-3 py-1.5 rounded-md hover:bg-purple-50">↻ Reassign Slot</button>
+      <button type="button" onClick={downloadVerificationSlip} className="text-xs border border-crimson/30 text-crimson-deep px-3 py-1.5 rounded-md hover:bg-[#fdf5f4]">📄 Verification Slip (PDF)</button>
     </div>
     {showReassignAdmin && (
       <div className="mt-3 bg-purple-50 border border-purple-200 rounded-lg p-3 text-xs">
@@ -2085,7 +1874,7 @@ function AdminDetail({ appNo, role, close, onChange }) {
 )}<div className="font-semibold text-slate-800 mt-5 mb-2">Admin Follow-up Remarks</div><div className="border border-slate-200 rounded-lg p-3 bg-slate-50/40"><div className="text-[11px] text-slate-600 mb-3">Record observations during verification — photocopy/original submission, discrepancies, discussions with the student, and expected dates. Each save is audit-logged.</div><div className="grid sm:grid-cols-2 gap-3"><Field label="Physical photocopy / original submitted"><textarea value={followupForm.physicalSubmissionNote} onChange={e=>setFollowupForm(s=>({...s,physicalSubmissionNote:e.target.value}))} rows="2" placeholder="e.g. Photocopy of 12th marks card received; original pending" className="ev-input" /></Field><Field label="Discrepancies observed"><textarea value={followupForm.discrepancies} onChange={e=>setFollowupForm(s=>({...s,discrepancies:e.target.value}))} rows="2" placeholder="e.g. Name mismatch on TC; DOB differs by one day" className="ev-input" /></Field><Field label="Discussion with student"><textarea value={followupForm.discussionNotes} onChange={e=>setFollowupForm(s=>({...s,discussionNotes:e.target.value}))} rows="2" placeholder="e.g. Student will bring original passport on orientation day" className="ev-input" /></Field><Field label="Expected submission date (pending docs)"><input type="date" value={followupForm.expectedSubmissionDate} onChange={e=>setFollowupForm(s=>({...s,expectedSubmissionDate:e.target.value}))} className="ev-input" /></Field><div className="sm:col-span-2"><Field label="Additional remarks"><textarea value={followupForm.remarks} onChange={e=>setFollowupForm(s=>({...s,remarks:e.target.value}))} rows="2" placeholder="Any other follow-up notes for the verification cell" className="ev-input" /></Field></div></div><div className="mt-3 flex items-center gap-2 flex-wrap"><button onClick={saveFollowupRemark} disabled={remarkBusy} className="text-xs bg-crimson text-white px-3 py-2 rounded-md hover:bg-crimson-deep disabled:opacity-60">{remarkBusy?"Saving…":"Save Follow-up Note"}</button><OkNote msg={remarkOk} /></div>{(detail.followupRemarks || []).length > 0 && (<div className="mt-4 border-t border-slate-200 pt-3"><div className="text-xs font-semibold text-slate-700 mb-2">Remark history ({detail.followupRemarks.length})</div><div className="space-y-2 max-h-48 overflow-y-auto">{detail.followupRemarks.map(r => (<div key={r.id} className="text-xs bg-white border border-slate-200 rounded-lg p-3"><div className="flex items-center justify-between gap-2 text-[10px] text-slate-500"><span>{new Date(r.createdAt).toLocaleString()}</span><span>{r.adminStaffId ? `${r.adminStaffId}${r.adminName ? ` (${r.adminName})` : ""}` : "Staff"}</span></div>{r.physicalSubmissionNote && <div className="mt-1"><b>Physical:</b> {r.physicalSubmissionNote}</div>}{r.discrepancies && <div className="mt-1"><b>Discrepancies:</b> {r.discrepancies}</div>}{r.discussionNotes && <div className="mt-1"><b>Discussion:</b> {r.discussionNotes}</div>}{r.expectedSubmissionDate && <div className="mt-1"><b>Expected by:</b> {fmtDate(r.expectedSubmissionDate)}</div>}{r.remarks && <div className="mt-1"><b>Remarks:</b> {r.remarks}</div>}</div>))}</div></div>)}</div><div className="font-semibold text-slate-800 mt-5 mb-2">Pending Items &amp; Deadline (student-visible)</div><div className="border border-slate-200 rounded-lg p-3"><Field label="Pending documents / notes (visible to the student)"><textarea value={pendingDocs} onChange={e=>setPendingDocs(e.target.value)} rows="2" placeholder="e.g. Original 12th marks card; signed Anti-Substance Abuse declaration" className="ev-input" /></Field><div className="grid sm:grid-cols-3 gap-3 mt-3 items-end"><Field label="Submission deadline"><input type="date" value={pendingDeadline} onChange={e=>setPendingDeadline(e.target.value)} className="ev-input" /></Field><div className="sm:col-span-2 flex items-end gap-2"><button onClick={savePending} disabled={pendBusy} className="text-xs bg-crimson text-white px-3 py-2 rounded-md hover:bg-crimson-deep disabled:opacity-60">{pendBusy?"Saving…":"Save Pending Items"}</button>{(pendingDocs || pendingDeadline) && <button onClick={clearPending} disabled={pendBusy} className="text-xs border border-slate-300 px-3 py-2 rounded-md hover:bg-slate-50 disabled:opacity-60">Clear</button>}<OkNote msg={pendOk} /></div></div><div className="text-[11px] text-slate-500 mt-2">Pending items + deadline are <b>automatically cleared</b> when every mandatory document is accepted.</div></div>
     
     
-    {((!USE_REPORTING_SLOTS && detail.verifySlot && detail.verifySlot.status === "verified") || (USE_REPORTING_SLOTS && allVerified && s.slotConfirmed && s.physicalReportingCompleted)) && (<div className="mt-4 bg-green-50 border border-green-200 rounded-lg p-3 text-sm text-green-800">✓ Onboarding complete — student physically verified.</div>)}</div>)}<div className="p-4 border-t border-slate-200 flex justify-between items-center gap-3 flex-wrap sticky bottom-0 bg-white"><div className="flex gap-2 flex-wrap">{detail && detail.verifySlot && detail.verifySlot.status !== "verified" && (<button onClick={()=>markVerifyStatus("verified")} disabled={prBusy} className="text-sm bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 disabled:opacity-60 font-semibold">✓ Physically Verified</button>)}{detail && detail.verifySlot && detail.verifySlot.status !== "absent" && detail.verifySlot.status !== "verified" && (<button onClick={()=>markVerifyStatus("absent")} disabled={prBusy} className="text-sm bg-rose-600 text-white px-4 py-2 rounded-lg hover:bg-rose-700 disabled:opacity-60">⌀ Absent</button>)}</div>{isSupervisor && detail && (<button onClick={deleteStudentEntry} disabled={prBusy} className="text-sm bg-rose-600 text-white px-4 py-2 rounded-lg hover:bg-rose-700 disabled:opacity-60">🗑 Delete Student</button>)}<button onClick={close} className="text-sm bg-crimson text-white px-4 py-2 rounded-lg hover:bg-crimson-deep">Close</button></div></div>{preview && <PreviewOverlay name={preview.name} fileName={preview.fileName} fetchPath={`/api/admin/documents/${preview.id}/preview`} downloadUrl={preview.downloadUrl} close={()=>setPreview(null)} />}</div>);
+    {((!USE_REPORTING_SLOTS && detail.verifySlot && detail.verifySlot.status === "verified") || (USE_REPORTING_SLOTS && allVerified && s.slotConfirmed && s.physicalReportingCompleted)) && (<div className="mt-4 bg-green-50 border border-green-200 rounded-lg p-3 text-sm text-green-800">✓ Onboarding complete — student physically verified.</div>)}</div>)}<div className="p-4 border-t border-slate-200 flex justify-between items-center gap-3 flex-wrap sticky bottom-0 bg-white"><div className="flex gap-2 flex-wrap">{detail && (<button type="button" onClick={downloadVerificationSlip} className="text-sm bg-white border border-crimson/30 text-crimson-deep px-4 py-2 rounded-lg hover:bg-[#fdf5f4] dark:hover:bg-[#281412] font-medium">📄 Verification Slip (PDF)</button>)}{detail && detail.verifySlot && detail.verifySlot.status !== "verified" && (<button onClick={()=>markVerifyStatus("verified")} disabled={prBusy} className="text-sm bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 disabled:opacity-60 font-semibold">✓ Physically Verified</button>)}{detail && detail.verifySlot && detail.verifySlot.status !== "absent" && detail.verifySlot.status !== "verified" && (<button onClick={()=>markVerifyStatus("absent")} disabled={prBusy} className="text-sm bg-rose-600 text-white px-4 py-2 rounded-lg hover:bg-rose-700 disabled:opacity-60">⌀ Absent</button>)}</div>{isSupervisor && detail && (<button onClick={deleteStudentEntry} disabled={prBusy} className="text-sm bg-rose-600 text-white px-4 py-2 rounded-lg hover:bg-rose-700 disabled:opacity-60">🗑 Delete Student</button>)}<button onClick={close} className="text-sm bg-crimson text-white px-4 py-2 rounded-lg hover:bg-crimson-deep">Close</button></div></div>{preview && <PreviewOverlay name={preview.name} fileName={preview.fileName} fetchPath={`/api/admin/documents/${preview.id}/preview`} downloadUrl={preview.downloadUrl} close={()=>setPreview(null)} />}</div>);
 }
 function MiniStat({ big, label, tone, small }) {
   const map = { slate:"bg-slate-50 border-slate-200 text-slate-800", green:"bg-green-50 border-green-200 text-green-700", indigo:"bg-[#fdf5f4] dark:bg-[#281412] border-[#ead9d6] dark:border-[#3d201d] text-crimson-deep", rose:"bg-rose-50 border-rose-200 text-rose-700" };
