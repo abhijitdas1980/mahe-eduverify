@@ -5,6 +5,7 @@ const {
   GENDERS,
   DATE_REGEX,
   DATE_DISPLAY_FORMAT,
+  APPLICATION_NUMBER_REGEX,
   FIELD_LIMITS,
   DEFAULT_VERIFICATION_DATES,
 } = require("../constants/studentBulkUpload");
@@ -81,6 +82,9 @@ function validateRow(row, ctx) {
 
   const appNo = r.application_number;
   if (appNo) {
+    if (!APPLICATION_NUMBER_REGEX.test(appNo)) {
+      errors.push("application_number must contain digits only (no letters or symbols).");
+    }
     if (appNo.length > FIELD_LIMITS.application_number) {
       errors.push(`application_number must be at most ${FIELD_LIMITS.application_number} characters.`);
     }

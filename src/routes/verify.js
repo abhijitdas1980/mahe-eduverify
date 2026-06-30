@@ -18,11 +18,12 @@
 
 const express = require("express");
 const { pool } = require("../config/db");
-const { requireAdmin, requireSupervisor } = require("../middleware/auth");
+const { requireAdmin, requireActiveAdmin, requireSupervisor } = require("../middleware/auth");
 const { audit } = require("../lib/audit");
 
 const router = express.Router();
 router.use(requireAdmin);
+router.use(requireActiveAdmin);
 
 const {
   DEFAULT_DATES,

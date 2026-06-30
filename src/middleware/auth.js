@@ -3,6 +3,7 @@
    It is signed with JWT_SECRET so it cannot be forged. */
 const jwt = require("jsonwebtoken");
 const { jwtSecret } = require("../config/env");
+const { pool } = require("../config/db");
 
 const SECRET = jwtSecret();
 const EXPIRES = process.env.JWT_EXPIRES_IN || "12h";
@@ -44,6 +45,27 @@ function requireAdmin(req, res, next) {
   next();
 }
 
+/** Reject disabled staff accounts (use after requireAdmin on admin API routes). */
+async function requireActiveAdmin(req, res, next) {
+  if (!req.admin?.id) {
+    return res.status(401).json({ error: "Please log in as verification-cell staff to continue." });
+  }
+  try {
+    const r = await pool.query(
+      "SELECT enabled, role FROM admins WHERE id = $1",
+      [req.admin.id]
+    );
+    const row = r.rows[0];
+    if (!row || row.enabled === false) {
+      return res.status(403).json({ error: "Your staff account has been disabled. Contact a supervisor." });
+    }
+    req.admin.role = row.role;
+    next();
+  } catch (e) {
+    next(e);
+  }
+}
+
 /** Gate a route to Supervisor-role staff only. Use AFTER requireAdmin. */
 function requireSupervisor(req, res, next) {
   if (!req.admin || req.admin.role !== "supervisor") {
@@ -52,4 +74,4 @@ function requireSupervisor(req, res, next) {
   next();
 }
 
-module.exports = { sign, requireStudent, requireAdmin, requireSupervisor };
+module.exports = { sign, requireStudent, requireAdmin, requireActiveAdmin, requireSupervisor };

@@ -128,6 +128,10 @@ router.post("/admin/login", async (req, res, next) => {
       await audit(req, "admin", staffId, "LOGIN_FAIL", "Bad credentials");
       return res.status(401).json({ error: "Incorrect staff ID or password." });
     }
+    if (a.enabled === false) {
+      await audit(req, "admin", staffId, "LOGIN_FAIL", "Account disabled");
+      return res.status(403).json({ error: "This staff account has been disabled. Contact a supervisor." });
+    }
     await audit(req, "admin", a.staff_id, "LOGIN", "Admin logged in");
     res.json({
       token: sign({ type: "admin", id: a.id, staffId: a.staff_id, role: a.role }),

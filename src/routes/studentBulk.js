@@ -1,7 +1,7 @@
 /* Student bulk-upload routes — mounted at /api/admin/students/bulk-upload */
 const express = require("express");
 const { pool } = require("../config/db");
-const { requireAdmin, requireSupervisor } = require("../middleware/auth");
+const { requireAdmin, requireActiveAdmin, requireSupervisor } = require("../middleware/auth");
 const { singleExcel } = require("../middleware/excelUpload");
 const { audit } = require("../lib/audit");
 const { TEMPLATE_FILENAME } = require("../constants/studentBulkUpload");
@@ -12,6 +12,7 @@ const { createSession, getSession, deleteSession } = require("../lib/studentBulk
 
 const router = express.Router();
 router.use(requireAdmin);
+router.use(requireActiveAdmin);
 
 /** GET /api/admin/students/bulk-upload/template */
 router.get("/template", requireSupervisor, async (_req, res, next) => {

@@ -13,7 +13,7 @@ const express = require("express");
 const bcrypt = require("bcryptjs");
 const archiver = require("archiver");
 const { pool } = require("../config/db");
-const { requireAdmin, requireSupervisor } = require("../middleware/auth");
+const { requireAdmin, requireActiveAdmin, requireSupervisor } = require("../middleware/auth");
 const { audit } = require("../lib/audit");
 const {
   serializeDocAdmin, ensureDocuments, filterVisible,
@@ -41,6 +41,7 @@ const studentBulkRoutes = require("./studentBulk");
 
 const router = express.Router();
 router.use(requireAdmin);
+router.use(requireActiveAdmin);
 router.use("/students/bulk-upload", studentBulkRoutes);
 
 const isDate = (v) => /^\d{4}-\d{2}-\d{2}$/.test(v || "");
@@ -154,8 +155,47 @@ router.get("/stats", async (_req, res, next) => {
 /* ---- STAFF (Supervisor) ---- */
 router.get("/staff", requireSupervisor, async (_req, res, next) => {
   try {
-    const r = await pool.query("SELECT staff_id,name,role,created_at FROM admins ORDER BY id");
-    res.json({ staff: r.rows.map((a) => ({ staffId: a.staff_id, name: a.name, role: a.role, createdAt: a.created_at })) });
+    const r = await pool.query("SELECT staff_id,name,role,enabled,created_at FROM admins ORDER BY id");
+    res.json({
+      staff: r.rows.map((a) => ({
+        staffId: a.staff_id,
+        name: a.name,
+        role: a.role,
+        enabled: a.enabled !== false,
+        createdAt: a.created_at,
+      })),
+    });
+  } catch (e) { next(e); }
+});
+router.patch("/staff/:staffId", requireSupervisor, async (req, res, next) => {
+  try {
+    const staffId = String(req.params.staffId || "").trim();
+    const enabled = req.body?.enabled;
+    if (typeof enabled !== "boolean") {
+      return res.status(400).json({ error: "enabled must be true or false." });
+    }
+    const r = await pool.query(
+      "SELECT id, staff_id, name, role, enabled FROM admins WHERE LOWER(staff_id)=LOWER($1)",
+      [staffId]
+    );
+    const a = r.rows[0];
+    if (!a) return res.status(404).json({ error: "Staff account not found." });
+    if (a.role === "supervisor") {
+      return res.status(403).json({ error: "Supervisor accounts cannot be disabled." });
+    }
+    if (a.staff_id.toLowerCase() === String(req.admin.staffId || "").toLowerCase()) {
+      return res.status(403).json({ error: "You cannot change your own account status." });
+    }
+    await pool.query("UPDATE admins SET enabled=$1 WHERE id=$2", [enabled, a.id]);
+    await audit(
+      req, "admin", req.admin.staffId,
+      enabled ? "STAFF_ENABLED" : "STAFF_DISABLED",
+      a.staff_id
+    );
+    res.json({
+      ok: true,
+      staff: { staffId: a.staff_id, name: a.name, role: a.role, enabled },
+    });
   } catch (e) { next(e); }
 });
 router.post("/staff", requireSupervisor, async (req, res, next) => {
@@ -170,7 +210,7 @@ router.post("/staff", requireSupervisor, async (req, res, next) => {
     const hash = await bcrypt.hash(password, 12);
     await pool.query("INSERT INTO admins (staff_id,name,password_hash,role) VALUES ($1,$2,$3,$4)", [staffId, name, hash, role]);
     await audit(req, "admin", req.admin.staffId, "STAFF_ADDED", `${staffId} (${role})`);
-    res.json({ ok: true, staff: { staffId, name, role } });
+    res.json({ ok: true, staff: { staffId, name, role, enabled: true } });
   } catch (e) { next(e); }
 });
 router.get("/audit", requireSupervisor, async (_req, res, next) => {

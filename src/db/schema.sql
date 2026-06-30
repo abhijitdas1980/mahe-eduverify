@@ -9,6 +9,7 @@ CREATE TABLE IF NOT EXISTS admins (
   name          VARCHAR(120) NOT NULL,
   password_hash VARCHAR(255) NOT NULL,
   role          VARCHAR(20)  NOT NULL DEFAULT 'verifier',
+  enabled       BOOLEAN      NOT NULL DEFAULT true,
   created_at    TIMESTAMPTZ  NOT NULL DEFAULT now()
 );
 
@@ -208,6 +209,9 @@ CREATE TABLE IF NOT EXISTS student_followup_remarks (
 );
 CREATE INDEX IF NOT EXISTS idx_followup_student ON student_followup_remarks(student_id);
 CREATE INDEX IF NOT EXISTS idx_followup_created ON student_followup_remarks(created_at);
+
+-- ====== v36: enable / disable verifier staff accounts ======
+ALTER TABLE admins ADD COLUMN IF NOT EXISTS enabled BOOLEAN NOT NULL DEFAULT true;
 
 -- ====== v27: heal stale students.verify_schedule_id references ======
 -- A pre-v26 reassign would leave students.verify_schedule_id pointing at the

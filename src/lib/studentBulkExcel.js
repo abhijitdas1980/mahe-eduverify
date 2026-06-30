@@ -13,7 +13,7 @@ const { cellStr } = require("./studentBulkValidator");
 
 const SAMPLE_ROWS = [
   {
-    application_number: "CSE2026101",
+    application_number: "2026101001",
     full_name: "Aarav Sharma",
     date_of_birth: "15-03-2007",
     gender: "Male",
@@ -30,7 +30,7 @@ const SAMPLE_ROWS = [
     phone: "9000000001",
   },
   {
-    application_number: "MBA2026103",
+    application_number: "2026101003",
     full_name: "Rahul Menon",
     date_of_birth: "22-08-1999",
     gender: "Male",
@@ -69,6 +69,7 @@ async function buildTemplateBuffer() {
     ws.getColumn(i + 1).width = i === 1 ? 28 : i === 5 ? 22 : 18;
   });
 
+  const appNoCol = COLUMNS.indexOf("application_number") + 1;
   const genderCol = COLUMNS.indexOf("gender") + 1;
   const profileCol = COLUMNS.indexOf("profile") + 1;
   const categoryCol = COLUMNS.indexOf("category") + 1;
@@ -76,6 +77,15 @@ async function buildTemplateBuffer() {
   const verificationDateCol = COLUMNS.indexOf("verification_date") + 1;
 
   for (let r = 2; r <= 5002; r++) {
+    const appNoCell = ws.getCell(r, appNoCol).address;
+    ws.getCell(r, appNoCol).dataValidation = {
+      type: "custom",
+      allowBlank: true,
+      formulae: [`AND(LEN(${appNoCell})>0,COUNTIF(${appNoCell},"*[!0-9]*")=0)`],
+      showErrorMessage: true,
+      errorTitle: "Invalid application number",
+      error: "Application number must contain digits only (no letters or symbols).",
+    };
     ws.getCell(r, genderCol).dataValidation = {
       type: "list",
       allowBlank: true,
@@ -118,7 +128,7 @@ async function buildTemplateBuffer() {
   }
 
   const noteRow = ws.addRow([]);
-  noteRow.getCell(1).value = `Required: application_number, full_name, date_of_birth, gender, profile (UG or PG), program, verification_date (dd-mm-yyyy, e.g. 20-07-2026). verification_batch (1–4) is optional and auto-filled from the date when omitted. Date format: ${DATE_DISPLAY_FORMAT}. File type: .xlsx only.`;
+  noteRow.getCell(1).value = `Required: application_number (digits only, e.g. 2026101001), full_name, date_of_birth, gender, profile (UG or PG), program, verification_date (dd-mm-yyyy, e.g. 20-07-2026). verification_batch (1–4) is optional and auto-filled from the date when omitted. Date format: ${DATE_DISPLAY_FORMAT}. File type: .xlsx only.`;
   noteRow.getCell(1).font = { italic: true, color: { argb: "FF64748B" } };
   ws.mergeCells(noteRow.number, 1, noteRow.number, COLUMNS.length);
 

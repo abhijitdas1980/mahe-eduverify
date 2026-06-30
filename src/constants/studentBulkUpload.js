@@ -39,6 +39,8 @@ const REQUIRED_FIELDS = [
 const GENDERS = ["Male", "Female", "Other"];
 const DATE_DISPLAY_FORMAT = "dd-mm-yyyy";
 const DATE_REGEX = /^(\d{1,2})-(\d{1,2})-(\d{4})$/;
+/** Application numbers must be digits only (no letters or symbols). */
+const APPLICATION_NUMBER_REGEX = /^\d+$/;
 
 const FIELD_LIMITS = {
   application_number: 40,
@@ -67,6 +69,7 @@ module.exports = {
   GENDERS,
   DATE_DISPLAY_FORMAT,
   DATE_REGEX,
+  APPLICATION_NUMBER_REGEX,
   FIELD_LIMITS,
   SESSION_TTL_MS,
   DEFAULT_VERIFICATION_DATES,
