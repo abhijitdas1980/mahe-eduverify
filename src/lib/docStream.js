@@ -1,7 +1,7 @@
 /* Stream a stored document through our API (inline preview or download).
    Cloudinary authenticated URLs often fail inside iframes; same-origin blob
    preview via these routes works reliably in all browsers. */
-const { fetchAssetBuffer } = require("../config/cloudinary");
+const { fetchAssetBuffer } = require("../config/storage");
 
 function contentTypeForDoc(doc) {
   const fmt = String(doc.file_format || "").toLowerCase();

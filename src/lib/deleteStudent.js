@@ -1,4 +1,4 @@
-const { destroyAsset } = require("../config/cloudinary");
+const { destroyAsset } = require("../config/storage");
 
 async function deleteOneStudent(client, studentId) {
   const sr = await client.query("SELECT * FROM students WHERE id=$1 FOR UPDATE", [studentId]);

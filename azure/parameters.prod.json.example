@@ -1,0 +1,17 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentParameters.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "location": { "value": "centralindia" },
+    "environmentName": { "value": "prod" },
+    "appName": { "value": "eduverify" },
+    "postgresAdminLogin": { "value": "eduverifyadmin" },
+    "postgresAdminPassword": { "value": "REPLACE_WITH_STRONG_PASSWORD" },
+    "jwtSecret": { "value": "REPLACE_WITH_64_CHAR_RANDOM_HEX" },
+    "seedAdminPassword": { "value": "REPLACE_WITH_ADMIN_LOGIN_PASSWORD" },
+    "corsOrigin": { "value": "https://app-eduverifyprod.azurewebsites.net" },
+    "appServiceSku": { "value": "P1v3" },
+    "postgresSkuName": { "value": "Standard_D2s_v3" },
+    "postgresStorageGb": { "value": 64 }
+  }
+}

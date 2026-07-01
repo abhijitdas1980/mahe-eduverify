@@ -1,0 +1,337 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>EduVerify — Azure-Only Deployment Plan (Blob Storage)</title>
+  <style>
+    @page { margin: 20mm 16mm; size: A4; }
+    * { box-sizing: border-box; }
+    body {
+      font-family: "Segoe UI", Calibri, Arial, sans-serif;
+      font-size: 11pt;
+      line-height: 1.45;
+      color: #1a1a1a;
+      max-width: 210mm;
+      margin: 0 auto;
+      padding: 20px 28px;
+    }
+    h1 {
+      font-size: 21pt;
+      color: #1e3a5f;
+      border-bottom: 3px solid #0078d4;
+      padding-bottom: 8px;
+      margin-top: 0;
+    }
+    h2 {
+      font-size: 14pt;
+      color: #1e40af;
+      margin-top: 26px;
+      page-break-after: avoid;
+    }
+    h3 {
+      font-size: 12pt;
+      color: #334155;
+      margin-top: 16px;
+      page-break-after: avoid;
+    }
+    .meta { color: #64748b; font-size: 10pt; margin-bottom: 20px; }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 10px 0 16px;
+      font-size: 9.5pt;
+    }
+    th, td {
+      border: 1px solid #cbd5e1;
+      padding: 7px 9px;
+      text-align: left;
+      vertical-align: top;
+    }
+    th { background: #f1f5f9; font-weight: 600; }
+    tr:nth-child(even) td { background: #f8fafc; }
+    pre, .diagram {
+      background: #f8fafc;
+      border: 1px solid #e2e8f0;
+      border-radius: 6px;
+      padding: 12px;
+      font-family: Consolas, "Courier New", monospace;
+      font-size: 8.5pt;
+      line-height: 1.35;
+      overflow-x: auto;
+      white-space: pre-wrap;
+    }
+    ul, ol { margin: 6px 0 14px; padding-left: 22px; }
+    li { margin: 3px 0; }
+    .yes {
+      background: #ecfdf5;
+      border-left: 4px solid #059669;
+      padding: 12px 16px;
+      margin: 14px 0;
+    }
+    .warn {
+      background: #fffbeb;
+      border-left: 4px solid #d97706;
+      padding: 12px 16px;
+      margin: 14px 0;
+    }
+    .page-break { page-break-before: always; }
+    footer {
+      margin-top: 32px;
+      padding-top: 10px;
+      border-top: 1px solid #e2e8f0;
+      font-size: 9pt;
+      color: #64748b;
+      text-align: center;
+    }
+    code { font-family: Consolas, monospace; font-size: 9pt; background: #f1f5f9; padding: 1px 4px; border-radius: 3px; }
+  </style>
+</head>
+<body>
+
+<h1>EduVerify — Azure-Only Deployment Plan</h1>
+<p class="meta">
+  <strong>Document:</strong> Full Microsoft Azure deployment with Azure Blob Storage (no Cloudinary)<br />
+  <strong>Application:</strong> EduVerify Pre-Verification Portal · Node.js 20 + PostgreSQL<br />
+  <strong>Scale target:</strong> ~5,000 students per admission cycle (scalable to 25,000+)<br />
+  <strong>Prepared:</strong> June 2026
+</p>
+
+<div class="yes">
+  <strong>Yes — this is possible.</strong> EduVerify can run entirely on Azure with student documents stored in <strong>Azure Blob Storage</strong> instead of Cloudinary. The application already keeps file metadata in PostgreSQL (<code>file_public_id</code>, <code>file_name</code>, <code>file_format</code>) and streams previews through the API. Replacing the Cloudinary module with an Azure Blob adapter is a <strong>focused code change</strong> (~1–2 days development + testing), not a full rewrite.
+</div>
+
+<h2>1. Current vs target architecture</h2>
+<table>
+  <tr><th>Layer</th><th>Today (Render)</th><th>Target (Azure-only)</th></tr>
+  <tr><td>Web + API</td><td>Render Web Service</td><td><strong>Azure App Service</strong> (Linux, Node 20)</td></tr>
+  <tr><td>Database</td><td>Render PostgreSQL</td><td><strong>Azure Database for PostgreSQL</strong> Flexible Server</td></tr>
+  <tr><td>Document files</td><td>Cloudinary (authenticated assets)</td><td><strong>Azure Blob Storage</strong> (private container + SAS)</td></tr>
+  <tr><td>Secrets</td><td>Platform env vars</td><td><strong>Azure Key Vault</strong> + Managed Identity</td></tr>
+  <tr><td>HTTPS / domain</td><td>*.onrender.com</td><td>Custom domain + App Service managed certificate</td></tr>
+  <tr><td>Monitoring</td><td>Render logs</td><td><strong>Application Insights</strong> + Log Analytics</td></tr>
+  <tr><td>CDN (optional)</td><td>Cloudinary CDN</td><td>Azure Front Door or Blob static website (not needed — files are private)</td></tr>
+</table>
+
+<h2>2. Azure-only architecture diagram</h2>
+<pre class="diagram">              [ Students · Verification Staff · Campus network ]
+                                  |
+                    Azure DNS (eduverify.college.edu)
+                                  |
+              Azure Front Door (optional: WAF, TLS, geo routing)
+                                  |
+         Azure App Service — Linux, Node.js 20
+         (Managed Identity — no storage keys in code)
+                    |                    |
+                    |                    +---- Azure Key Vault
+                    |                          JWT_SECRET, SEED_ADMIN_PASSWORD
+                    |
+    +---------------+-------------------------------+
+    |                                               |
+Azure Database for PostgreSQL              Azure Storage Account
+Flexible Server (private/VNet)             Container: eduverify-documents
+- students, documents metadata             Access: Private (no public blob)
+- verify schedule, audit logs              Encryption: Microsoft-managed keys
+                                           Lifecycle: Cool/Archive after 2 years</pre>
+
+<h2>3. Why Azure Blob replaces Cloudinary cleanly</h2>
+<p>Cloudinary is used in four ways in EduVerify. Each maps directly to Azure Blob:</p>
+<table>
+  <tr><th>Cloudinary function</th><th>Used for</th><th>Azure Blob equivalent</th></tr>
+  <tr><td><code>uploadBuffer()</code></td><td>Student document upload</td><td><code>BlockBlobClient.upload()</code> to path <code>{appNo}/{docCode}_{timestamp}.pdf</code></td></tr>
+  <tr><td><code>signedUrl()</code></td><td>Time-limited download link</td><td><strong>User delegation SAS</strong> or account SAS (1-hour expiry, read-only)</td></tr>
+  <tr><td><code>fetchAssetBuffer()</code></td><td>Admin preview + ZIP export</td><td><code>downloadToBuffer()</code> via SDK (server-side, no public URL)</td></tr>
+  <tr><td><code>destroyAsset()</code></td><td>Re-upload / student delete</td><td><code>deleteBlob()</code></td></tr>
+</table>
+<p>The database column <code>file_public_id</code> today stores Cloudinary public IDs. After migration it stores the <strong>blob path</strong> (e.g. <code>CSE2026001/AADHAAR_1719234567890.pdf</code>). No schema change is required.</p>
+
+<div class="warn">
+  <strong>Effort note:</strong> A new file <code>src/config/blobStorage.js</code> replaces <code>src/config/cloudinary.js</code>. Four files import storage today: <code>student.js</code>, <code>admin.js</code>, <code>docStream.js</code>, <code>deleteStudent.js</code>, plus <code>docs.js</code> for signed URLs. CSP headers in <code>server.js</code> remove Cloudinary domains. The <code>cloudinary</code> npm package is removed; <code>@azure/storage-blob</code> and <code>@azure/identity</code> are added.
+</div>
+
+<div class="page-break"></div>
+
+<h2>4. Azure Blob Storage design</h2>
+
+<h3>4.1 Storage account settings</h3>
+<table>
+  <tr><th>Setting</th><th>Value</th></tr>
+  <tr><td>Performance</td><td>Standard (documents are not latency-critical)</td></tr>
+  <tr><td>Redundancy</td><td>LRS for pilot; <strong>ZRS or GRS</strong> for production</td></tr>
+  <tr><td>Access tier</td><td>Hot during admission season; lifecycle rule → Cool after 12 months</td></tr>
+  <tr><td>Public access</td><td><strong>Disabled</strong> (container private)</td></tr>
+  <tr><td>Encryption</td><td>Microsoft-managed keys (or CMK in Key Vault if policy requires)</td></tr>
+  <tr><td>Soft delete</td><td>Enabled (7–14 days) — protects against accidental deletion</td></tr>
+  <tr><td>Versioning</td><td>Optional — useful when students re-upload documents</td></tr>
+  <tr><td>Container name</td><td><code>eduverify-documents</code></td></tr>
+  <tr><td>Blob path pattern</td><td><code>{appNo}/{docCode}_{unixMs}.{ext}</code></td></tr>
+</table>
+
+<h3>4.2 Security model (equivalent to Cloudinary “authenticated”)</h3>
+<ul>
+  <li>Container has <strong>no anonymous read</strong> — blobs are never world-readable.</li>
+  <li>Students and staff never receive permanent blob URLs. The API generates <strong>short-lived SAS tokens</strong> (e.g. 60 minutes) for download links, same as today.</li>
+  <li>Previews in the admin modal use <strong>same-origin API streaming</strong> (<code>/api/.../preview</code>) — already implemented; only the backend fetch source changes from Cloudinary to Blob.</li>
+  <li>App Service uses <strong>Managed Identity</strong> with role <code>Storage Blob Data Contributor</code> on the container — no account keys in environment variables.</li>
+  <li>Network: optional <strong>Private Endpoint</strong> for Storage so blob traffic stays on Azure backbone.</li>
+</ul>
+
+<h3>4.3 Environment variables (Azure-only — no Cloudinary)</h3>
+<table>
+  <tr><th>Variable</th><th>Example / purpose</th></tr>
+  <tr><td><code>STORAGE_PROVIDER</code></td><td><code>azure</code> (or remove Cloudinary vars entirely)</td></tr>
+  <tr><td><code>AZURE_STORAGE_ACCOUNT_NAME</code></td><td><code>steduverifyprod</code></td></tr>
+  <tr><td><code>AZURE_STORAGE_CONTAINER</code></td><td><code>eduverify-documents</code></td></tr>
+  <tr><td><code>AZURE_STORAGE_SAS_EXPIRY_MINUTES</code></td><td><code>60</code> (download link lifetime)</td></tr>
+  <tr><td><code>AZURE_CLIENT_ID</code></td><td>Only if using user-assigned managed identity</td></tr>
+  <tr><td colspan="2"><em>Remove:</em> CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY, CLOUDINARY_API_SECRET</td></tr>
+</table>
+<p>With Managed Identity, <code>DefaultAzureCredential</code> authenticates automatically on App Service — no storage account key needed.</p>
+
+<h2>5. Code migration outline</h2>
+<h3>5.1 New storage module (pseudocode)</h3>
+<pre class="diagram">src/config/blobStorage.js
+  - isConfigured()     → checks AZURE_STORAGE_ACCOUNT_NAME + container
+  - uploadBuffer(buf, appNo, docCode) → returns { publicId: blobPath, format, resourceType }
+  - signedUrl(doc)     → generateBlobSASUrl(blobPath, read, 60 min)
+  - fetchAssetBuffer(doc) → download blob to Buffer
+  - destroyAsset(publicId) → deleteBlob(publicId)
+
+src/config/storage.js (thin facade)
+  - exports functions from blobStorage OR cloudinary based on STORAGE_PROVIDER
+  - allows phased cutover during migration</pre>
+
+<h3>5.2 Files to update</h3>
+<table>
+  <tr><th>File</th><th>Change</th></tr>
+  <tr><td><code>package.json</code></td><td>Add <code>@azure/storage-blob</code>, <code>@azure/identity</code>; remove <code>cloudinary</code></td></tr>
+  <tr><td><code>src/config/blobStorage.js</code></td><td>New — core Blob implementation</td></tr>
+  <tr><td><code>src/config/cloudinary.js</code></td><td>Remove after cutover (or keep behind feature flag briefly)</td></tr>
+  <tr><td><code>src/routes/student.js</code></td><td>Import from <code>storage.js</code>; update error messages</td></tr>
+  <tr><td><code>src/lib/docStream.js</code></td><td>No UI change — fetch from Blob</td></tr>
+  <tr><td><code>src/lib/deleteStudent.js</code></td><td>Delete blobs instead of Cloudinary assets</td></tr>
+  <tr><td><code>server.js</code></td><td>CSP: remove <code>res.cloudinary.com</code>; keep <code>blob:</code> for previews</td></tr>
+  <tr><td><code>.env.example</code></td><td>Document Azure storage vars; remove Cloudinary section</td></tr>
+</table>
+
+<h3>5.3 Estimated development effort</h3>
+<table>
+  <tr><th>Task</th><th>Duration</th></tr>
+  <tr><td>Implement <code>blobStorage.js</code> + facade</td><td>4–6 hours</td></tr>
+  <tr><td>Wire routes + test upload/preview/ZIP/delete</td><td>4–6 hours</td></tr>
+  <tr><td>Azure infra (storage account, MI, RBAC)</td><td>2–4 hours</td></tr>
+  <tr><td>Migrate existing Cloudinary files to Blob (if any production data)</td><td>4–8 hours (scripted)</td></tr>
+  <tr><td>UAT with 50–100 test students</td><td>1–2 days</td></tr>
+  <tr><td><strong>Total</strong></td><td><strong>~3–5 working days</strong></td></tr>
+</table>
+
+<div class="page-break"></div>
+
+<h2>6. Azure resources checklist</h2>
+<p>Resource group: <code>rg-eduverify-prod</code> (region: <strong>Central India</strong> or institution-approved)</p>
+<ol>
+  <li><strong>App Service Plan</strong> — Linux, Premium v3 P1v3 (production)</li>
+  <li><strong>Web App</strong> — <code>eduverify-prod</code>, Node 20 LTS, Always On enabled</li>
+  <li><strong>PostgreSQL Flexible Server</strong> — General Purpose 2 vCore, 32–64 GB, SSL required</li>
+  <li><strong>Storage Account</strong> — <code>steduverifyprod</code>, private container <code>eduverify-documents</code></li>
+  <li><strong>Key Vault</strong> — JWT_SECRET, SEED_ADMIN_PASSWORD, DATABASE_URL (or use App Service connection strings)</li>
+  <li><strong>Managed Identity</strong> — System-assigned on Web App; grant Storage Blob Data Contributor</li>
+  <li><strong>Application Insights</strong> — linked to Web App</li>
+  <li><strong>Log Analytics Workspace</strong> — central logging</li>
+  <li><strong>Private Endpoints</strong> (optional) — PostgreSQL + Storage for campus-only access</li>
+  <li><strong>Azure Front Door</strong> (optional) — WAF, DDoS, custom domain</li>
+</ol>
+
+<h2>7. Capacity — 5,000 students</h2>
+<table>
+  <tr><th>Resource</th><th>Estimate</th><th>Recommendation</th></tr>
+  <tr><td>PostgreSQL data</td><td>2–8 GB metadata</td><td>GP 2 vCore, 32 GB storage, 7-day backup</td></tr>
+  <tr><td>Blob storage</td><td>50–150 GB (one cycle)</td><td>Standard ZRS; lifecycle to Cool after 12 months</td></tr>
+  <tr><td>Peak concurrent users</td><td>200–500</td><td>App Service scale 1→3 instances</td></tr>
+  <tr><td>Upload throughput</td><td>~5 MB × thousands of files</td><td>Blob handles easily; rate limit already in app (60/hr/IP)</td></tr>
+</table>
+
+<h2>8. Deployment &amp; CI/CD</h2>
+<pre class="diagram">GitHub (main) → GitHub Actions
+  1. npm ci --omit=dev
+  2. Run smoke tests (optional)
+  3. Deploy zip to App Service staging slot
+  4. GET /api/health
+  5. Swap staging → production
+
+Startup (first deploy):
+  NODE_ENV=production
+  AUTO_SETUP=true  → runs schema + admin seed
+  DATABASE_URL from Key Vault reference</pre>
+
+<h2>9. Migration from Render + Cloudinary</h2>
+<table>
+  <tr><th>Step</th><th>Action</th></tr>
+  <tr><td>1</td><td>Provision Azure resources (App Service, PostgreSQL, Storage, Key Vault)</td></tr>
+  <tr><td>2</td><td>Deploy EduVerify with Blob storage code + Managed Identity</td></tr>
+  <tr><td>3</td><td><code>pg_dump</code> from Render PostgreSQL → restore to Azure PostgreSQL</td></tr>
+  <tr><td>4</td><td>Run migration script: for each document with Cloudinary <code>file_public_id</code>, download via Cloudinary API and upload to Blob; update <code>file_public_id</code> to blob path</td></tr>
+  <tr><td>5</td><td>Verify sample students: preview, download, ZIP export, re-upload, delete</td></tr>
+  <tr><td>6</td><td>Point DNS to Azure; set <code>CORS_ORIGIN</code> to new URL</td></tr>
+  <tr><td>7</td><td>Decommission Render and Cloudinary after 30-day parallel run (optional)</td></tr>
+</table>
+<p><strong>Greenfield deploy (no existing uploads):</strong> Skip step 4 — deploy Blob code directly; no Cloudinary account needed.</p>
+
+<h2>10. Security &amp; compliance</h2>
+<ul>
+  <li>All student PII and documents remain in chosen Azure region (data residency).</li>
+  <li>PostgreSQL: SSL, firewall / VNet, least-privilege DB user.</li>
+  <li>Blobs: private container, encryption at rest, soft delete, audit logs via Storage Analytics.</li>
+  <li>No third-party document CDN — reduces vendor risk and DPA scope.</li>
+  <li>Key Vault for secrets; Managed Identity eliminates storage keys in config.</li>
+  <li>Existing app controls retained: JWT auth, rate limits, staff roles, audit log.</li>
+</ul>
+
+<h2>11. Estimated monthly cost (India region, indicative)</h2>
+<table>
+  <tr><th>Service</th><th>Production (~5K students)</th></tr>
+  <tr><td>App Service P1v3 (1 instance)</td><td>₹8,000 – ₹12,000</td></tr>
+  <tr><td>PostgreSQL GP 2 vCore</td><td>₹10,000 – ₹18,000</td></tr>
+  <tr><td>Blob Storage ~100 GB Hot</td><td>₹1,500 – ₹3,000</td></tr>
+  <tr><td>Key Vault + App Insights</td><td>₹1,000 – ₹3,000</td></tr>
+  <tr><td><strong>Total (no Cloudinary fee)</strong></td><td><strong>₹20,000 – ₹36,000 / month</strong></td></tr>
+</table>
+<p>Blob-only storage is typically <strong>lower cost</strong> than Cloudinary at scale because you pay only for GB stored and egress, not per-transformation API.</p>
+
+<h2>12. Rollout timeline</h2>
+<table>
+  <tr><th>Phase</th><th>Duration</th><th>Deliverables</th></tr>
+  <tr><td>A — Azure foundation</td><td>Week 1</td><td>RG, App Service, PostgreSQL, Storage, Key Vault, SSL domain</td></tr>
+  <tr><td>B — Blob code + deploy</td><td>Week 1–2</td><td>Replace Cloudinary module; staging UAT</td></tr>
+  <tr><td>C — Data migration</td><td>Week 2</td><td>DB import; optional file migration script</td></tr>
+  <tr><td>D — Load test</td><td>Week 2–3</td><td>5K bulk upload, concurrent document uploads</td></tr>
+  <tr><td>E — Go-live</td><td>Admission season</td><td>DNS cutover, monitoring, support runbook</td></tr>
+</table>
+
+<h2>13. Decision summary</h2>
+<table>
+  <tr><th>Question</th><th>Answer</th></tr>
+  <tr><td>Can we deploy on Azure only?</td><td><strong>Yes</strong></td></tr>
+  <tr><td>Can we avoid Cloudinary?</td><td><strong>Yes</strong> — use Azure Blob Storage</td></tr>
+  <tr><td>Major rewrite needed?</td><td><strong>No</strong> — storage adapter swap (~5 files)</td></tr>
+  <tr><td>Recommended hosting</td><td>Azure App Service + PostgreSQL Flexible Server + Blob</td></tr>
+  <tr><td>Auth to Blob</td><td>Managed Identity (no keys in app)</td></tr>
+  <tr><td>Student download security</td><td>Private blobs + server-generated SAS (1 hour)</td></tr>
+  <tr><td>Timeline</td><td>3–5 dev days + 2–3 weeks infra/UAT</td></tr>
+</table>
+
+<h2>14. Prerequisites from college IT</h2>
+<ol>
+  <li>Azure subscription (EA, CSP, or Pay-As-You-Go)</li>
+  <li>Approval for Azure region and data retention policy</li>
+  <li>DNS hostname (e.g. <code>eduverify.manipal.edu</code>)</li>
+  <li>Decision to proceed with Blob-only (this document)</li>
+  <li>Optional: VNet / Private Endpoint requirements</li>
+  <li>Maintenance window for Render cutover</li>
+</ol>
+
+<footer>
+  EduVerify Azure-Only Deployment Plan (Blob Storage) · Confidential — internal use · June 2026
+</footer>
+
+</body>
+</html>

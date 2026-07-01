@@ -1,0 +1,91 @@
+name: Deploy MAHE UAT
+
+on:
+  workflow_dispatch:
+    inputs:
+      skip_health_check:
+        description: Skip /api/health check (use if DB not configured yet)
+        required: false
+        default: false
+        type: boolean
+  push:
+    branches: [uat]
+    paths:
+      - '**'
+      - '!.github/workflows/mahe-prod-deploy.yml'
+
+concurrency:
+  group: mahe-uat-deploy
+  cancel-in-progress: true
+
+env:
+  AZURE_WEBAPP_NAME: MAHE-CI-DOC-UAT-APP01
+  AZURE_WEBAPP_HOST: mahe-ci-doc-uat-app01.azurewebsites.net
+  NODE_VERSION: '20'
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: uat
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Use Node.js ${{ env.NODE_VERSION }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Install dependencies
+        run: npm ci --omit=dev
+
+      - name: Syntax check
+        run: |
+          node --check server.js
+          node --check src/config/blobStorage.js
+          node --check src/config/storage.js
+
+      - name: Log in to Azure
+        uses: azure/login@v2
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: Deploy to App Service (UAT)
+        uses: azure/webapps-deploy@v3
+        with:
+          app-name: ${{ env.AZURE_WEBAPP_NAME }}
+          package: .
+
+      - name: Health check
+        if: ${{ github.event_name != 'workflow_dispatch' || inputs.skip_health_check != true }}
+        run: |
+          URL="https://${{ env.AZURE_WEBAPP_HOST }}/api/health"
+          echo "Checking $URL"
+          for i in 1 2 3 4 5 6 8 10; do
+            BODY=$(curl -fsS "$URL" 2>/dev/null || true)
+            echo "Attempt $i: $BODY"
+            if echo "$BODY" | grep -q '"ok":true'; then
+              if echo "$BODY" | grep -q '"db":"up"'; then
+                echo "Health OK — database connected"
+                exit 0
+              fi
+              echo "App is up but database is down — check DATABASE_URL on App Service"
+              exit 1
+            fi
+            sleep 20
+          done
+          echo "Health check failed after ~3 minutes"
+          exit 1
+
+      - name: Deployment summary
+        if: always()
+        run: |
+          echo "### MAHE UAT deployment" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **App Service:** \`${{ env.AZURE_WEBAPP_NAME }}\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **URL:** https://${{ env.AZURE_WEBAPP_HOST }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **Health:** https://${{ env.AZURE_WEBAPP_HOST }}/api/health" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **Admin login:** Verification Cell → ADM-001" >> "$GITHUB_STEP_SUMMARY"

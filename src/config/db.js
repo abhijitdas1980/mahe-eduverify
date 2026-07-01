@@ -8,12 +8,12 @@ if (!process.env.DATABASE_URL) {
 // Render's managed Postgres requires SSL. Local Postgres usually does not.
 const useSSL =
   process.env.NODE_ENV === "production" ||
-  /render\.com|amazonaws|neon\.tech|supabase/.test(process.env.DATABASE_URL || "");
+  /render\.com|amazonaws|neon\.tech|supabase|postgres\.database\.azure\.com/.test(process.env.DATABASE_URL || "");
 
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
   ssl: useSSL ? { rejectUnauthorized: false } : false,
-  max: 10,
+  max: Math.max(5, parseInt(process.env.PG_POOL_MAX || "20", 10) || 20),
   idleTimeoutMillis: 30000,
 });
 

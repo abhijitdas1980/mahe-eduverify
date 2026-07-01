@@ -7,7 +7,8 @@ const {
   checklistFor, fullDocSetFor, DOC_META,
   isLegacyCode, isOptionalCode, isMandatoryForStudent,
 } = require("../config/checklists");
-const { signedUrl } = require("../config/cloudinary");
+const { signedUrl } = require("../config/storage");
+const { storageProvider } = require("../config/env");
 const { physicalSubmissionLabel } = require("./followupRemarks");
 
 /* v9 — the new single confirmation key. */
@@ -45,8 +46,28 @@ function docOptionalFlag(d, ctx) {
   return !!DOC_META[d.doc_code]?.optional || isOptionalCode(d.doc_code);
 }
 
+function docUrls(d, role) {
+  if (!d.file_public_id) {
+    return { fileUrl: null, viewUrl: null, downloadUrl: null };
+  }
+  if (storageProvider() === "azure") {
+    if (role === "admin") {
+      const base = `/api/admin/documents/${d.id}`;
+      return { fileUrl: `${base}/preview`, viewUrl: `${base}/preview`, downloadUrl: `${base}/download` };
+    }
+    const base = `/api/student/documents/${d.doc_code}`;
+    return { fileUrl: `${base}/preview`, viewUrl: `${base}/preview`, downloadUrl: `${base}/download` };
+  }
+  return {
+    fileUrl: signedUrl(d, false),
+    viewUrl: signedUrl(d, false),
+    downloadUrl: signedUrl(d, true),
+  };
+}
+
 function serializeDoc(d, ctx) {
   const sv = d.self_verify || {};
+  const urls = docUrls(d, "student");
   return {
     docCode: d.doc_code,
     name: DOC_META[d.doc_code]?.name || d.doc_code,
@@ -55,7 +76,8 @@ function serializeDoc(d, ctx) {
     optional: docOptionalFlag(d, ctx),
     hasFile: !!d.file_public_id,
     fileName: d.file_name || null,
-    fileUrl: d.file_public_id ? signedUrl(d, false) : null,
+    fileUrl: urls.fileUrl,
+    downloadUrl: urls.downloadUrl,
     institutionName: d.institution_name || "",
     flagged: !!d.flagged,
     flagMatch: d.flag_match || null,
@@ -78,6 +100,7 @@ function serializeDoc(d, ctx) {
 
 function serializeDocAdmin(d, ctx) {
   const sv = d.self_verify || {};
+  const urls = docUrls(d, "admin");
   return {
     id: d.id,
     docCode: d.doc_code,
@@ -88,8 +111,8 @@ function serializeDocAdmin(d, ctx) {
     hasFile: !!d.file_public_id,
     fileName: d.file_name || null,
     fileSize: d.file_size || null,
-    viewUrl: d.file_public_id ? signedUrl(d, false) : null,
-    downloadUrl: d.file_public_id ? signedUrl(d, true) : null,
+    viewUrl: urls.viewUrl,
+    downloadUrl: urls.downloadUrl,
     institutionName: d.institution_name || "",
     flagged: !!d.flagged,
     flagMatch: d.flag_match || null,

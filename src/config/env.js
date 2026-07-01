@@ -1,6 +1,29 @@
 const INSECURE_JWT = "dev-only-insecure-secret-change-me";
 const DEFAULT_ADMIN_PASS = "ChangeMe@2026";
 
+function storageProvider() {
+  const explicit = (process.env.STORAGE_PROVIDER || "").trim().toLowerCase();
+  if (explicit) return explicit;
+  if (process.env.AZURE_STORAGE_ACCOUNT_NAME || process.env.AZURE_STORAGE_CONNECTION_STRING) {
+    return "azure";
+  }
+  if (
+    process.env.CLOUDINARY_CLOUD_NAME &&
+    process.env.CLOUDINARY_API_KEY &&
+    process.env.CLOUDINARY_API_SECRET
+  ) {
+    return "cloudinary";
+  }
+  return "azure";
+}
+
+function isAzureStorageConfigured() {
+  if (process.env.AZURE_STORAGE_CONNECTION_STRING) return true;
+  if (process.env.AZURE_STORAGE_ACCOUNT_NAME && process.env.AZURE_STORAGE_ACCOUNT_KEY) return true;
+  if (process.env.AZURE_STORAGE_ACCOUNT_NAME && isProduction()) return true;
+  return false;
+}
+
 function isProduction() {
   return process.env.NODE_ENV === "production";
 }
@@ -23,6 +46,26 @@ function assertProductionConfig() {
     );
   }
 
+  if (!process.env.DATABASE_URL) {
+    throw new Error("DATABASE_URL must be set in production.");
+  }
+
+  const provider = storageProvider();
+  if (provider === "azure" && !isAzureStorageConfigured()) {
+    throw new Error(
+      "Azure Blob storage is required in production. Set AZURE_STORAGE_ACCOUNT_NAME (with Managed Identity) or AZURE_STORAGE_CONNECTION_STRING."
+    );
+  }
+  if (provider === "cloudinary") {
+    if (
+      !process.env.CLOUDINARY_CLOUD_NAME ||
+      !process.env.CLOUDINARY_API_KEY ||
+      !process.env.CLOUDINARY_API_SECRET
+    ) {
+      throw new Error("Cloudinary credentials are required when STORAGE_PROVIDER=cloudinary.");
+    }
+  }
+
   const cors = process.env.CORS_ORIGIN || "*";
   if (cors === "*") {
     console.warn(
@@ -42,6 +85,8 @@ module.exports = {
   assertProductionConfig,
   jwtSecret,
   isProduction,
+  storageProvider,
+  isAzureStorageConfigured,
   INSECURE_JWT,
   DEFAULT_ADMIN_PASS,
 };

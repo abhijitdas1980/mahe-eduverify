@@ -11,7 +11,8 @@ const express = require("express");
 const helmet = require("helmet");
 const cors = require("cors");
 
-const { assertProductionConfig } = require("./src/config/env");
+const { assertProductionConfig, storageProvider } = require("./src/config/env");
+const { isConfigured: isStorageConfigured } = require("./src/config/storage");
 assertProductionConfig();
 
 const { pool } = require("./src/config/db");
@@ -38,9 +39,9 @@ app.use(
         scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'", "https://unpkg.com", "https://cdn.tailwindcss.com"],
         styleSrc: ["'self'", "'unsafe-inline'", "https://cdn.tailwindcss.com", "https://fonts.googleapis.com", "https://api.fontshare.com"],
         fontSrc: ["'self'", "https://fonts.gstatic.com", "https://api.fontshare.com", "data:"],
-        imgSrc: ["'self'", "data:", "blob:", "https://res.cloudinary.com"],
-        connectSrc: ["'self'", "https://res.cloudinary.com"],
-        frameSrc: ["'self'", "blob:", "https://res.cloudinary.com"],
+        imgSrc: ["'self'", "data:", "blob:", "https://*.blob.core.windows.net"],
+        connectSrc: ["'self'", "https://*.blob.core.windows.net"],
+        frameSrc: ["'self'", "blob:", "https://*.blob.core.windows.net"],
       },
     },
     crossOriginEmbedderPolicy: false,
@@ -112,6 +113,7 @@ async function start() {
   }
   app.listen(PORT, () => {
     console.log(`EduVerify server listening on port ${PORT}`);
+    console.log(`Storage: ${storageProvider()}${isStorageConfigured() ? "" : " (not configured)"}`);
     console.log("Health check: /api/health");
   });
 }

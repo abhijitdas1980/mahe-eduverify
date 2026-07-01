@@ -12,7 +12,7 @@ const { pool } = require("../config/db");
 const { requireStudent } = require("../middleware/auth");
 const { uploadLimiter } = require("../middleware/security");
 const { singleFile, formatForMime } = require("../middleware/upload");
-const { uploadBuffer, destroyAsset, isConfigured } = require("../config/cloudinary");
+const { uploadBuffer, destroyAsset, isConfigured } = require("../config/storage");
 const { streamDoc } = require("../lib/docStream");
 const { audit } = require("../lib/audit");
 const {
@@ -151,6 +151,17 @@ router.get("/documents/:code/preview", async (req, res, next) => {
   } catch (e) { next(e); }
 });
 
+router.get("/documents/:code/download", async (req, res, next) => {
+  try {
+    const code = String(req.params.code || "").toUpperCase();
+    if (isLegacyCode(code)) return res.status(404).json({ error: "Document not found." });
+    const dr = await pool.query("SELECT * FROM documents WHERE student_id=$1 AND doc_code=$2", [req.student.id, code]);
+    const doc = dr.rows[0];
+    if (!doc) return res.status(404).json({ error: "Document not found in your checklist." });
+    await streamDoc(res, doc, { attachment: true });
+  } catch (e) { next(e); }
+});
+
 router.post("/contact", async (req, res, next) => {
   try {
     const sr = await pool.query(
@@ -219,7 +230,7 @@ router.post("/documents/:code/upload", uploadLimiter, singleFile("file"), async 
     res.json({ document: serializeDoc(fresh.rows[0], ctx) });
   } catch (e) {
     const msg = String(e.message || "");
-    if (/cloudinary|cloud name|invalid api|unknown api/i.test(msg)) {
+    if (/cloudinary|cloud name|invalid api|unknown api|azure|blob storage|storage account/i.test(msg)) {
       return res.status(503).json({
         error: "Upload failed on the server (storage not ready). Please try again shortly or contact the verification cell.",
       });

@@ -1,0 +1,304 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>EduVerify — Azure Deployment Plan</title>
+  <style>
+    @page { margin: 22mm 18mm; size: A4; }
+    * { box-sizing: border-box; }
+    body {
+      font-family: "Segoe UI", Calibri, Arial, sans-serif;
+      font-size: 11pt;
+      line-height: 1.45;
+      color: #1a1a1a;
+      max-width: 210mm;
+      margin: 0 auto;
+      padding: 24px 32px;
+    }
+    h1 {
+      font-size: 22pt;
+      color: #1e3a5f;
+      border-bottom: 3px solid #2563eb;
+      padding-bottom: 8px;
+      margin-top: 0;
+    }
+    h2 {
+      font-size: 14pt;
+      color: #1e40af;
+      margin-top: 28px;
+      page-break-after: avoid;
+    }
+    h3 {
+      font-size: 12pt;
+      color: #334155;
+      margin-top: 18px;
+      page-break-after: avoid;
+    }
+    .meta {
+      color: #64748b;
+      font-size: 10pt;
+      margin-bottom: 24px;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 12px 0 18px;
+      font-size: 10pt;
+    }
+    th, td {
+      border: 1px solid #cbd5e1;
+      padding: 8px 10px;
+      text-align: left;
+      vertical-align: top;
+    }
+    th { background: #f1f5f9; font-weight: 600; }
+    tr:nth-child(even) td { background: #f8fafc; }
+    pre, .diagram {
+      background: #f8fafc;
+      border: 1px solid #e2e8f0;
+      border-radius: 6px;
+      padding: 14px;
+      font-family: Consolas, "Courier New", monospace;
+      font-size: 9pt;
+      line-height: 1.35;
+      overflow-x: auto;
+      white-space: pre-wrap;
+    }
+    ul, ol { margin: 8px 0 16px; padding-left: 22px; }
+    li { margin: 4px 0; }
+    .highlight {
+      background: #eff6ff;
+      border-left: 4px solid #2563eb;
+      padding: 12px 16px;
+      margin: 16px 0;
+    }
+    .page-break { page-break-before: always; }
+    footer {
+      margin-top: 40px;
+      padding-top: 12px;
+      border-top: 1px solid #e2e8f0;
+      font-size: 9pt;
+      color: #64748b;
+      text-align: center;
+    }
+  </style>
+</head>
+<body>
+
+<h1>EduVerify — Azure Deployment Plan</h1>
+<p class="meta">
+  <strong>Document:</strong> Production deployment architecture for Azure<br />
+  <strong>Application:</strong> EduVerify Pre-Verification Portal (Node.js + PostgreSQL)<br />
+  <strong>Scale target:</strong> ~5,000 students (admission season), scalable to 25,000+<br />
+  <strong>Prepared:</strong> June 2026
+</p>
+
+<div class="highlight">
+  <strong>Executive summary:</strong> Deploy EduVerify as a single Node.js web application on <strong>Azure App Service (Linux)</strong>, with <strong>Azure Database for PostgreSQL Flexible Server</strong> for all student and verification data. Document files can remain on <strong>Cloudinary</strong> for the fastest migration, or move to <strong>Azure Blob Storage</strong> for full in-Azure compliance. This architecture supports real-time orientation-week verification with room to grow.
+</div>
+
+<h2>1. Application overview</h2>
+<table>
+  <tr><th>Component</th><th>Current technology</th><th>Azure service</th></tr>
+  <tr><td>Web application (API + UI)</td><td>Node.js 20, Express, static HTML/React</td><td>Azure App Service (Linux)</td></tr>
+  <tr><td>Relational database</td><td>PostgreSQL</td><td>Azure Database for PostgreSQL — Flexible Server</td></tr>
+  <tr><td>Document storage</td><td>Cloudinary (authenticated files)</td><td>Cloudinary or Azure Blob Storage</td></tr>
+  <tr><td>Secrets &amp; config</td><td>Environment variables</td><td>Azure Key Vault + App Service references</td></tr>
+  <tr><td>HTTPS &amp; domain</td><td>Render URL</td><td>Custom domain + managed certificate</td></tr>
+  <tr><td>Monitoring</td><td>Platform logs</td><td>Application Insights + Log Analytics</td></tr>
+</table>
+<p>EduVerify is a <strong>monolithic</strong> application: one deployable unit serves <code>/api/*</code>, the student portal (<code>index.html</code>), and the verification schedule dashboard (<code>verify.html</code>). Kubernetes is not required at 5,000-student scale.</p>
+
+<h2>2. Recommended production architecture</h2>
+<pre class="diagram">                    [ Students + Verification Staff ]
+                                  |
+                    Azure DNS (college domain)
+                                  |
+              Azure Front Door (optional: WAF + CDN)
+                                  |
+              Azure App Service — Linux, Node.js 20
+              (always on, auto-scale 1–3 instances)
+                                  |
+         +------------------------+------------------------+
+         |                        |                        |
+  PostgreSQL Flexible       Azure Key Vault          Cloudinary OR
+  Server (private/VNet)     JWT, DB password,        Azure Blob Storage
+                            admin secrets            (student documents)</pre>
+
+<h2>3. Capacity planning — 5,000 students</h2>
+
+<h3>3.1 Database (PostgreSQL)</h3>
+<table>
+  <tr><th>Data type</th><th>Estimated volume</th></tr>
+  <tr><td>Student records</td><td>~5,000 rows (growing yearly)</td></tr>
+  <tr><td>Document metadata</td><td>50,000–75,000 rows (10–15 docs per student)</td></tr>
+  <tr><td>Verification schedule slots</td><td>50,000–100,000 rows (flexible dates/rooms)</td></tr>
+  <tr><td>Audit log</td><td>5–20 GB over one academic cycle</td></tr>
+  <tr><td>Total DB size (metadata only)</td><td><strong>2–8 GB</strong> initially</td></tr>
+</table>
+<p><strong>Recommended starting tier:</strong> Azure Database for PostgreSQL Flexible Server — <strong>General Purpose, 2 vCores, 32 GB storage</strong>. Enable automated backups (7–35 days). Use zone-redundant HA if college policy requires it.</p>
+<p><strong>Growth (10K–25K students):</strong> Scale to 4 vCores, 64–128 GB storage.</p>
+
+<h3>3.2 Application server</h3>
+<table>
+  <tr><th>Setting</th><th>Recommendation</th></tr>
+  <tr><td>App Service plan</td><td>Premium v3 P1v3 (2 vCPU, 8 GB RAM) for production</td></tr>
+  <tr><td>Instances</td><td>Minimum 1; auto-scale to 2–3 during orientation peaks</td></tr>
+  <tr><td>Always On</td><td>Enabled (required for Node.js)</td></tr>
+  <tr><td>Peak concurrency</td><td>Plan for 200–500 concurrent users, not all 5,000 at once</td></tr>
+</table>
+
+<h3>3.3 Document file storage</h3>
+<table>
+  <tr><th>Option</th><th>When to use</th><th>Estimated size (5K students)</th></tr>
+  <tr><td><strong>Cloudinary</strong></td><td>Fastest migration from Render; no code changes</td><td>50–150 GB</td></tr>
+  <tr><td><strong>Azure Blob Storage</strong></td><td>All data must stay in Azure; long-term archive</td><td>100–500 GB multi-year</td></tr>
+</table>
+
+<div class="page-break"></div>
+
+<h2>4. Azure resources checklist</h2>
+<p>Create these in a dedicated resource group (e.g. <code>rg-eduverify-prod</code>):</p>
+<ol>
+  <li><strong>Resource Group</strong> — rg-eduverify-prod</li>
+  <li><strong>App Service Plan</strong> — Linux, Premium v3</li>
+  <li><strong>Web App</strong> — eduverify-prod</li>
+  <li><strong>PostgreSQL Flexible Server</strong> — eduverify-pg-prod</li>
+  <li><strong>Key Vault</strong> — store JWT, database URL, admin password, Cloudinary keys</li>
+  <li><strong>Storage Account</strong> — optional, for Azure Blob documents</li>
+  <li><strong>Application Insights</strong> — performance and error monitoring</li>
+  <li><strong>Log Analytics Workspace</strong> — centralised logs</li>
+  <li><strong>Azure Front Door</strong> — optional WAF and global access</li>
+  <li><strong>Private Endpoint</strong> — optional, database accessible only inside VNet</li>
+</ol>
+
+<h2>5. Security configuration</h2>
+<ul>
+  <li><strong>PostgreSQL:</strong> Disable public access where possible; use VNet integration or Private Endpoint. Require SSL (<code>sslmode=require</code>).</li>
+  <li><strong>HTTPS:</strong> Enforce HTTPS only on App Service; TLS 1.2 minimum.</li>
+  <li><strong>CORS:</strong> Set <code>CORS_ORIGIN</code> to exact production URL (never <code>*</code> in production).</li>
+  <li><strong>JWT_SECRET:</strong> Minimum 32 random characters; stored in Key Vault.</li>
+  <li><strong>Admin password:</strong> Strong <code>SEED_ADMIN_PASSWORD</code> in Key Vault; production syncs to ADM-001 on deploy.</li>
+  <li><strong>Managed Identity:</strong> App Service reads secrets from Key Vault without storing them in code.</li>
+  <li><strong>Region:</strong> Deploy in Central India or institution-approved Azure region for data residency.</li>
+</ul>
+
+<h2>6. Required environment variables</h2>
+<table>
+  <tr><th>Variable</th><th>Purpose</th></tr>
+  <tr><td>NODE_ENV</td><td>production</td></tr>
+  <tr><td>DATABASE_URL</td><td>PostgreSQL connection string with SSL</td></tr>
+  <tr><td>JWT_SECRET</td><td>Token signing secret (48+ byte random)</td></tr>
+  <tr><td>JWT_EXPIRES_IN</td><td>12h (session duration)</td></tr>
+  <tr><td>CORS_ORIGIN</td><td>https://eduverify.yourcollege.edu</td></tr>
+  <tr><td>CLOUDINARY_CLOUD_NAME, API_KEY, API_SECRET</td><td>Document storage (if using Cloudinary)</td></tr>
+  <tr><td>SEED_ADMIN_ID</td><td>ADM-001</td></tr>
+  <tr><td>SEED_ADMIN_PASSWORD</td><td>Supervisor login password</td></tr>
+  <tr><td>AUTO_SETUP</td><td>true on first deploy (schema + admin seed)</td></tr>
+</table>
+
+<h2>7. CI/CD deployment pipeline</h2>
+<h3>Phase 1 — Manual pilot</h3>
+<ol>
+  <li>Connect GitHub repository to Azure App Service (Deployment Center).</li>
+  <li>Build: <code>npm ci --omit=dev</code></li>
+  <li>Start command: <code>npm start</code></li>
+  <li>First boot runs database setup automatically.</li>
+</ol>
+<h3>Phase 2 — Automated production</h3>
+<pre class="diagram">Git push (main branch)
+    → GitHub Actions or Azure DevOps
+    → npm ci
+    → Deploy to App Service staging slot
+    → Smoke test GET /api/health
+    → Swap staging → production (zero-downtime)</pre>
+
+<h2>8. Migration from Render</h2>
+<table>
+  <tr><th>Step</th><th>Action</th></tr>
+  <tr><td>1</td><td>Export PostgreSQL from Render using pg_dump</td></tr>
+  <tr><td>2</td><td>Create Azure PostgreSQL and import the dump</td></tr>
+  <tr><td>3</td><td>Deploy application to App Service with Azure DATABASE_URL</td></tr>
+  <tr><td>4</td><td>Keep same Cloudinary account (documents unchanged) or migrate to Blob</td></tr>
+  <tr><td>5</td><td>Update DNS to Azure custom domain</td></tr>
+  <tr><td>6</td><td>Update CORS_ORIGIN to new URL</td></tr>
+  <tr><td>7</td><td>Test full workflow: login, upload, declaration, verification, reassign</td></tr>
+  <tr><td>8</td><td>Decommission Render after successful cutover</td></tr>
+</table>
+<p><strong>Planned downtime:</strong> 1–4 hours for database cutover, or run parallel systems for one day.</p>
+
+<div class="page-break"></div>
+
+<h2>9. Scaling roadmap</h2>
+<table>
+  <tr><th>Stage</th><th>Students</th><th>App Service</th><th>PostgreSQL</th><th>Storage</th></tr>
+  <tr><td>Pilot</td><td>500</td><td>B2, 1 instance</td><td>Burstable 2 vCore, 32 GB</td><td>Cloudinary</td></tr>
+  <tr><td>Production</td><td>5,000</td><td>P1v3, scale 1–3</td><td>GP 2 vCore, 32–64 GB</td><td>100+ GB</td></tr>
+  <tr><td>Growth</td><td>10,000–25,000</td><td>P2v3, scale 2–5</td><td>GP 4 vCore, 128 GB</td><td>Blob + CDN</td></tr>
+  <tr><td>Multi-year</td><td>50,000+</td><td>Container Apps / AKS</td><td>Partition by admission year</td><td>Archive tier</td></tr>
+</table>
+
+<h2>10. Estimated monthly cost (India region, indicative)</h2>
+<table>
+  <tr><th>Service</th><th>Pilot</th><th>Production (5K students)</th></tr>
+  <tr><td>App Service P1v3</td><td>—</td><td>₹8,000 – ₹12,000</td></tr>
+  <tr><td>PostgreSQL GP 2 vCore</td><td>—</td><td>₹10,000 – ₹18,000</td></tr>
+  <tr><td>Storage / Cloudinary</td><td>₹0 – ₹2,000</td><td>₹2,000 – ₹8,000</td></tr>
+  <tr><td>Application Insights</td><td>₹500 – ₹2,000</td><td>₹1,000 – ₹3,000</td></tr>
+  <tr><td><strong>Total (approximate)</strong></td><td><strong>₹3,000 – ₹8,000</strong></td><td><strong>₹20,000 – ₹40,000</strong></td></tr>
+</table>
+<p>Use the Azure Pricing Calculator for exact quotes. College EA, CSP, or Azure for Students programmes may reduce cost.</p>
+
+<h2>11. Rollout phases</h2>
+<h3>Phase A — Foundation (1–2 weeks)</h3>
+<ul>
+  <li>Create Azure subscription, resource group, PostgreSQL, App Service, Key Vault</li>
+  <li>Deploy EduVerify from GitHub; configure SSL and custom domain</li>
+  <li>Set security: JWT, CORS, firewall, strong admin password</li>
+</ul>
+<h3>Phase B — Data &amp; load test (1 week)</h3>
+<ul>
+  <li>Bulk upload 5,000 student records via admin Excel template</li>
+  <li>Load test: concurrent uploads and live verification dashboard</li>
+  <li>Backup and restore drill</li>
+</ul>
+<h3>Phase C — Go-live (admission season)</h3>
+<ul>
+  <li>Staff training (supervisor + verifiers)</li>
+  <li>Monitor Application Insights during orientation week</li>
+  <li>Auto-scale enabled; support runbook ready</li>
+</ul>
+<h3>Phase D — Hardening (post go-live)</h3>
+<ul>
+  <li>Migrate documents to Azure Blob if required by IT policy</li>
+  <li>Private endpoints for database; WAF via Front Door</li>
+  <li>Archive prior-year admission data</li>
+</ul>
+
+<h2>12. Key decisions</h2>
+<table>
+  <tr><th>Question</th><th>Recommendation</th></tr>
+  <tr><td>App hosting</td><td>Azure App Service (Linux, Node 20)</td></tr>
+  <tr><td>Database</td><td>Azure Database for PostgreSQL Flexible Server</td></tr>
+  <tr><td>Documents</td><td>Cloudinary first; Azure Blob when IT requires all-Azure storage</td></tr>
+  <tr><td>High availability</td><td>Zone-redundant DB + App Service scale-out for peaks</td></tr>
+  <tr><td>Kubernetes?</td><td>Not needed for 5,000 students unless mandated by policy</td></tr>
+  <tr><td>Azure region</td><td>Central India (or compliance-approved region)</td></tr>
+</table>
+
+<h2>13. Prerequisites from college IT</h2>
+<ol>
+  <li>Azure subscription (pay-as-you-go or Enterprise Agreement)</li>
+  <li>DNS hostname for the portal (e.g. eduverify.college.edu)</li>
+  <li>Decision: Cloudinary vs Azure Blob for student documents</li>
+  <li>Data retention policy for uploads and audit logs</li>
+  <li>Network rules if database must be campus-only</li>
+  <li>Maintenance window for Render-to-Azure cutover</li>
+</ol>
+
+<footer>
+  EduVerify Azure Deployment Plan · Manipal Academy of Higher Education · Confidential — internal use
+</footer>
+
+</body>
+</html>
