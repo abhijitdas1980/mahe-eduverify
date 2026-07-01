@@ -20,7 +20,7 @@ concurrency:
 
 env:
   AZURE_WEBAPP_NAME: MAHE-CI-DOC-UAT-APP01
-  AZURE_WEBAPP_HOST: mahe-ci-doc-uat-app01.azurewebsites.net
+  AZURE_WEBAPP_HOST: mahe-ci-doc-uat-app01-e4g0fzdeh8e8ehe6.centralindia-01.azurewebsites.net
   NODE_VERSION: '20'
 
 jobs:
