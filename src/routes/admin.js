@@ -27,7 +27,13 @@ const { fetchAssetBuffer } = require("../config/storage");
 const { streamDoc } = require("../lib/docStream");
 const { normalize } = require("../lib/blacklist");
 const { serializeContact } = require("../lib/contact");
-const { buildExportBuffer, buildLoginRosterBuffer, queryStudentExportRows } = require("../lib/studentExportExcel");
+const {
+  buildExportBuffer,
+  buildLoginRosterBuffer,
+  buildVerifyDayRosterBuffer,
+  buildVerifyAllDaysRosterBuffer,
+  queryStudentExportRows,
+} = require("../lib/studentExportExcel");
 const {
   PHYSICAL_SUBMISSION_VALUES,
   listFollowupRemarks,
@@ -605,6 +611,44 @@ router.get("/students/export.xlsx", async (req, res, next) => {
     res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
     res.setHeader("Content-Disposition", `attachment; filename="students-export-${stamp}.xlsx"`);
     await audit(req, "admin", req.admin.staffId, "STUDENTS_EXPORT", `rows=${rows.length}`);
+    res.send(buf);
+  } catch (e) { next(e); }
+});
+
+/** GET /api/admin/students/verify-day-roster.xlsx — room/time assignments for a verification date (or all days). */
+router.get("/students/verify-day-roster.xlsx", async (req, res, next) => {
+  try {
+    const date = String(req.query.date || "").trim().slice(0, 10);
+    const room = String(req.query.room || "").trim();
+    const allDays = req.query.allDays === "1" || req.query.allDays === "true";
+    if (date && !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+      return res.status(400).json({ error: "date must be YYYY-MM-DD." });
+    }
+    const filters = {
+      verifyDate: allDays ? "" : date,
+      verifyRoom: room,
+    };
+    let rows = await queryStudentExportRows(pool, filters, EXCLUDE_FROM_COUNTS);
+    rows = rows.filter((r) => r.verify_date || r.verify_room || r.verify_start);
+    if (!rows.length) {
+      return res.status(404).json({
+        error: allDays || !date
+          ? "No students have a verification room/time assignment yet."
+          : `No students assigned for ${date}${room ? ` in room ${room}` : ""}.`,
+      });
+    }
+    const buf = allDays || !date
+      ? await buildVerifyAllDaysRosterBuffer(rows)
+      : await buildVerifyDayRosterBuffer(rows, { date });
+    const stamp = date || "all-days";
+    const roomPart = room ? `-room-${room.replace(/[^a-zA-Z0-9_-]/g, "_")}` : "";
+    res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+    res.setHeader(
+      "Content-Disposition",
+      `attachment; filename="verify-roster-${stamp}${roomPart}.xlsx"`
+    );
+    await audit(req, "admin", req.admin.staffId, "VERIFY_DAY_ROSTER_EXPORT",
+      `${allDays || !date ? "all-days" : date}${room ? ` room=${room}` : ""} rows=${rows.length}`);
     res.send(buf);
   } catch (e) { next(e); }
 });

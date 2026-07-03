@@ -227,12 +227,169 @@ async function buildLoginRosterBuffer(rows) {
   return Buffer.from(buf);
 }
 
+const VERIFY_DAY_COLUMNS = [
+  "verify_date",
+  "verify_room",
+  "verify_slot_no",
+  "verify_start_time",
+  "verify_end_time",
+  "slot_time",
+  "application_number",
+  "full_name",
+  "program",
+  "department",
+  "section",
+  "student_phone",
+  "student_email",
+  "verify_status",
+];
+
+const VERIFY_DAY_LABELS = {
+  verify_date: "Verification Date",
+  verify_room: "Room",
+  verify_slot_no: "Slot No",
+  verify_start_time: "Start Time",
+  verify_end_time: "End Time",
+  slot_time: "Slot Time",
+  application_number: "Application Number",
+  full_name: "Full Name",
+  program: "Program",
+  department: "Department",
+  section: "Section",
+  student_phone: "Student Mobile",
+  student_email: "Student Email",
+  verify_status: "Status",
+};
+
+function sortVerifyRosterRows(rows) {
+  return [...rows].sort((a, b) => {
+    const da = String(a.verify_date || a.assigned_verification_date || "").slice(0, 10);
+    const db = String(b.verify_date || b.assigned_verification_date || "").slice(0, 10);
+    if (da !== db) return da.localeCompare(db);
+    const ra = String(a.verify_room || "");
+    const rb = String(b.verify_room || "");
+    const roomCmp = ra.localeCompare(rb, undefined, { numeric: true });
+    if (roomCmp) return roomCmp;
+    const ta = String(a.verify_start || "");
+    const tb = String(b.verify_start || "");
+    if (ta !== tb) return ta.localeCompare(tb);
+    return Number(a.verify_slot_no || 0) - Number(b.verify_slot_no || 0);
+  });
+}
+
+function mapVerifyDayRow(r) {
+  const start = r.verify_start || "";
+  const end = r.verify_end || "";
+  return {
+    verify_date: fmtDate(r.verify_date || r.assigned_verification_date),
+    verify_room: r.verify_room || "",
+    verify_slot_no: r.verify_slot_no != null ? String(r.verify_slot_no) : "",
+    verify_start_time: start,
+    verify_end_time: end,
+    slot_time: start && end ? `${start} – ${end}` : start || end,
+    application_number: r.app_no || "",
+    full_name: r.name || "",
+    program: r.program || "",
+    department: r.department || "",
+    section: r.section || "",
+    student_phone: r.phone || "",
+    student_email: r.email || "",
+    verify_status: r.verify_status || "",
+  };
+}
+
+async function writeVerifyRosterSheet(wb, sheetName, rows) {
+  const ws = wb.addWorksheet(sheetName.slice(0, 31) || "Roster");
+  ws.views = [{ state: "frozen", ySplit: 1 }];
+
+  const headerRow = ws.addRow(VERIFY_DAY_COLUMNS.map((c) => VERIFY_DAY_LABELS[c] || c));
+  headerRow.font = { bold: true, color: { argb: "FFFFFFFF" } };
+  headerRow.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF9F1239" } };
+  headerRow.alignment = { vertical: "middle", horizontal: "center", wrapText: true };
+  headerRow.height = 26;
+
+  VERIFY_DAY_COLUMNS.forEach((key, i) => {
+    const w = ["full_name", "program", "student_email"].includes(key) ? 28
+      : key === "slot_time" ? 18
+      : key === "application_number" ? 20
+      : 14;
+    ws.getColumn(i + 1).width = w;
+  });
+
+  for (const r of sortVerifyRosterRows(rows)) {
+    const mapped = mapVerifyDayRow(r);
+    ws.addRow(VERIFY_DAY_COLUMNS.map((c) => mapped[c] ?? ""));
+  }
+  return ws;
+}
+
+/** Day roster: who is assigned to which room/time (optionally one date, one room). */
+async function buildVerifyDayRosterBuffer(rows, { date } = {}) {
+  const wb = new ExcelJS.Workbook();
+  wb.creator = "EduVerify";
+  const label = date ? `Verify ${fmtDate(date)}` : "All Days";
+  await writeVerifyRosterSheet(wb, label, rows);
+
+  /* Summary by room for the selected set */
+  const summary = wb.addWorksheet("By Room");
+  summary.views = [{ state: "frozen", ySplit: 1 }];
+  const sh = summary.addRow(["Verification Date", "Room", "Students", "First Slot", "Last Slot"]);
+  sh.font = { bold: true, color: { argb: "FFFFFFFF" } };
+  sh.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF9F1239" } };
+  [18, 14, 12, 14, 14].forEach((w, i) => { summary.getColumn(i + 1).width = w; });
+
+  const buckets = new Map();
+  for (const r of rows) {
+    const d = String(r.verify_date || r.assigned_verification_date || "").slice(0, 10);
+    const room = r.verify_room || "—";
+    const key = `${d}|${room}`;
+    if (!buckets.has(key)) buckets.set(key, { date: d, room, count: 0, starts: [] });
+    const b = buckets.get(key);
+    b.count += 1;
+    if (r.verify_start) b.starts.push(String(r.verify_start));
+  }
+  [...buckets.values()]
+    .sort((a, b) => a.date.localeCompare(b.date) || a.room.localeCompare(b.room, undefined, { numeric: true }))
+    .forEach((b) => {
+      const starts = b.starts.sort();
+      summary.addRow([fmtDate(b.date), b.room, b.count, starts[0] || "", starts[starts.length - 1] || ""]);
+    });
+
+  const buf = await wb.xlsx.writeBuffer();
+  return Buffer.from(buf);
+}
+
+/** One worksheet per verification date (for multi-day download). */
+async function buildVerifyAllDaysRosterBuffer(rows) {
+  const wb = new ExcelJS.Workbook();
+  wb.creator = "EduVerify";
+  const byDate = new Map();
+  for (const r of rows) {
+    const d = String(r.verify_date || r.assigned_verification_date || "").slice(0, 10);
+    if (!d) continue;
+    if (!byDate.has(d)) byDate.set(d, []);
+    byDate.get(d).push(r);
+  }
+  const dates = [...byDate.keys()].sort();
+  if (!dates.length) {
+    await writeVerifyRosterSheet(wb, "No assignments", []);
+  } else {
+    for (const d of dates) {
+      await writeVerifyRosterSheet(wb, fmtDate(d), byDate.get(d));
+    }
+  }
+  const buf = await wb.xlsx.writeBuffer();
+  return Buffer.from(buf);
+}
+
 module.exports = {
   EXPORT_COLUMNS,
   pipelineStatus,
   mapRow,
   buildExportBuffer,
   buildLoginRosterBuffer,
+  buildVerifyDayRosterBuffer,
+  buildVerifyAllDaysRosterBuffer,
   queryStudentExportRows,
 };
 
