@@ -21,6 +21,7 @@ source "$ENV_FILE"
 : "${JWT_SECRET:?Set JWT_SECRET}"
 : "${SEED_ADMIN_PASSWORD:?Set SEED_ADMIN_PASSWORD}"
 : "${AZURE_STORAGE_CONNECTION_STRING:?Set AZURE_STORAGE_CONNECTION_STRING}"
+: "${SMTP_PASS:?Set SMTP_PASS (mandatory — M365 mailbox password for admissions.maheblr@manipal.edu)}"
 
 echo "Configuring $AZURE_WEBAPP in $AZURE_RG ..."
 

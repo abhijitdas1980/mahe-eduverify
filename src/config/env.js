@@ -72,6 +72,20 @@ function assertProductionConfig() {
       "[security] CORS_ORIGIN is '*' in production — set it to your exact site URL before go-live."
     );
   }
+
+  /* Rejection emails (student + parent) require MAHE M365 SMTP credentials. */
+  const smtpUser = (process.env.SMTP_USER || "").trim();
+  const smtpPass = (process.env.SMTP_PASS || "").trim();
+  if (!smtpUser) {
+    throw new Error(
+      "SMTP_USER must be set in production (e.g. admissions.maheblr@manipal.edu)."
+    );
+  }
+  if (!smtpPass) {
+    throw new Error(
+      "SMTP_PASS is mandatory in production. Set the Microsoft 365 mailbox password (or app password) for SMTP_USER."
+    );
+  }
 }
 
 function jwtSecret() {

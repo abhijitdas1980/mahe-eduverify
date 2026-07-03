@@ -180,7 +180,7 @@ Or set manually in **Azure Portal → MAHE-CI-DOC-UAT-APP01 → Environment vari
 | `SMTP_HOST` | `smtp.office365.com` |
 | `SMTP_PORT` | `587` |
 | `SMTP_USER` | `admissions.maheblr@manipal.edu` |
-| `SMTP_PASS` | _(M365 mailbox password or app password — store in Key Vault)_ |
+| `SMTP_PASS` | **Mandatory** — M365 mailbox password or app password (store in Key Vault). App will not start without it. |
 | `SMTP_FROM` | `MAHE Admissions <admissions.maheblr@manipal.edu>` |
 | `PORTAL_URL` | UAT or prod portal URL (linked in rejection emails) |
 | `WEBSITE_NODE_DEFAULT_VERSION` | `~20` |
@@ -287,7 +287,7 @@ App Service reference format:
 | Issue | Fix |
 |-------|-----|
 | `db: down` | Check `DATABASE_URL`, URL-encode password, DB `eduverify` exists, firewall allows Azure |
-| App won't start | Logs: missing `JWT_SECRET` or `SEED_ADMIN_PASSWORD` in production mode |
+| App won't start | Logs: missing `JWT_SECRET`, `SEED_ADMIN_PASSWORD`, or `SMTP_PASS` in production mode |
 | Upload fails | Container `eduverify-documents` exists; connection string or MI has Blob Contributor |
 | Login fails | `AUTO_SETUP=true`, restart app; check `SEED_ADMIN_PASSWORD` |
 | CORS errors | `CORS_ORIGIN` must match browser URL exactly |
