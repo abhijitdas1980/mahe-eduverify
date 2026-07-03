@@ -306,5 +306,26 @@ async function queryStudentExportRows(pool, filters, excludeDocCodes) {
   if (filters.status) {
     rows = rows.filter((row) => pipelineStatus(row) === filters.status);
   }
+  const verifyDate = String(filters.verifyDate || "").trim().slice(0, 10);
+  if (verifyDate) {
+    rows = rows.filter((row) => {
+      const d = row.verify_date || row.assigned_verification_date;
+      return d && String(d).slice(0, 10) === verifyDate;
+    });
+  }
+  const verifyTime = String(filters.verifyTime || "").trim();
+  if (verifyTime) {
+    rows = rows.filter((row) => {
+      if (!row.verify_start) return false;
+      const label = row.verify_end
+        ? `${row.verify_start} – ${row.verify_end}`
+        : String(row.verify_start);
+      return label === verifyTime || String(row.verify_start) === verifyTime;
+    });
+  }
+  const verifyRoom = String(filters.verifyRoom || "").trim();
+  if (verifyRoom) {
+    rows = rows.filter((row) => (row.verify_room || "") === verifyRoom);
+  }
   return rows;
 }

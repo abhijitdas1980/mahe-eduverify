@@ -532,6 +532,8 @@ router.get("/students", async (req, res, next) => {
               s.assigned_verification_date, s.assigned_batch, s.upload_completed_at,
               s.contact_completed_at, s.contact_verified_at, s.portal_access,
               vs.status AS verify_status, vs.verified_at AS verify_verified_at,
+              vs.schedule_date AS verify_date, vs.start_time AS verify_start,
+              vs.end_time AS verify_end, vs.room AS verify_room, vs.slot_no AS verify_slot_no,
               sl.slot_date, sl.slot_time,
               COUNT(d.id)                                          AS total,
               COUNT(d.id) FILTER (WHERE d.file_public_id IS NOT NULL) AS uploaded,
@@ -547,11 +549,13 @@ router.get("/students", async (req, res, next) => {
          LEFT JOIN slots sl ON sl.id = s.slot_id
          LEFT JOIN verify_schedule vs ON vs.id = s.verify_schedule_id
         GROUP BY s.id, sl.slot_date, sl.slot_time, vs.status, vs.verified_at,
+                 vs.schedule_date, vs.start_time, vs.end_time, vs.room, vs.slot_no,
                  s.contact_completed_at, s.contact_verified_at
         ORDER BY s.app_no`, [EXCLUDE_FROM_COUNTS]
     );
     let rows = r.rows.map((x) => {
       const total = Number(x.total), verified = Number(x.verified), flagged = Number(x.flagged);
+      const verifyDate = x.verify_date || x.assigned_verification_date || null;
       return {
         appNo: x.app_no, name: x.name, dob: x.dob, program: x.program,
         department: x.department, section: x.section, batch: x.batch, profile: x.profile,
@@ -563,6 +567,11 @@ router.get("/students", async (req, res, next) => {
         uploadCompletedAt: x.upload_completed_at,
         verifyStatus: x.verify_status,
         verifyVerifiedAt: x.verify_verified_at,
+        verifyDate,
+        verifyStartTime: x.verify_start || null,
+        verifyEndTime: x.verify_end || null,
+        verifyRoom: x.verify_room || null,
+        verifySlotNo: x.verify_slot_no != null ? Number(x.verify_slot_no) : null,
         contactCompleted: !!x.contact_completed_at,
         contactVerified: !!x.contact_verified_at,
         portalAccess: x.portal_access || "default",
@@ -585,6 +594,9 @@ router.get("/students/export.xlsx", async (req, res, next) => {
       batch: String(req.query.batch || "").trim(),
       status: String(req.query.status || "").trim(),
       contact: String(req.query.contact || "").trim(),
+      verifyDate: String(req.query.verifyDate || "").trim(),
+      verifyTime: String(req.query.verifyTime || "").trim(),
+      verifyRoom: String(req.query.verifyRoom || "").trim(),
       q: String(req.query.q || "").trim(),
     };
     const rows = await queryStudentExportRows(pool, filters, EXCLUDE_FROM_COUNTS);
@@ -606,6 +618,9 @@ router.get("/students/login-roster.xlsx", requireSupervisor, async (req, res, ne
       batch: String(req.query.batch || "").trim(),
       status: String(req.query.status || "").trim(),
       contact: String(req.query.contact || "").trim(),
+      verifyDate: String(req.query.verifyDate || "").trim(),
+      verifyTime: String(req.query.verifyTime || "").trim(),
+      verifyRoom: String(req.query.verifyRoom || "").trim(),
       q: String(req.query.q || "").trim(),
     };
     const rows = await queryStudentExportRows(pool, filters, EXCLUDE_FROM_COUNTS);
