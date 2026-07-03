@@ -26,7 +26,7 @@ const {
 const { fetchAssetBuffer } = require("../config/storage");
 const { streamDoc } = require("../lib/docStream");
 const { normalize } = require("../lib/blacklist");
-const { serializeContact } = require("../lib/contact");
+const { serializeContact, validateContactPayload } = require("../lib/contact");
 const {
   buildExportBuffer,
   buildLoginRosterBuffer,
@@ -1033,18 +1033,62 @@ router.post("/students/:appNo/reject-slot", async (req, res, next) => {
   } catch (e) { next(e); }
 });
 
+/** Staff (verifier or supervisor) can correct student/parent contact details at campus. */
+router.patch("/students/:appNo/contact", async (req, res, next) => {
+  try {
+    const sr = await pool.query("SELECT * FROM students WHERE LOWER(app_no)=LOWER($1)", [req.params.appNo]);
+    const s = sr.rows[0];
+    if (!s) return res.status(404).json({ error: "Student not found." });
+    const v = validateContactPayload(req.body || {}, { staff: true });
+    if (!v.ok) return res.status(400).json({ error: v.errors[0], errors: v.errors });
+    const { email, phone, parentName, parentRelation, parentEmail, parentPhone } = v.data;
+    const markVerified = req.body?.markVerified === true || req.body?.markVerified === "true";
+    await pool.query(
+      `UPDATE students SET
+         email=$1, phone=$2,
+         parent_name=$3, parent_relation=$4, parent_email=$5, parent_phone=$6,
+         contact_completed_at=COALESCE(contact_completed_at, now()),
+         contact_verified_at=CASE WHEN $7 THEN now() ELSE contact_verified_at END,
+         contact_verified_by=CASE WHEN $7 THEN $8 ELSE contact_verified_by END
+       WHERE id=$9`,
+      [
+        email, phone, parentName, parentRelation, parentEmail, parentPhone,
+        markVerified, req.admin.id, s.id,
+      ]
+    );
+    const summary = `${email} / ${phone} / parent: ${parentEmail}`;
+    await audit(req, "admin", req.admin.staffId, "CONTACT_CORRECTED",
+      `${s.app_no}: ${summary}${markVerified ? " (verified at campus)" : ""}`);
+    if (markVerified) {
+      await audit(req, "admin", req.admin.staffId, "CONTACT_VERIFIED", s.app_no);
+    }
+    const updated = await pool.query("SELECT * FROM students WHERE id=$1", [s.id]);
+    res.json({
+      ok: true,
+      contact: serializeContact(updated.rows[0]),
+      markVerified,
+    });
+  } catch (e) { next(e); }
+});
+
 router.post("/students/:appNo/verify-contact", async (req, res, next) => {
   try {
     const sr = await pool.query("SELECT * FROM students WHERE LOWER(app_no)=LOWER($1)", [req.params.appNo]);
     const s = sr.rows[0];
     if (!s) return res.status(404).json({ error: "Student not found." });
-    if (!s.contact_completed_at) {
-      return res.status(400).json({ error: "Student has not submitted contact details yet." });
-    }
     const verified = req.body?.verified !== false;
     if (verified) {
+      if (!s.email || !s.phone || !s.parent_email || !s.parent_phone || !s.parent_name) {
+        return res.status(400).json({
+          error: "Contact details are incomplete. Correct email, phone, and parent details first, then mark verified.",
+        });
+      }
       await pool.query(
-        `UPDATE students SET contact_verified_at=now(), contact_verified_by=$1 WHERE id=$2`,
+        `UPDATE students SET
+           contact_completed_at=COALESCE(contact_completed_at, now()),
+           contact_verified_at=now(),
+           contact_verified_by=$1
+         WHERE id=$2`,
         [req.admin.id, s.id]
       );
       await audit(req, "admin", req.admin.staffId, "CONTACT_VERIFIED", s.app_no);

@@ -18,7 +18,7 @@ function isValidPhone(phone) {
   return /^(\+?\d{10,15})$/.test(p);
 }
 
-function validateContactPayload(body) {
+function validateContactPayload(body, opts = {}) {
   const errors = [];
   const email = String(body.email || "").trim().toLowerCase();
   const phone = normalizePhone(body.phone);
@@ -27,6 +27,7 @@ function validateContactPayload(body) {
   const parentEmail = String(body.parentEmail || "").trim().toLowerCase();
   const parentPhone = normalizePhone(body.parentPhone);
   const declared = !!body.declared;
+  const staff = !!opts.staff;
 
   if (!isValidEmail(email)) errors.push("Enter a valid student email address.");
   if (!isValidPhone(phone)) errors.push("Enter a valid student mobile number (10–15 digits).");
@@ -34,7 +35,7 @@ function validateContactPayload(body) {
   if (!PARENT_RELATIONS.includes(parentRelation)) errors.push("Select parent/guardian relation.");
   if (!isValidEmail(parentEmail)) errors.push("Enter a valid parent/guardian email address.");
   if (!isValidPhone(parentPhone)) errors.push("Enter a valid parent/guardian mobile number.");
-  if (!declared) errors.push("Please accept the declaration before saving.");
+  if (!staff && !declared) errors.push("Please accept the declaration before saving.");
 
   if (errors.length) return { ok: false, errors };
   return {

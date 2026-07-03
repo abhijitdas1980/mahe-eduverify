@@ -1675,6 +1675,8 @@ function AdminDetail({ appNo, role, close, onChange }) {
   const [showSlotReject, setShowSlotReject] = useState(false);
   const [slotRejReason, setSlotRejReason] = useState("");
   const [contactBusy, setContactBusy] = useState(false);
+  const [editingContact, setEditingContact] = useState(false);
+  const [contactForm, setContactForm] = useState({ email:"", phone:"", parentName:"", parentRelation:"", parentEmail:"", parentPhone:"" });
   const [portalAccess, setPortalAccessVal] = useState("default");
   const [portalAccessBusy, setPortalAccessBusy] = useState(false);
   const [showReassignAdmin, setShowReassignAdmin] = useState(false);
@@ -1687,7 +1689,23 @@ function AdminDetail({ appNo, role, close, onChange }) {
   const isSupervisor = role === "supervisor";
   const load = useCallback(async () => { try { setDetail(await API.get("/api/admin/students/" + encodeURIComponent(appNo))); setErr(""); } catch (ex) { setErr(ex.message); } }, [appNo]);
   useEffect(() => { load(); }, [load]);
-  useEffect(() => { if (detail?.student) { setPendingDocs(detail.student.pendingDocs || ""); setPendingDeadline(detail.student.submissionDeadline ? String(detail.student.submissionDeadline).slice(0,10) : ""); setPortalAccessVal(detail.student.portalAccess || "default"); } }, [detail]);
+  useEffect(() => {
+    if (detail?.student) {
+      setPendingDocs(detail.student.pendingDocs || "");
+      setPendingDeadline(detail.student.submissionDeadline ? String(detail.student.submissionDeadline).slice(0,10) : "");
+      setPortalAccessVal(detail.student.portalAccess || "default");
+      if (!editingContact) {
+        setContactForm({
+          email: detail.student.email || "",
+          phone: detail.student.phone || "",
+          parentName: detail.student.parentName || "",
+          parentRelation: detail.student.parentRelation || "",
+          parentEmail: detail.student.parentEmail || "",
+          parentPhone: detail.student.parentPhone || "",
+        });
+      }
+    }
+  }, [detail, editingContact]);
   useEffect(() => {
     if (!detail?.documents) return;
     const map = {};
@@ -1799,6 +1817,29 @@ function AdminDetail({ appNo, role, close, onChange }) {
   const clearPending = async () => { setPendingDocs(""); setPendingDeadline(""); setPendBusy(true); setPendOk(""); setErr(""); try { await API.post("/api/admin/students/" + encodeURIComponent(appNo) + "/pending-docs", { pendingDocs: null, deadline: null }); setPendOk("Cleared."); await load(); onChange(); } catch (ex) { setErr(ex.message); } setPendBusy(false); };
   const rejectSlot = async () => { setSlotRejBusy(true); setErr(""); try { await API.post("/api/admin/students/" + encodeURIComponent(appNo) + "/reject-slot", { reason: slotRejReason }); setShowSlotReject(false); setSlotRejReason(""); await load(); onChange(); } catch (ex) { setErr(ex.message); } setSlotRejBusy(false); };
   const verifyContact = async (verified) => { setContactBusy(true); setErr(""); try { await API.post("/api/admin/students/" + encodeURIComponent(appNo) + "/verify-contact", { verified }); await load(); onChange(); window.evToast && window.evToast("success", verified ? "Contact marked verified at campus" : "Contact verification cleared"); } catch (ex) { setErr(ex.message); } setContactBusy(false); };
+  const setContactField = (k, v) => setContactForm((f) => ({ ...f, [k]: v }));
+  const startEditContact = () => {
+    if (!detail?.student) return;
+    setContactForm({
+      email: detail.student.email || "",
+      phone: detail.student.phone || "",
+      parentName: detail.student.parentName || "",
+      parentRelation: detail.student.parentRelation || "",
+      parentEmail: detail.student.parentEmail || "",
+      parentPhone: detail.student.parentPhone || "",
+    });
+    setEditingContact(true);
+  };
+  const saveContact = async (markVerified) => {
+    setContactBusy(true); setErr("");
+    try {
+      await API.patch("/api/admin/students/" + encodeURIComponent(appNo) + "/contact", { ...contactForm, markVerified: !!markVerified });
+      setEditingContact(false);
+      await load(); onChange();
+      window.evToast && window.evToast("success", markVerified ? "Contact corrected and marked verified at campus" : "Contact details updated");
+    } catch (ex) { setErr(ex.message); window.evToast && window.evToast("error", ex.message); }
+    setContactBusy(false);
+  };
   const s = detail?.student;
   const docs = detail?.documents || [];
   /* v8 — split mandatory vs optional for accurate progress counts. */
@@ -1812,9 +1853,27 @@ function AdminDetail({ appNo, role, close, onChange }) {
   const slotTone = s?.slotRejected ? "rose" : detail?.slot && s?.slotConfirmed ? "green" : detail?.slot ? "indigo" : "slate";
   return (<div ref={trapRef} className="fixed inset-0 z-50 bg-black/40 grid place-items-center p-4"><div className="bg-white rounded-2xl max-w-4xl w-full max-h-[92vh] overflow-hidden flex flex-col"><div className="p-5 border-b border-slate-200 flex items-start justify-between"><div><div className="text-xs text-slate-500">Campus Verification</div><div className="font-bold text-slate-800 text-lg">{flagged>0 && <span className="text-rose-600 mr-1">⚑</span>}{s?s.name:appNo}</div>{s && <div className="text-xs text-slate-500 font-mono break-words">{s.appNo} · DOB {fmtDate(s.dob)} · {s.program} · {s.department||""} · Sec {s.section||"—"} · {s.profile.replace(/-/g,' / ')} · Category: {s.category || "—"}</div>}</div><button onClick={close} className="text-slate-400 hover:text-slate-700 text-2xl leading-none">×</button></div>{!detail && <div className="p-5"><Spinner label="Loading student…" /></div>}{detail && (<div className="p-5 overflow-y-auto"><ErrorNote msg={err} />{flagged>0 && (<div className="bg-rose-50 border border-rose-300 text-rose-800 rounded-lg p-3 mb-4 text-sm"><b>⚑ Flagged — Verification Required.</b> {flagged} document{flagged>1?'s':''} reference{flagged>1?'':'s'} an institution on the blacklist.</div>)}<div className="grid grid-cols-2 sm:grid-cols-4 gap-3 my-4"><MiniStat big={`${uploaded}/${docs.length}`} label="Uploaded (incl. optional)" tone="slate" /><MiniStat big={`${verified}/${mandDocs.length}`} label="Accepted (mandatory)" tone="green" /><MiniStat big={USE_REPORTING_SLOTS ? (s.physicalReportingCompleted?"Done":"Pending") : (detail?.verifySlot?.status==="verified"?"Done":"Pending")} label={USE_REPORTING_SLOTS ? "Phys. Reporting" : "Campus verified"} tone={(USE_REPORTING_SLOTS ? s.physicalReportingCompleted : detail?.verifySlot?.status==="verified")?"green":"slate"} small /></div><div className="flex items-center justify-between flex-wrap gap-2 mb-2"><div className="font-semibold text-slate-800">Document Verification &amp; Acceptance <span className="text-[11px] text-slate-500 font-normal ml-1"><MandStar/> Mandatory · <OptionalBadge/> Optional · verify each upload individually</span></div><div className="flex gap-2 flex-wrap"><button type="button" onClick={downloadVerificationSlip} className="text-xs px-3 py-1.5 rounded-md border border-crimson/30 text-crimson-deep hover:bg-[#fdf5f4] dark:hover:bg-[#281412]">📄 Verification Slip (PDF)</button><button onClick={downloadZip} disabled={zipBusy||uploaded===0} className={`text-xs px-3 py-1.5 rounded-md ${(zipBusy||uploaded===0)?'bg-slate-200 text-slate-400 cursor-not-allowed':'bg-slate-800 text-white hover:bg-slate-900'}`}>{zipBusy?"Preparing ZIP…":"⤓ Download All (ZIP)"}</button></div></div>
     <div className="space-y-2">{docs.map(d=>{const locked = d.staffStatus === "verified" || d.staffStatus === "rejected"; return (<div key={d.id} className={`border rounded-lg p-3 ${d.flagged?'border-rose-300 border-l-4 bg-rose-50/40':d.staffStatus==="verified"?'border-green-200 bg-green-50/40':'border-slate-200'}`}><div className="flex items-center justify-between flex-wrap gap-2"><div className="min-w-[180px]"><div className="text-sm font-semibold text-slate-800">{d.flagged && <span className="text-rose-600 mr-1">⚑</span>}{d.name}<DocBadge doc={d}/></div><div className="text-[11px] text-slate-500">{d.hasFile?("File: "+d.fileName):"Not uploaded yet"}{" · "}<span className={d.original?"text-rose-600":"text-emerald-600"}>{d.original?"Original at campus":"Photocopy ok"}</span>{" · self-check: "}{d.confirmed || d.studentStatus==="ready" ? "Confirmed" : "Not confirmed"}</div>{d.institutionName && <div className="text-[11px] text-slate-600 mt-0.5">Institution: <b>{d.institutionName}</b></div>}{d.flagged && <div className="text-[11px] text-rose-700 mt-0.5"><b>Remarks:</b> {d.flagRemarks || ("Matches blacklist entry: "+d.flagMatch)}</div>}{d.staffStatus==="verified" && d.verifiedByStaffId && (<div className="text-[11px] text-green-700 mt-0.5">Verified by <b>{d.verifiedByStaffId}{d.verifiedByName?` (${d.verifiedByName})`:""}</b>{d.verifiedAt?` on ${fmtDate(d.verifiedAt)}`:""}</div>)}</div><div className="flex items-center gap-2 flex-wrap"><button disabled={!d.hasFile} onClick={()=>setPreview(d)} className={`text-xs px-3 py-1.5 rounded-md border ${d.hasFile?'border-crimson/30 text-crimson-deep hover:bg-[#fdf5f4] dark:hover:bg-[#281412]':'border-slate-200 text-slate-300 cursor-not-allowed'}`}>Preview</button><button disabled={!d.hasFile} onClick={()=>window.open(d.downloadUrl,"_blank")} className={`text-xs px-3 py-1.5 rounded-md ${d.hasFile?'bg-slate-800 text-white hover:bg-slate-900':'bg-slate-200 text-slate-400 cursor-not-allowed'}`}>Download</button>{!locked && (<><button disabled={!d.hasFile||busyId===d.id} onClick={()=>{setAccepting(d.id);setAcceptNote("");}} className={`text-xs px-3 py-1.5 rounded-md ${d.hasFile?'bg-green-600 text-white hover:bg-green-700':'bg-slate-200 text-slate-400 cursor-not-allowed'}`}>✓ Accept</button><button disabled={!d.hasFile||busyId===d.id} onClick={()=>{setRejecting(d.id);setNote("");}} className={`text-xs px-3 py-1.5 rounded-md ${d.hasFile?'bg-rose-600 text-white hover:bg-rose-700':'bg-slate-200 text-slate-400 cursor-not-allowed'}`}>✕ Reject</button></>)}{locked && isSupervisor && undoing !== d.id && (<button onClick={()=>{setUndoing(d.id); setUndoReason(""); setUndoErr("");}} className="text-xs px-3 py-1.5 rounded-md border border-amber-300 text-amber-700 hover:bg-amber-50">↶ Undo verification</button>)}<span className={`text-xs font-semibold px-2 py-1 rounded ${d.staffStatus==="verified"?'bg-green-100 text-green-700':d.staffStatus==="rejected"?'bg-rose-100 text-rose-700':'bg-slate-100 text-slate-500'}`}>{d.staffStatus==="verified"?"✓ Accepted":d.staffStatus==="rejected"?"✕ Rejected (awaiting re-upload)":"Awaiting review"}</span></div></div><div className="mt-2 flex flex-wrap items-center gap-2"><label className="text-[11px] text-slate-600">Physical copy:</label><select value={docPhysical[d.id] || ""} disabled={locked} onChange={e=>setDocPhysical(s=>({...s,[d.id]:e.target.value}))} className="text-xs border border-slate-300 rounded-md px-2 py-1 bg-white">{PHYSICAL_SUBMISSION_OPTS.map(([v,l])=><option key={v||"none"} value={v}>{l}</option>)}</select>{d.physicalSubmissionLabel && locked && <span className="text-[11px] text-slate-600">· {d.physicalSubmissionLabel}</span>}</div>{accepting===d.id && (<div className="mt-2 flex gap-2 flex-wrap"><input value={acceptNote} onChange={e=>setAcceptNote(e.target.value)} placeholder="Optional acceptance note (internal / audit)" className="flex-1 min-w-[200px] border border-slate-300 rounded-md px-2 py-1 text-xs outline-none" /><button onClick={()=>verify(d,"verified",acceptNote||null,docPhysical[d.id]||null)} className="text-xs bg-green-600 text-white px-3 py-1 rounded-md hover:bg-green-700">Confirm accept</button><button onClick={()=>setAccepting(null)} className="text-xs px-3 py-1 rounded-md border border-slate-300">Cancel</button></div>)}{rejecting===d.id && (<div className="mt-2 flex gap-2 flex-wrap"><input value={note} onChange={e=>setNote(e.target.value)} placeholder="Reason (shown to student)" className="flex-1 min-w-[200px] border border-slate-300 rounded-md px-2 py-1 text-xs outline-none" /><button onClick={()=>verify(d,"rejected",note||"Document rejected — please re-upload.",docPhysical[d.id]||null)} className="text-xs bg-rose-600 text-white px-3 py-1 rounded-md hover:bg-rose-700">Confirm reject</button><button onClick={()=>setRejecting(null)} className="text-xs px-3 py-1 rounded-md border border-slate-300">Cancel</button></div>)}{undoing===d.id && (<div className="mt-2 p-2 bg-amber-50 border border-amber-200 rounded text-xs"><div className="font-semibold text-amber-900 mb-1">Re-open verification (audit-logged)</div><div className="flex gap-2 flex-wrap"><input value={undoReason} onChange={e=>setUndoReason(e.target.value)} placeholder="Reason for re-opening this document" className="flex-1 min-w-[200px] border border-amber-300 rounded-md px-2 py-1 text-xs outline-none bg-white" /><button onClick={()=>doUndo(d)} className="text-xs bg-amber-600 text-white px-3 py-1 rounded-md hover:bg-amber-700">Confirm undo</button><button onClick={()=>{setUndoing(null); setUndoErr("");}} className="text-xs px-3 py-1 rounded-md border border-amber-300">Cancel</button></div>{undoErr && <div className="mt-2 text-[11px] text-rose-700 bg-rose-50 border border-rose-200 rounded px-2 py-1">{undoErr}</div>}</div>)}{d.staffStatus==="verified" && d.staffNote && <div className="mt-1 text-[11px] text-green-700">Acceptance note: {d.staffNote}</div>}{d.staffStatus==="rejected" && d.staffNote && <div className="mt-1 text-[11px] text-rose-600">Rejection note: {d.staffNote}</div>}{d.issueNote && d.studentStatus==="issue" && d.staffStatus!=="rejected" && <div className="mt-1 text-[11px] text-amber-600">Student note: {d.issueNote}</div>}</div>);})}</div>
-    <div className="font-semibold text-slate-800 mt-5 mb-2">Contact Details</div>
-    {!s?.contactCompleted ? (
-      <div className="border border-rose-200 rounded-lg p-4 bg-rose-50/40 text-sm text-rose-900">Student has not submitted contact details yet — they cannot upload documents until this is completed.</div>
+    <div className="flex items-center justify-between flex-wrap gap-2 mt-5 mb-2"><div className="font-semibold text-slate-800">Contact Details</div>{!editingContact && (<button type="button" onClick={startEditContact} className="text-xs bg-white border border-crimson/30 text-crimson-deep px-3 py-1.5 rounded-md hover:bg-[#fdf5f4]">✎ Correct contact details</button>)}</div>
+    {!s?.contactCompleted && !editingContact && (
+      <div className="border border-rose-200 rounded-lg p-3 mb-2 bg-rose-50/40 text-sm text-rose-900">Student has not submitted contact details yet. Staff can enter and verify them here so the student can proceed.</div>
+    )}
+    {editingContact ? (
+      <div className="border border-indigo-200 rounded-lg p-4 bg-indigo-50/30 text-sm">
+        <div className="text-[11px] text-indigo-900 mb-3">Correct mistakes in student or parent email / phone. You can save only, or save and mark verified at campus in one step.</div>
+        <div className="grid sm:grid-cols-2 gap-3">
+          <Field label="Student email *"><input type="email" value={contactForm.email} onChange={e=>setContactField("email",e.target.value)} className="ev-input" placeholder="student@email.com" /></Field>
+          <Field label="Student mobile *"><input value={contactForm.phone} onChange={e=>setContactField("phone",e.target.value)} className="ev-input" placeholder="10-digit mobile" /></Field>
+          <Field label="Parent / guardian name *"><input value={contactForm.parentName} onChange={e=>setContactField("parentName",e.target.value)} className="ev-input" /></Field>
+          <Field label="Relation *"><select value={contactForm.parentRelation} onChange={e=>setContactField("parentRelation",e.target.value)} className="ev-input"><option value="">Select…</option>{PARENT_RELATIONS.map(r=><option key={r} value={r}>{r}</option>)}</select></Field>
+          <Field label="Parent email *"><input type="email" value={contactForm.parentEmail} onChange={e=>setContactField("parentEmail",e.target.value)} className="ev-input" placeholder="parent@email.com" /></Field>
+          <Field label="Parent mobile *"><input value={contactForm.parentPhone} onChange={e=>setContactField("parentPhone",e.target.value)} className="ev-input" placeholder="10-digit mobile" /></Field>
+        </div>
+        <div className="mt-3 flex flex-wrap gap-2">
+          <button type="button" disabled={contactBusy} onClick={()=>saveContact(false)} className="text-xs bg-slate-800 text-white px-3 py-1.5 rounded-md hover:bg-slate-900 disabled:opacity-60">{contactBusy?"Saving…":"Save corrections"}</button>
+          <button type="button" disabled={contactBusy} onClick={()=>saveContact(true)} className="text-xs bg-green-600 text-white px-3 py-1.5 rounded-md hover:bg-green-700 disabled:opacity-60">{contactBusy?"Saving…":"Save & mark verified at campus"}</button>
+          <button type="button" disabled={contactBusy} onClick={()=>setEditingContact(false)} className="text-xs border border-slate-300 text-slate-600 px-3 py-1.5 rounded-md hover:bg-white disabled:opacity-60">Cancel</button>
+        </div>
+      </div>
     ) : (
       <div className="border border-slate-200 rounded-lg p-4 bg-slate-50/40 text-sm">
         <div className="grid sm:grid-cols-2 gap-3">
@@ -1827,8 +1886,9 @@ function AdminDetail({ appNo, role, close, onChange }) {
         </div>
         <div className="mt-3 flex items-center gap-2 flex-wrap">
           <span className={`text-xs font-semibold px-2 py-1 rounded ${s.contactVerified ? "bg-green-100 text-green-700" : "bg-amber-100 text-amber-800"}`}>{s.contactVerified ? "✓ Verified at campus" : "Awaiting campus verification"}</span>
-          {!s.contactVerified && (<button disabled={contactBusy} onClick={()=>verifyContact(true)} className="text-xs bg-green-600 text-white px-3 py-1.5 rounded-md hover:bg-green-700 disabled:opacity-60">{contactBusy?"…":"✓ Mark Contact Verified at Campus"}</button>)}
+          {!s.contactVerified && (<button disabled={contactBusy || !(s.email && s.phone && s.parentEmail && s.parentPhone && s.parentName)} onClick={()=>verifyContact(true)} className="text-xs bg-green-600 text-white px-3 py-1.5 rounded-md hover:bg-green-700 disabled:opacity-60">{contactBusy?"…":"✓ Mark Contact Verified at Campus"}</button>)}
           {s.contactVerified && (<button disabled={contactBusy} onClick={()=>verifyContact(false)} className="text-xs border border-slate-300 text-slate-600 px-3 py-1.5 rounded-md hover:bg-white disabled:opacity-60">Undo contact verification</button>)}
+          <button type="button" onClick={startEditContact} className="text-xs border border-slate-300 text-slate-700 px-3 py-1.5 rounded-md hover:bg-white">✎ Edit</button>
         </div>
       </div>
     )}
