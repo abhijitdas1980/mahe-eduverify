@@ -44,19 +44,20 @@
   @keyframes evShift { 0%{background-position:0% 50%} 50%{background-position:100% 50%} 100%{background-position:0% 50%} }
   .hero-campus-watermark {
     position: absolute; inset: 0; z-index: 0;
-    background-image: url(/assets/campus-hero.png);
+    background-image: url(/assets/campus-hero.jpg);
     background-size: cover;
-    background-position: center 40%;
+    background-position: center center;
+    background-repeat: no-repeat;
   }
-  .dark .hero-campus-watermark { filter: brightness(0.82) saturate(0.88); }
+  .dark .hero-campus-watermark { filter: brightness(0.78) saturate(0.92); }
   .hero-campus-overlay {
     position: absolute; inset: 0; z-index: 1;
     background-image: linear-gradient(
       105deg,
-      rgba(62, 12, 9, 0.78) 0%,
-      rgba(123, 30, 21, 0.52) 38%,
-      rgba(160, 52, 38, 0.38) 68%,
-      rgba(123, 30, 21, 0.48) 100%
+      rgba(42, 10, 8, 0.82) 0%,
+      rgba(90, 22, 16, 0.58) 36%,
+      rgba(123, 30, 21, 0.42) 62%,
+      rgba(62, 12, 9, 0.55) 100%
     );
     background-size: 180% 180%;
     animation: evShift 22s ease infinite;
@@ -64,10 +65,10 @@
   .dark .hero-campus-overlay {
     background-image: linear-gradient(
       105deg,
-      rgba(18, 6, 5, 0.84) 0%,
-      rgba(92, 22, 16, 0.62) 40%,
-      rgba(70, 18, 13, 0.48) 72%,
-      rgba(50, 12, 9, 0.58) 100%
+      rgba(12, 4, 3, 0.88) 0%,
+      rgba(70, 16, 12, 0.68) 40%,
+      rgba(50, 12, 9, 0.52) 72%,
+      rgba(30, 8, 6, 0.62) 100%
     );
   }
   .hero-campus-content h1,
