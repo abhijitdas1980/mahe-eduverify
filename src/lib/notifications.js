@@ -251,7 +251,79 @@ async function notifyDocumentRejected({
   return { sent, skipped: false };
 }
 
+function getEmailStatus() {
+  const enabled = process.env.NOTIFY_EMAIL_ENABLED !== "false";
+  const hasUser = !!String(process.env.SMTP_USER || "").trim();
+  const hasPass = !!String(process.env.SMTP_PASS || "").trim();
+  let reason = "ready";
+  if (!enabled) reason = "disabled";
+  else if (!hasUser || !hasPass) reason = "missing_credentials";
+  return {
+    enabled,
+    configured: enabled && hasUser && hasPass,
+    smtpUser: hasUser ? String(process.env.SMTP_USER).trim() : null,
+    reason,
+  };
+}
+
+async function getEmailHealth() {
+  const status = getEmailStatus();
+  let logTable = false;
+  try {
+    await pool.query("SELECT 1 FROM notification_log LIMIT 0");
+    logTable = true;
+  } catch (_) {
+    logTable = false;
+  }
+  return { ...status, logTable };
+}
+
+async function listNotificationsForStudent(studentId, limit = 15) {
+  try {
+    const r = await pool.query(
+      `SELECT id, document_id AS "documentId", event_type AS "eventType",
+              recipient, recipient_role AS "recipientRole", subject,
+              status, error, metadata, created_at AS "createdAt"
+         FROM notification_log
+        WHERE student_id = $1
+        ORDER BY created_at DESC
+        LIMIT $2`,
+      [studentId, Math.min(Math.max(limit, 1), 50)]
+    );
+    return r.rows;
+  } catch (e) {
+    if (e.code === "42P01") return [];
+    throw e;
+  }
+}
+
+async function sendTestEmail(to) {
+  if (!isValidEmail(to)) throw new Error("Invalid recipient email.");
+  if (!isEmailConfigured()) throw new Error("SMTP not configured — set SMTP_USER and SMTP_PASS on the server.");
+  const portal = portalUrl();
+  const subject = "MAHE EduVerify — test email";
+  const text = [
+    "This is a test message from the EduVerify server.",
+    "",
+    `Portal: ${portal}`,
+    `Time: ${new Date().toISOString()}`,
+    "",
+    "If you received this, SMTP is working.",
+  ].join("\n");
+  await sendEmail({
+    to: String(to).trim(),
+    subject,
+    text,
+    html: `<p>This is a <b>test message</b> from EduVerify.</p><p>Portal: <a href="${escapeHtml(portal)}">${escapeHtml(portal)}</a></p><p>Time: ${escapeHtml(new Date().toISOString())}</p>`,
+  });
+  return { ok: true, to: String(to).trim() };
+}
+
 module.exports = {
   isEmailConfigured,
+  getEmailStatus,
+  getEmailHealth,
   notifyDocumentRejected,
+  listNotificationsForStudent,
+  sendTestEmail,
 };

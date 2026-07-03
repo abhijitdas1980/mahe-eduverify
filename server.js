@@ -16,6 +16,7 @@ const { isConfigured: isStorageConfigured } = require("./src/config/storage");
 assertProductionConfig();
 
 const { pool } = require("./src/config/db");
+const { getEmailHealth } = require("./src/lib/notifications");
 const { runSetup } = require("./src/db/setup");
 const { apiLimiter } = require("./src/middleware/security");
 const errorHandler = require("./src/middleware/errorHandler");
@@ -76,7 +77,14 @@ app.use(express.urlencoded({ extended: true }));
 app.get("/api/health", async (_req, res) => {
   try {
     await pool.query("SELECT 1");
-    res.json({ ok: true, db: "up", time: new Date().toISOString() });
+    const email = await getEmailHealth();
+    res.json({
+      ok: true,
+      db: "up",
+      email: email.configured ? "configured" : email.reason,
+      emailLog: email.logTable,
+      time: new Date().toISOString(),
+    });
   } catch (e) {
     res.status(503).json({ ok: false, db: "down" });
   }
@@ -111,9 +119,12 @@ async function start() {
   } else {
     console.log("[boot] AUTO_SETUP=false, skipping setup.");
   }
+  const { getEmailStatus } = require("./src/lib/notifications");
+  const emailBoot = getEmailStatus();
   app.listen(PORT, () => {
     console.log(`EduVerify server listening on port ${PORT}`);
     console.log(`Storage: ${storageProvider()}${isStorageConfigured() ? "" : " (not configured)"}`);
+    console.log(`Email: ${emailBoot.configured ? "SMTP ready (" + emailBoot.smtpUser + ")" : emailBoot.reason}`);
     console.log("Health check: /api/health");
   });
 }

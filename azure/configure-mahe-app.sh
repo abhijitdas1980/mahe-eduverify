@@ -43,6 +43,13 @@ az webapp config appsettings set \
     SEED_ADMIN_PASSWORD="$SEED_ADMIN_PASSWORD" \
     CORS_ORIGIN="$CORS_ORIGIN" \
     PG_POOL_MAX="${PG_POOL_MAX:-25}" \
+    NOTIFY_EMAIL_ENABLED="${NOTIFY_EMAIL_ENABLED:-true}" \
+    SMTP_HOST="${SMTP_HOST:-smtp.office365.com}" \
+    SMTP_PORT="${SMTP_PORT:-587}" \
+    SMTP_USER="${SMTP_USER:-admissions.maheblr@manipal.edu}" \
+    SMTP_PASS="${SMTP_PASS:-}" \
+    SMTP_FROM="${SMTP_FROM:-MAHE Admissions <admissions.maheblr@manipal.edu>}" \
+    PORTAL_URL="${PORTAL_URL:-$CORS_ORIGIN}" \
     WEBSITE_NODE_DEFAULT_VERSION="~20" \
   --output none
 

@@ -41,7 +41,12 @@ const {
   savePortalSettings,
   normalizePortalAccess,
 } = require("../lib/portalAccess");
-const { notifyDocumentRejected } = require("../lib/notifications");
+const {
+  notifyDocumentRejected,
+  listNotificationsForStudent,
+  sendTestEmail,
+  getEmailStatus,
+} = require("../lib/notifications");
 
 const studentBulkRoutes = require("./studentBulk");
 
@@ -738,8 +743,22 @@ router.get("/students/:appNo", async (req, res, next) => {
       slot,
       verifySlot,
       followupRemarks: await listFollowupRemarks(s.id),
+      emailNotifications: await listNotificationsForStudent(s.id),
+      emailStatus: getEmailStatus(),
     });
   } catch (e) { next(e); }
+});
+
+router.post("/notifications/test-email", requireSupervisor, async (req, res, next) => {
+  try {
+    const to = String(req.body?.to || "").trim();
+    if (!to) return res.status(400).json({ error: "Recipient email (to) is required." });
+    const result = await sendTestEmail(to);
+    await audit(req, "admin", req.admin.staffId, "EMAIL_TEST_SENT", to);
+    res.json(result);
+  } catch (e) {
+    res.status(400).json({ error: e.message || "Test email failed." });
+  }
 });
 
 router.patch("/students/:appNo", requireSupervisor, async (req, res, next) => {
