@@ -207,7 +207,7 @@ const FAQ = [
   { q:"A document was rejected — what next?", a:"Open the document, read the staff rejection note, then upload the corrected file (the Replace option re-enables only after rejection)." },
 ];
 
-const SUPPORT = { phone:"+91-80-4567-8900", email:"admissions@eduverify.ac.in", whatsapp:"+91-98765-43210", hours:"Mon–Sat, 9 AM – 6 PM" };
+const SUPPORT = { phone:"080 2449 4100 | 080 2449 4141 | 7411747070", email:"admissions.maheblr@manipal.edu", whatsapp:"+91-98765-43210", hours:"Mon–Sat, 9 AM – 6 PM" };
 
 const TEMPLATES = [
   { key:"REG", name:"College Registration Form", content:
@@ -622,12 +622,12 @@ function useFocusTrap(active, onEscape) {
 
 /* ============================================================ AUTH & LANDING ============================================================ */
 const LANDING_STEPS = [
-  { n: "01", t: "Validate",  d: "Confirm your admission offer and chosen program in a few taps.", i: "badge-check" },
-  { n: "02", t: "Checklist", d: "Receive a personalised document list built for your program and category.", i: "list-checks" },
-  { n: "03", t: "Upload",    d: "Add scans of each document through a secure, encrypted upload.", i: "upload-cloud" },
+  { n: "01", t: "Validate",  d: "your and parents' contact details", i: "badge-check" },
+  { n: "02", t: "Checklist", d: "Receive a document list built for your program and category.", i: "list-checks" },
+  { n: "03", t: "Upload",    d: "Upload each of your documents through a secure, encrypted connection.", i: "upload-cloud" },
   { n: "04", t: "Declare",   d: "Sign your digital self-declaration confirming everything is accurate.", i: "pen-line" },
-  { n: "05", t: USE_REPORTING_SLOTS ? "Book slot" : "Auto slot", d: USE_REPORTING_SLOTS ? "Pick your campus reporting appointment online." : "An orientation verification slot is automatically assigned to you.", i: "calendar-clock" },
-  { n: "06", t: "Walk-in",   d: "Bring your originals once — they're verified on campus in minutes.", i: "door-open", active: true },
+  { n: "05", t: USE_REPORTING_SLOTS ? "Book slot" : "Auto slot", d: USE_REPORTING_SLOTS ? "Pick your campus reporting appointment online." : "Your document verification slot will be automatically assigned.", i: "calendar-clock" },
+  { n: "06", t: "Walk-in",   d: "Walk in with your original documents and get them verified on campus in minutes.", i: "door-open", active: true },
 ];
 const LANDING_BENEFITS = [
   { n: "01", t: "Fully paperless",  d: "No printouts, no plastic folders. Every document lives securely in one organised place you can revisit anytime.", i: "leaf" },
@@ -635,15 +635,15 @@ const LANDING_BENEFITS = [
   { n: "03", t: "Hours saved",      d: "Skip the orientation-day queues. Pre-verified students walk in, confirm originals, and walk out in minutes.", i: "timer" },
 ];
 const LANDING_FAQS = [
-  { q: "Do I still need to visit campus at all?", a: "Yes — once. The entire pre-verification happens online, but you'll make a single short walk-in during orientation so staff can confirm your original documents." },
+  { q: "Do I still need to visit campus at all?", a: "Yes." },
   { q: "Is my personal data safe on EduVerify?", a: "Every upload is encrypted and stored with strict, role-based access. Only the university's authorised verification cell can view your records." },
-  { q: "Which documents will I need?", a: "After you log in and validate your admission, EduVerify generates a personalised checklist for your program and category." },
+  { q: "Which documents will I need?", a: "After you log in and validate your admission, EduVerify generates a checklist for your program and category." },
   { q: "What if I miss my assigned slot?", a: "Contact the admissions helpdesk — they can reassign you to the next available verification time." },
 ];
 const LANDING_STATS = [
   { v: "2,400+", l: "students verified" },
   { v: "~8 min", l: "avg. to complete" },
-  { v: "100%",   l: "paperless" },
+  { v: "100%",   l: "onboarding preparedness" },
   { v: "1 trip", l: "to campus" },
 ];
 
@@ -691,7 +691,7 @@ function LandingBadge({ children }) {
 }
 
 function MaheLogo({ className }) {
-  return <img src="/assets/mahe-logo.png" alt="Manipal Academy of Higher Education, Bengaluru Campus" className={className || "h-[30px] w-auto block"} />;
+  return <img src="/assets/mahe-logo.png" alt="Manipal Academy of Higher Education, Bengaluru" className={className || "h-[44px] sm:h-[52px] w-auto max-w-[min(100%,340px)] block object-contain object-left"} />;
 }
 
 function LandingHeader({ go }) {
@@ -739,7 +739,7 @@ function LandingHeader({ go }) {
           const [label, id] = x.split("|");
           return <a key={id} href={"#" + id} onClick={toggleMenu} className="block py-3 font-semibold border-b border-[#ead9d6] dark:border-[#3d201d] last:border-0">{label}</a>;
         })}
-        <button type="button" onClick={() => { toggleMenu(); go("admin"); }} className="mt-3 w-full text-left py-3 font-semibold text-crimson dark:text-gold">Verification Cell Login</button>
+        <button type="button" onClick={() => { toggleMenu(); go("admin"); }} className="mt-3 w-full text-left py-3 font-semibold text-crimson dark:text-gold">Admissions Cell Login</button>
       </div>
     </header>
   );
@@ -748,9 +748,9 @@ function LandingHeader({ go }) {
 function InstitutionStrip() {
   return (
     <div className="bg-[#fbf5f4] dark:bg-[#241211] border-b border-[#ead9d6] dark:border-[#3d201d]">
-      <div className="max-w-[1200px] mx-auto px-4 sm:px-6 py-2.5 flex items-center justify-between gap-3 flex-wrap">
-        <div className="flex items-center gap-3">
-          <span className="bg-white dark:bg-[#281412] rounded-lg px-2.5 py-1.5 inline-flex items-center shadow-sm">
+      <div className="max-w-[1200px] mx-auto px-4 sm:px-6 py-3 sm:py-3.5 flex items-center justify-between gap-3 flex-wrap">
+        <div className="flex items-center gap-3 min-w-0">
+          <span className="bg-white dark:bg-[#281412] rounded-lg px-3 py-2 inline-flex items-center shadow-sm shrink-0">
             <MaheLogo />
           </span>
           <span className="hidden sm:inline text-[12.5px] font-medium text-[#6e5350] dark:text-[#c9a9a5]">The official pre-verification portal of MAHE</span>
@@ -779,18 +779,18 @@ function LandingHero({ go }) {
             Guided Digital Pre-Verification Portal
           </div>
           <h1 className="font-heading font-extrabold text-white mt-5 leading-[1.02] tracking-tight text-[clamp(36px,5.6vw,68px)]">
-            Verify before you visit.
-            <span className="block text-transparent bg-clip-text" style={{ backgroundImage: "linear-gradient(90deg,#FFE26B,#FFF1B0)" }}>Walk in. Walk out. Done.</span>
+            Verify online.
+            <span className="block text-transparent bg-clip-text" style={{ backgroundImage: "linear-gradient(90deg,#FFE26B,#FFF1B0)" }}>Confirm on campus.</span>
           </h1>
           <p className="mt-5 max-w-[520px] text-white/90 leading-relaxed text-[clamp(16px,1.7vw,19px)]">
-            Complete your admission document checks online before orientation. EduVerify guides you step by step — so campus day is just a quick walk-in confirmation, not a queue.
+            Upload and verify your admission documents online before orientation. On campus, all that's left is a quick document confirmation.
           </p>
           <div className="flex flex-wrap gap-3 mt-8">
             <button type="button" onClick={() => go("student")} className="inline-flex items-center gap-2.5 bg-white text-crimson-dark font-bold text-[16px] px-6 py-[15px] rounded-xl shadow-xl hover:-translate-y-0.5 transition-transform">
               Student Login <i data-lucide="arrow-right" className="w-[18px] h-[18px]"></i>
             </button>
             <button type="button" onClick={() => go("admin")} className="inline-flex items-center gap-2.5 bg-white/10 border border-white/30 text-white font-semibold text-[16px] px-6 py-[15px] rounded-xl backdrop-blur hover:bg-white/15 transition-colors">
-              <i data-lucide="building-2" className="w-[18px] h-[18px]"></i> Verification Cell Login
+              <i data-lucide="building-2" className="w-[18px] h-[18px]"></i> Admissions Cell Login
             </button>
           </div>
           <div className="flex items-center gap-3.5 mt-9">
@@ -922,7 +922,7 @@ function LandingTrust() {
               <div className="flex items-center gap-3 mt-6">
                 <span className="w-[46px] h-[46px] rounded-full" style={{ background: "linear-gradient(135deg,#FFD700,#7B1E15)" }}></span>
                 <div>
-                  <div className="font-bold text-white text-[15px]">Rohan Mehta</div>
+                  <div className="font-bold text-white text-[15px]">Arya</div>
                   <div className="text-[13px] text-white/70">First-year B.Tech · MAHE, Bengaluru Campus</div>
                 </div>
               </div>
@@ -964,7 +964,6 @@ function LandingFaq() {
 }
 
 function LandingFooter() {
-  const tel = SUPPORT.phone.replace(/[^\d+]/g, "");
   return (
     <footer id="contact" className="bg-white dark:bg-[#1a0c0a] border-t border-[#ead9d6] dark:border-[#3d201d] pt-14 lg:pt-20 pb-8">
       <div className="max-w-[1200px] mx-auto px-4 sm:px-6">
@@ -975,7 +974,7 @@ function LandingFooter() {
               <span className="font-heading font-extrabold text-[21px] tracking-tight">EduVerify</span>
             </a>
             <p className="mt-4 text-[14.5px] leading-relaxed text-[#6e5350] dark:text-[#c9a9a5]">The official Guided Digital Pre-Verification Portal of Manipal Academy of Higher Education, Bengaluru Campus.</p>
-            <span className="mt-[18px] inline-flex bg-white dark:bg-[#281412] rounded-lg px-3 py-1.5 items-center shadow-sm"><MaheLogo /></span>
+            <span className="mt-[18px] inline-flex bg-white dark:bg-[#281412] rounded-lg px-3 py-2 items-center shadow-sm"><MaheLogo className="h-[40px] sm:h-[48px] w-auto max-w-[min(100%,320px)] block object-contain object-left" /></span>
           </div>
           <div>
             <div className="text-[13px] font-bold tracking-[0.06em] uppercase text-[#6e5350] dark:text-[#c9a9a5]">Explore</div>
@@ -987,15 +986,24 @@ function LandingFooter() {
           </div>
           <div>
             <div className="text-[13px] font-bold tracking-[0.06em] uppercase text-[#6e5350] dark:text-[#c9a9a5]">Helpdesk</div>
-            <div className="flex flex-col gap-3 mt-4 text-[15px]">
-              <a href={"tel:" + tel} className="flex items-center gap-2.5"><i data-lucide="phone" className="w-[17px] h-[17px] text-crimson dark:text-gold"></i> {SUPPORT.phone}</a>
-              <a href={"mailto:" + SUPPORT.email} className="flex items-center gap-2.5"><i data-lucide="mail" className="w-[17px] h-[17px] text-crimson dark:text-gold"></i> {SUPPORT.email}</a>
+            <div className="flex flex-col gap-2 mt-4 text-[15px] text-[#2a1311] dark:text-[#f7ecea] leading-relaxed">
+              <div className="font-semibold">Admissions contact:</div>
+              <div className="flex items-start gap-2.5">
+                <i data-lucide="phone" className="w-[17px] h-[17px] text-crimson dark:text-gold shrink-0 mt-0.5"></i>
+                <div>
+                  <div>Tel: <a href="tel:08024494100" className="hover:underline">080 2449 4100</a> | <a href="tel:08024494141" className="hover:underline">080 2449 4141</a> | <a href="tel:7411747070" className="hover:underline">7411747070</a></div>
+                </div>
+              </div>
+              <div className="flex items-start gap-2.5">
+                <i data-lucide="mail" className="w-[17px] h-[17px] text-crimson dark:text-gold shrink-0 mt-0.5"></i>
+                <a href="mailto:admissions.maheblr@manipal.edu" className="hover:underline">admissions.maheblr@manipal.edu</a>
+              </div>
             </div>
           </div>
         </div>
         <div className="mt-12 pt-6 border-t border-[#ead9d6] dark:border-[#3d201d] flex flex-wrap gap-2.5 justify-between items-center text-[13.5px] text-[#6e5350] dark:text-[#c9a9a5]">
           <span>© 2026 EduVerify · Guided Digital Pre-Verification Portal</span>
-          <span>Helpdesk: {SUPPORT.phone} · {SUPPORT.email}</span>
+          <span>Admissions: 080 2449 4100 · admissions.maheblr@manipal.edu</span>
         </div>
       </div>
     </footer>

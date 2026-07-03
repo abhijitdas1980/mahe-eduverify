@@ -1,0 +1,442 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>EduVerify — MAHE Production Deployment Plan (Step-by-Step)</title>
+  <style>
+    @page { margin: 18mm 14mm; size: A4; }
+    * { box-sizing: border-box; }
+    body {
+      font-family: "Segoe UI", Calibri, Arial, sans-serif;
+      font-size: 11pt;
+      line-height: 1.5;
+      color: #1a1a1a;
+      max-width: 210mm;
+      margin: 0 auto;
+      padding: 22px 28px;
+    }
+    h1 {
+      font-size: 20pt;
+      color: #1e3a5f;
+      border-bottom: 3px solid #0078d4;
+      padding-bottom: 8px;
+      margin-top: 0;
+    }
+    h2 {
+      font-size: 14pt;
+      color: #1e40af;
+      margin-top: 28px;
+      page-break-after: avoid;
+    }
+    h3 {
+      font-size: 12pt;
+      color: #334155;
+      margin-top: 18px;
+      page-break-after: avoid;
+    }
+    .meta { color: #64748b; font-size: 10pt; margin-bottom: 22px; }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 10px 0 16px;
+      font-size: 9.5pt;
+    }
+    th, td {
+      border: 1px solid #cbd5e1;
+      padding: 7px 9px;
+      text-align: left;
+      vertical-align: top;
+    }
+    th { background: #f1f5f9; font-weight: 600; }
+    tr:nth-child(even) td { background: #f8fafc; }
+    pre, .diagram {
+      background: #f8fafc;
+      border: 1px solid #e2e8f0;
+      border-radius: 6px;
+      padding: 12px;
+      font-family: Consolas, "Courier New", monospace;
+      font-size: 8.5pt;
+      line-height: 1.4;
+      white-space: pre-wrap;
+      word-break: break-all;
+    }
+    ul, ol { margin: 6px 0 14px; padding-left: 22px; }
+    li { margin: 4px 0; }
+    .yes {
+      background: #ecfdf5;
+      border-left: 4px solid #059669;
+      padding: 12px 16px;
+      margin: 14px 0;
+    }
+    .warn {
+      background: #fffbeb;
+      border-left: 4px solid #d97706;
+      padding: 12px 16px;
+      margin: 14px 0;
+    }
+    .danger {
+      background: #fef2f2;
+      border-left: 4px solid #dc2626;
+      padding: 12px 16px;
+      margin: 14px 0;
+    }
+    .page-break { page-break-before: always; }
+    code {
+      font-family: Consolas, monospace;
+      font-size: 9pt;
+      background: #f1f5f9;
+      padding: 1px 4px;
+      border-radius: 3px;
+    }
+    .step {
+      background: #eff6ff;
+      border: 1px solid #bfdbfe;
+      border-radius: 8px;
+      padding: 14px 16px;
+      margin: 14px 0;
+    }
+    .step-num {
+      display: inline-block;
+      background: #1e40af;
+      color: white;
+      font-weight: bold;
+      width: 26px;
+      height: 26px;
+      line-height: 26px;
+      text-align: center;
+      border-radius: 50%;
+      margin-right: 8px;
+      font-size: 10pt;
+    }
+    footer {
+      margin-top: 32px;
+      padding-top: 10px;
+      border-top: 1px solid #e2e8f0;
+      font-size: 9pt;
+      color: #64748b;
+      text-align: center;
+    }
+    @media print {
+      body { padding: 0; }
+      .no-print { display: none; }
+      a { color: inherit; text-decoration: none; }
+    }
+  </style>
+</head>
+<body>
+
+<p class="no-print" style="background:#eff6ff;border:1px solid #93c5fd;padding:12px;border-radius:8px;">
+  <strong>Save as PDF:</strong> Open this file in Chrome or Edge → <strong>File → Print → Save as PDF</strong> (or Cmd+P / Ctrl+P).
+</p>
+
+<h1>EduVerify — MAHE Production Deployment Plan</h1>
+<p class="meta">
+  <strong>Document:</strong> Step-by-step production go-live after UAT sign-off<br />
+  <strong>Application:</strong> EduVerify Document Pre-Verification Portal<br />
+  <strong>Production URL:</strong> https://maheblreduverify.manipal.edu<br />
+  <strong>Subscription:</strong> MAHEBLR-Admission<br />
+  <strong>SPOC:</strong> abhijit.das@manipal.edu<br />
+  <strong>Scale:</strong> 5,000–10,000 students per admission cycle<br />
+  <strong>Prepared:</strong> July 2026
+</p>
+
+<div class="yes">
+  <strong>Prerequisite:</strong> Complete UAT on <code>MAHE-CI-DOC-UAT-APP01</code> with signed checklist (bulk upload, student upload, verifier workflow, storage blobs, health check, GitHub deploy green). Do <strong>not</strong> deploy production until UAT is signed off by Verification Cell + IT.
+</div>
+
+<h2>1. Production architecture</h2>
+<pre class="diagram">Students &amp; Staff (Internet)
+        |
+Application Gateway + Wildcard SSL (maheblreduverify.manipal.edu)
+        |
+MAHE-CI-DOC-PRD-APP01  (Linux, Node 20, App Service)
+        |
+        +--- Azure Database for PostgreSQL  mahe-ci-doc-prd-psqlsvr01
+        |         Database: eduverify  (metadata only)
+        |
+        +--- Azure Blob Storage  mahecidocprdstgacct01
+        |         Container: eduverify-documents  (student files)
+        |
+        +--- Key Vault  MAHE-CI-DOC-PRD-KV01  (secrets)
+        |
+        +--- Application Insights  (monitoring)</pre>
+
+<h2>2. Production resources (MAHE)</h2>
+<table>
+  <tr><th>Resource</th><th>Name</th><th>Purpose</th></tr>
+  <tr><td>App Service</td><td>MAHE-CI-DOC-PRD-APP01</td><td>Web + API + frontend</td></tr>
+  <tr><td>Resource group</td><td>MAHE-CI-DOC-PRD-RG01</td><td>(confirm exact name in portal)</td></tr>
+  <tr><td>PostgreSQL</td><td>mahe-ci-doc-prd-psqlsvr01</td><td>Student &amp; verification metadata</td></tr>
+  <tr><td>Storage</td><td>mahecidocprdstgacct01</td><td>Document files (PDF/images)</td></tr>
+  <tr><td>Key Vault</td><td>MAHE-CI-DOC-PRD-KV01</td><td>Production secrets</td></tr>
+  <tr><td>Public URL</td><td>maheblreduverify.manipal.edu</td><td>After App Gateway + DNS</td></tr>
+  <tr><td>Managed Identity</td><td>97fb7c66-1571-43bb-96dd-814578216a4f</td><td>Key Vault / storage access</td></tr>
+</table>
+
+<div class="page-break"></div>
+
+<h2>3. UAT sign-off checklist (required before Prod)</h2>
+<table>
+  <tr><th>#</th><th>Test</th><th>Pass</th><th>Sign-off</th></tr>
+  <tr><td>1</td><td>UAT <code>/api/health</code> returns <code>"db":"up"</code></td><td>☐</td><td></td></tr>
+  <tr><td>2</td><td>Admin login ADM-001 works</td><td>☐</td><td></td></tr>
+  <tr><td>3</td><td>Bulk upload 50+ students</td><td>☐</td><td></td></tr>
+  <tr><td>4</td><td>10 students: login, upload, self-verify</td><td>☐</td><td></td></tr>
+  <tr><td>5</td><td>Verifier: preview, verify, ZIP download</td><td>☐</td><td></td></tr>
+  <tr><td>6</td><td>Blobs appear in UAT storage container</td><td>☐</td><td></td></tr>
+  <tr><td>7</td><td>Verify schedule generate + allocate (if used)</td><td>☐</td><td></td></tr>
+  <tr><td>8</td><td>GitHub Deploy MAHE UAT workflow green</td><td>☐</td><td></td></tr>
+  <tr><td>9</td><td>Verification Cell approves go-live</td><td>☐</td><td></td></tr>
+  <tr><td>10</td><td>MAHE IT approves Prod window</td><td>☐</td><td></td></tr>
+</table>
+
+<h2>4. Phase A — Prepare production PostgreSQL</h2>
+
+<div class="step">
+  <span class="step-num">1</span><strong>Activate PIM Contributor</strong> on subscription MAHEBLR-Admission (Azure Portal → My roles → Activate).
+</div>
+
+<div class="step">
+  <span class="step-num">2</span><strong>Open PostgreSQL server:</strong> Portal → search <code>mahe-ci-doc-prd-psqlsvr01</code> → Overview. Confirm Status = <strong>Ready</strong>.
+</div>
+
+<div class="step">
+  <span class="step-num">3</span><strong>Create application database:</strong> Left menu → <strong>Databases</strong> → <strong>+ Add</strong> → Name: <code>eduverify</code> → Save.<br />
+  <em>Do not use the default <code>postgres</code> database for the application.</em>
+</div>
+
+<div class="step">
+  <span class="step-num">4</span><strong>Networking:</strong> PostgreSQL → <strong>Networking</strong> → Enable <strong>Allow public access from any Azure service within Azure to this server</strong> → Save.<br />
+  (After go-live, infra may restrict to private endpoints per target architecture.)
+</div>
+
+<div class="step">
+  <span class="step-num">5</span><strong>Build DATABASE_URL</strong> for production App Service. Password must be URL-encoded (<code>@</code> → <code>%40</code>):<br />
+  <pre>postgresql://psqladmin:YOUR_URL_ENCODED_PASSWORD@mahe-ci-doc-prd-psqlsvr01.postgres.database.azure.com:5432/eduverify?sslmode=require</pre>
+  Store this in Key Vault secret <code>DATABASE-URL</code> — not in email or git.
+</div>
+
+<h2>5. Phase B — Prepare production Blob Storage</h2>
+
+<div class="step">
+  <span class="step-num">1</span>Portal → <code>mahecidocprdstgacct01</code> → <strong>Containers</strong>.
+</div>
+
+<div class="step">
+  <span class="step-num">2</span>Create container <code>eduverify-documents</code> if missing. <strong>Public access level: Private</strong>.
+</div>
+
+<div class="step">
+  <span class="step-num">3</span>Store production storage connection string in Key Vault as <code>AZURE-STORAGE-CONNECTION-STRING</code> (or use Managed Identity + Blob Data Contributor role — preferred long-term).
+</div>
+
+<div class="warn">
+  <strong>Never</strong> use UAT storage (<code>mahecidocuatstgacct01</code>) on production App Service. UAT and Prod storage must remain separate.
+</div>
+
+<div class="page-break"></div>
+
+<h2>6. Phase C — Key Vault secrets (production)</h2>
+
+<p>Work with MAHE IT to add these secrets to <code>MAHE-CI-DOC-PRD-KV01</code>:</p>
+
+<table>
+  <tr><th>Secret name</th><th>Description</th></tr>
+  <tr><td>DATABASE-URL</td><td>Full PostgreSQL connection string to <code>eduverify</code></td></tr>
+  <tr><td>JWT-SECRET</td><td>Random 64+ character hex (generate new for Prod — do not reuse UAT)</td></tr>
+  <tr><td>SEED-ADMIN-PASSWORD</td><td>Strong production admin password for ADM-001</td></tr>
+  <tr><td>AZURE-STORAGE-CONNECTION-STRING</td><td>Prod storage account connection string (if not using MI only)</td></tr>
+</table>
+
+<p>Generate JWT secret (run once on secure machine):</p>
+<pre>node -e "console.log(require('crypto').randomBytes(48).toString('hex'))"</pre>
+
+<p>Confirm managed identity <code>97fb7c66-1571-43bb-96dd-814578216a4f</code> has <strong>Key Vault Secrets User</strong> on the vault.</p>
+
+<h2>7. Phase D — Configure production App Service</h2>
+
+<p>Portal → <code>MAHE-CI-DOC-PRD-APP01</code> → <strong>Environment variables</strong> → Add all settings → <strong>Apply</strong> → <strong>Restart</strong>.</p>
+
+<table>
+  <tr><th>Name</th><th>Production value</th></tr>
+  <tr><td>NODE_ENV</td><td>production</td></tr>
+  <tr><td>PORT</td><td>8080</td></tr>
+  <tr><td>AUTO_SETUP</td><td>true</td></tr>
+  <tr><td>STORAGE_PROVIDER</td><td>azure</td></tr>
+  <tr><td>AZURE_STORAGE_ACCOUNT_NAME</td><td>mahecidocprdstgacct01</td></tr>
+  <tr><td>AZURE_STORAGE_CONTAINER</td><td>eduverify-documents</td></tr>
+  <tr><td>AZURE_STORAGE_CONNECTION_STRING</td><td>From Key Vault (prod storage only)</td></tr>
+  <tr><td>DATABASE_URL</td><td>From Key Vault (prod PostgreSQL / eduverify)</td></tr>
+  <tr><td>JWT_SECRET</td><td>From Key Vault (new for prod)</td></tr>
+  <tr><td>JWT_EXPIRES_IN</td><td>12h</td></tr>
+  <tr><td>SEED_ADMIN_ID</td><td>ADM-001</td></tr>
+  <tr><td>SEED_ADMIN_NAME</td><td>Verification Cell Admin</td></tr>
+  <tr><td>SEED_ADMIN_PASSWORD</td><td>From Key Vault (strong — not ChangeMe@2026)</td></tr>
+  <tr><td>CORS_ORIGIN</td><td>https://maheblreduverify.manipal.edu</td></tr>
+  <tr><td>PG_POOL_MAX</td><td>25</td></tr>
+  <tr><td>WEBSITE_NODE_DEFAULT_VERSION</td><td>~20</td></tr>
+</table>
+
+<div class="danger">
+  <strong>Deployment slot setting:</strong> Leave <strong>unchecked</strong> unless using staging slots.<br />
+  <strong>CORS_ORIGIN</strong> must match the exact public URL students use (custom domain after gateway).
+</div>
+
+<div class="step">
+  <span class="step-num">1</span>Copy <strong>Default domain</strong> from Prod App Service Overview (may be regional, e.g. <code>....centralindia-01.azurewebsites.net</code>). Use this for initial smoke tests before custom domain is live.
+</div>
+
+<div class="page-break"></div>
+
+<h2>8. Phase E — Deploy application code to Production</h2>
+
+<h3>Option 1 — GitHub Actions (recommended)</h3>
+
+<div class="step">
+  <span class="step-num">1</span>GitHub repo <code>mahe-eduverify</code> → <strong>Settings → Secrets → Actions</strong>.
+</div>
+
+<div class="step">
+  <span class="step-num">2</span>Add secret <code>AZURE_WEBAPP_PUBLISH_PROFILE</code> — download from <strong>MAHE-CI-DOC-PRD-APP01</strong> → Overview → <strong>Download publish profile</strong> (enable SCM basic auth if blocked).
+</div>
+
+<div class="step">
+  <span class="step-num">3</span>Update <code>.github/workflows/mahe-prod-deploy.yml</code> → set <code>AZURE_WEBAPP_HOST</code> to Prod App Service <strong>Default domain</strong> from Overview.
+</div>
+
+<div class="step">
+  <span class="step-num">4</span>GitHub → <strong>Actions</strong> → <strong>Deploy MAHE Production</strong> → <strong>Run workflow</strong> → type <code>deploy-prod</code> to confirm.
+</div>
+
+<h3>Option 2 — Azure CLI from developer machine</h3>
+<pre>az login
+az account set --subscription "MAHEBLR-Admission"
+
+cd eduverify-server
+az webapp deploy \
+  --resource-group MAHE-CI-DOC-PRD-RG01 \
+  --name MAHE-CI-DOC-PRD-APP01 \
+  --src-path . \
+  --type zip</pre>
+
+<h2>9. Phase F — Smoke test (before custom domain)</h2>
+
+<div class="step">
+  <span class="step-num">1</span>Open <code>https://&lt;prod-default-domain&gt;/api/health</code> → expect <code>{"ok":true,"db":"up"}</code>.
+</div>
+
+<div class="step">
+  <span class="step-num">2</span>Verification Cell Login → <code>ADM-001</code> + production <code>SEED_ADMIN_PASSWORD</code>.
+</div>
+
+<div class="step">
+  <span class="step-num">3</span>Upload <strong>one</strong> test student; upload one PDF; confirm blob in <code>mahecidocprdstgacct01</code> / <code>eduverify-documents</code>.
+</div>
+
+<div class="step">
+  <span class="step-num">4</span>Delete test student after smoke test (supervisor) if using real-looking data.
+</div>
+
+<h2>10. Phase G — Application Gateway + custom domain</h2>
+<p><em>Coordinated with MAHE infrastructure team after app smoke test passes.</em></p>
+
+<table>
+  <tr><th>Step</th><th>Owner</th><th>Action</th></tr>
+  <tr><td>1</td><td>IT</td><td>Provision Application Gateway in front of MAHE-CI-DOC-PRD-APP01</td></tr>
+  <tr><td>2</td><td>IT</td><td>Attach existing <strong>wildcard SSL certificate</strong> for manipal.edu</td></tr>
+  <tr><td>3</td><td>IT</td><td>DNS: <code>maheblreduverify.manipal.edu</code> → Application Gateway</td></tr>
+  <tr><td>4</td><td>App team</td><td>Update <code>CORS_ORIGIN</code> to <code>https://maheblreduverify.manipal.edu</code></td></tr>
+  <tr><td>5</td><td>App team</td><td>Restart App Service; test health and login on custom domain</td></tr>
+  <tr><td>6</td><td>IT</td><td>Restrict public access (private endpoints) per target architecture</td></tr>
+</table>
+
+<div class="page-break"></div>
+
+<h2>11. Phase H — Production data load (5,000–10,000 students)</h2>
+
+<div class="step">
+  <span class="step-num">1</span>Sign in as supervisor <code>ADM-001</code> on production URL.
+</div>
+
+<div class="step">
+  <span class="step-num">2</span><strong>Bulk Upload</strong> → download template → prepare student Excel from admissions data.
+</div>
+
+<div class="step">
+  <span class="step-num">3</span>Upload in batches of <strong>1,000–2,000</strong> rows; validate each batch before next.
+</div>
+
+<div class="step">
+  <span class="step-num">4</span>Generate verification schedule → allocate students (orientation week).
+</div>
+
+<div class="step">
+  <span class="step-num">5</span>Communicate student URL and login instructions (app number + DOB for first login).
+</div>
+
+<h2>12. Security checklist (production)</h2>
+<table>
+  <tr><th>#</th><th>Item</th><th>Done</th></tr>
+  <tr><td>1</td><td>JWT_SECRET is unique, 32+ chars, not UAT value</td><td>☐</td></tr>
+  <tr><td>2</td><td>SEED_ADMIN_PASSWORD is strong; not default</td><td>☐</td></tr>
+  <tr><td>3</td><td>CORS_ORIGIN is exact production URL (not *)</td><td>☐</td></tr>
+  <tr><td>4</td><td>Blob container is private (no public read)</td><td>☐</td></tr>
+  <tr><td>5</td><td>Secrets in Key Vault; not in git</td><td>☐</td></tr>
+  <tr><td>6</td><td>Storage keys rotated after any exposure in email/chat</td><td>☐</td></tr>
+  <tr><td>7</td><td>HTTPS only on public URL</td><td>☐</td></tr>
+  <tr><td>8</td><td>Application Insights enabled</td><td>☐</td></tr>
+  <tr><td>9</td><td>UAT and Prod use separate DB and storage</td><td>☐</td></tr>
+  <tr><td>10</td><td>Admin accounts: disable unused verifiers</td><td>☐</td></tr>
+</table>
+
+<h2>13. Rollback plan</h2>
+<table>
+  <tr><th>Scenario</th><th>Action</th></tr>
+  <tr><td>Bad code deploy</td><td>GitHub → re-run previous successful workflow commit; or App Service → Deployment Center → redeploy previous package</td></tr>
+  <tr><td>Database issue</td><td>Restore PostgreSQL from Azure backup (point-in-time); contact IT</td></tr>
+  <tr><td>Gateway/DNS issue</td><td>Revert DNS to maintenance page; IT rolls back gateway config</td></tr>
+  <tr><td>Critical bug at go-live</td><td>Disable student access via gateway; keep admin access for fixes; communicate delay to admissions</td></tr>
+</table>
+
+<h2>14. Post go-live monitoring (first 72 hours)</h2>
+<ul>
+  <li>Monitor <code>/api/health</code> every hour (automated or manual)</li>
+  <li>Application Insights → failures, response times, exceptions</li>
+  <li>App Service → CPU/memory; scale out if CPU &gt; 70% sustained</li>
+  <li>PostgreSQL → connections, storage growth</li>
+  <li>Storage account → capacity (plan ~100 GB per 5k students)</li>
+  <li>Verification Cell hotline for login/upload issues</li>
+</ul>
+
+<h2>15. Contacts &amp; escalation</h2>
+<table>
+  <tr><th>Role</th><th>Contact</th></tr>
+  <tr><td>Application SPOC</td><td>abhijit.das@manipal.edu</td></tr>
+  <tr><td>Application support</td><td>subin.k@manipal.edu</td></tr>
+  <tr><td>Azure / infrastructure</td><td>MAHE IT (subscription MAHEBLR-Admission)</td></tr>
+  <tr><td>Verification Cell</td><td>Admission verification team lead</td></tr>
+</table>
+
+<h2>16. Production timeline (suggested)</h2>
+<table>
+  <tr><th>Day</th><th>Activity</th></tr>
+  <tr><td>D-7</td><td>UAT sign-off completed</td></tr>
+  <tr><td>D-5</td><td>Prod PostgreSQL + storage + Key Vault secrets ready</td></tr>
+  <tr><td>D-4</td><td>Prod App Service env vars + code deploy + smoke test</td></tr>
+  <tr><td>D-3</td><td>App Gateway + SSL + DNS to maheblreduverify.manipal.edu</td></tr>
+  <tr><td>D-2</td><td>Bulk upload pilot batch (100 students) on Prod</td></tr>
+  <tr><td>D-1</td><td>Full bulk upload; verifier training; schedule allocation</td></tr>
+  <tr><td>D-Day</td><td>Students go live; war-room monitoring</td></tr>
+</table>
+
+<div class="yes">
+  <strong>End state:</strong> Students access https://maheblreduverify.manipal.edu → login with application number + DOB → upload documents. Staff use Verification Cell portal. Metadata in PostgreSQL <code>eduverify</code>; files in Blob <code>eduverify-documents</code>. UAT environment remains for future releases.
+</div>
+
+<footer>
+  EduVerify MAHE Production Deployment Plan · Confidential — internal use · July 2026<br />
+  Repository: mahe-eduverify · Azure subscription MAHEBLR-Admission
+</footer>
+
+</body>
+</html>

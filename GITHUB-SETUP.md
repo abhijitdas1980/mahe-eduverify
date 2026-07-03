@@ -63,7 +63,16 @@ Repo → **Settings → Secrets and variables → Actions** → **New repository
 
 | Secret | How to get it |
 |--------|----------------|
-| `AZURE_CREDENTIALS` | `az ad sp create-for-rbac ... --sdk-auth` (see [azure/MAHE-DEPLOY.md](azure/MAHE-DEPLOY.md)) |
+| `AZURE_WEBAPP_PUBLISH_PROFILE` | App Service → **Download publish profile** (see below) |
+| `AZURE_CREDENTIALS` | _(Optional)_ Service principal JSON — requires **Application Administrator** or ask infra |
+
+#### Publish profile (recommended if `az ad sp create-for-rbac` fails)
+
+1. Azure Portal → **MAHE-CI-DOC-UAT-APP01** (activate PIM Contributor first)
+2. **Overview** → top bar → **Download publish profile**
+3. GitHub repo → **Settings → Secrets → Actions** → **New secret**
+4. Name: `AZURE_WEBAPP_PUBLISH_PROFILE`
+5. Value: paste the **entire** `.PublishSettings` XML file contents
 
 Optional: **Settings → Environments** → create `uat` and `production` with reviewers.
 
