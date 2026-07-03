@@ -16,13 +16,14 @@ const { uploadBuffer, destroyAsset, isConfigured } = require("../config/storage"
 const { streamDoc } = require("../lib/docStream");
 const { audit } = require("../lib/audit");
 const {
-  ensureDocuments, filterVisible, serializeDoc, isConfirmed, CONFIRM_KEY,
+  ensureDocuments, filterForProfile, serializeDoc, isConfirmed, CONFIRM_KEY,
   DOC_SELECT_WITH_VERIFIER, DOC_JOIN_VERIFIER,
 } = require("../lib/docs");
 const { checkAgainstBlacklist } = require("../lib/blacklist");
 const { tryAllocateVerifySlot } = require("../lib/verifyAlloc");
 const { DOC_META, checklistFor, isLegacyCode } = require("../config/checklists");
 const { validateContactPayload, serializeContact } = require("../lib/contact");
+const { portalPayload } = require("../lib/portalAccess");
 
 const router = express.Router();
 router.use(requireStudent);
@@ -42,15 +43,15 @@ async function readSetting(key, fallback) {
 }
 
 async function studentDocContext(studentId) {
-  const r = await pool.query("SELECT profile, category FROM students WHERE id=$1", [studentId]);
+  const r = await pool.query("SELECT profile, category, program FROM students WHERE id=$1", [studentId]);
   const s = r.rows[0];
-  return s ? { profile: s.profile, category: s.category } : {};
+  return s ? { profile: s.profile, category: s.category, program: s.program } : {};
 }
 
 async function loadState(studentId) {
   const sr = await pool.query("SELECT * FROM students WHERE id=$1", [studentId]);
   const s = sr.rows[0]; if (!s) return null;
-  await ensureDocuments(s.id, s.profile, s.category);
+  await ensureDocuments(s.id, s.profile, s.category, s.program);
   const dr = await pool.query(
     `SELECT ${DOC_SELECT_WITH_VERIFIER} FROM documents d ${DOC_JOIN_VERIFIER} WHERE d.student_id=$1 ORDER BY d.id`,
     [s.id]
@@ -96,7 +97,7 @@ async function loadState(studentId) {
       uploadCompletedAt: s.upload_completed_at,
       ...serializeContact(s),
     },
-    documents: filterVisible(dr.rows).map((d) => serializeDoc(d, { profile: s.profile, category: s.category })),
+    documents: filterForProfile(dr.rows, s.profile, s.category, s.program).map((d) => serializeDoc(d, { profile: s.profile, category: s.category, program: s.program })),
     slot,
     verifySlot,
   };
@@ -136,7 +137,10 @@ router.get("/me", async (req, res, next) => {
   try {
     const state = await loadState(req.student.id);
     if (!state) return res.status(404).json({ error: "Student record not found." });
-    res.json(state);
+    res.json({
+      ...state,
+      portal: portalPayload(req.portalAccess),
+    });
   } catch (e) { next(e); }
 });
 
@@ -312,10 +316,11 @@ router.post("/declare", async (req, res, next) => {
     if (existing.rows[0]?.declared) {
       return res.status(400).json({ error: "You have already signed the self-declaration. It is locked unless staff reject a document." });
     }
-    const sr = await pool.query("SELECT profile, category FROM students WHERE id=$1", [req.student.id]);
+    const sr = await pool.query("SELECT profile, category, program FROM students WHERE id=$1", [req.student.id]);
     const profile = sr.rows[0]?.profile;
     const category = sr.rows[0]?.category;
-    const mandatory = checklistFor(profile, category);
+    const program = sr.rows[0]?.program;
+    const mandatory = checklistFor(profile, category, program);
     if (!mandatory.length) {
       return res.status(400).json({ error: "Checklist not found for your profile." });
     }
@@ -386,7 +391,7 @@ router.post("/slot", async (req, res, next) => {
       await client.query("ROLLBACK");
       return res.status(400).json({ error: "Sign the self-declaration before booking a slot." });
     }
-    const mandatory = checklistFor(s.profile, s.category);
+    const mandatory = checklistFor(s.profile, s.category, s.program);
     const dr = await client.query(
       `SELECT doc_code, student_status FROM documents
         WHERE student_id=$1 AND doc_code = ANY($2::text[])`,

@@ -16,12 +16,12 @@ const { pool } = require("../config/db");
 const { requireAdmin, requireActiveAdmin, requireSupervisor } = require("../middleware/auth");
 const { audit } = require("../lib/audit");
 const {
-  serializeDocAdmin, ensureDocuments, filterVisible,
+  serializeDocAdmin, ensureDocuments, filterForProfile,
   DOC_SELECT_WITH_VERIFIER, DOC_JOIN_VERIFIER,
 } = require("../lib/docs");
 const {
   CHECKLISTS, DOC_META, CATEGORIES, OPTIONAL_DOCS, LEGACY_DOC_CODES, PROFILES, isValidProfile,
-  checklistFor,
+  normalizeCategory, checklistFor,
 } = require("../config/checklists");
 const { fetchAssetBuffer } = require("../config/storage");
 const { streamDoc } = require("../lib/docStream");
@@ -36,6 +36,12 @@ const {
 } = require("../lib/followupRemarks");
 const { deleteStudentsByAppNos } = require("../lib/deleteStudent");
 const { releaseVerifySlotForStudent } = require("../lib/verifyAlloc");
+const {
+  getPortalSettings,
+  savePortalSettings,
+  normalizePortalAccess,
+} = require("../lib/portalAccess");
+const { notifyDocumentRejected } = require("../lib/notifications");
 
 const studentBulkRoutes = require("./studentBulk");
 
@@ -275,6 +281,71 @@ router.patch("/settings/:key", requireSupervisor, async (req, res, next) => {
   } catch (e) { next(e); }
 });
 
+/* ---- PORTAL DEADLINE & LOGIN CONTROL (v39) ---- */
+router.get("/portal-settings", async (_req, res, next) => {
+  try {
+    const settings = await getPortalSettings();
+    res.json({ settings });
+  } catch (e) { next(e); }
+});
+
+router.patch("/portal-settings", requireSupervisor, async (req, res, next) => {
+  try {
+    const b = req.body || {};
+    const settings = await savePortalSettings({
+      deadline: b.deadline,
+      deadlineTime: b.deadlineTime,
+      mode: b.mode,
+      closedMessage: b.closedMessage,
+    });
+    await audit(req, "admin", req.admin.staffId, "PORTAL_SETTINGS_UPDATED",
+      `mode=${settings.mode} deadline=${settings.deadline || "none"}`);
+    res.json({ ok: true, settings });
+  } catch (e) {
+    if (e.status === 400) return res.status(400).json({ error: e.message });
+    next(e);
+  }
+});
+
+router.post("/students/portal-access", requireSupervisor, async (req, res, next) => {
+  try {
+    const appNos = Array.isArray(req.body?.appNos) ? req.body.appNos.map(String) : [];
+    const access = normalizePortalAccess(req.body?.access);
+    if (!appNos.length) {
+      return res.status(400).json({ error: "Select at least one student." });
+    }
+    if (appNos.length > 500) {
+      return res.status(400).json({ error: "Maximum 500 students per request." });
+    }
+    const reason = req.body?.reason ? String(req.body.reason).trim().slice(0, 500) : null;
+    const r = await pool.query(
+      `UPDATE students SET portal_access=$1
+        WHERE LOWER(app_no) = ANY(SELECT LOWER(unnest($2::text[])))
+        RETURNING app_no`,
+      [access, appNos]
+    );
+    const updated = r.rows.map((x) => x.app_no);
+    const notFound = appNos.filter(
+      (a) => !updated.some((u) => u.toLowerCase() === a.toLowerCase())
+    );
+    await audit(req, "admin", req.admin.staffId, "PORTAL_ACCESS_BULK",
+      `${access} × ${updated.length}${reason ? ` — ${reason}` : ""}`);
+    res.json({ ok: true, access, updated, notFound });
+  } catch (e) { next(e); }
+});
+
+router.patch("/students/:appNo/portal-access", requireSupervisor, async (req, res, next) => {
+  try {
+    const access = normalizePortalAccess(req.body?.access);
+    const sr = await pool.query("SELECT id, app_no FROM students WHERE LOWER(app_no)=LOWER($1)", [req.params.appNo]);
+    const s = sr.rows[0];
+    if (!s) return res.status(404).json({ error: "Student not found." });
+    await pool.query("UPDATE students SET portal_access=$1 WHERE id=$2", [access, s.id]);
+    await audit(req, "admin", req.admin.staffId, "PORTAL_ACCESS_UPDATED", `${s.app_no} → ${access}`);
+    res.json({ ok: true, appNo: s.app_no, portalAccess: access });
+  } catch (e) { next(e); }
+});
+
 /* ---- BLACKLIST ---- */
 router.get("/blacklist", async (_req, res, next) => {
   try { const r = await pool.query("SELECT id,name,region,reason,created_at FROM blacklist_institutions ORDER BY name"); res.json({ entries: r.rows }); }
@@ -454,7 +525,7 @@ router.get("/students", async (req, res, next) => {
       `SELECT s.app_no, s.name, s.dob, s.program, s.department, s.section, s.batch,
               s.profile, s.declared, s.slot_confirmed, s.slot_rejected, s.physical_reporting_completed,
               s.assigned_verification_date, s.assigned_batch, s.upload_completed_at,
-              s.contact_completed_at, s.contact_verified_at,
+              s.contact_completed_at, s.contact_verified_at, s.portal_access,
               vs.status AS verify_status, vs.verified_at AS verify_verified_at,
               sl.slot_date, sl.slot_time,
               COUNT(d.id)                                          AS total,
@@ -489,6 +560,7 @@ router.get("/students", async (req, res, next) => {
         verifyVerifiedAt: x.verify_verified_at,
         contactCompleted: !!x.contact_completed_at,
         contactVerified: !!x.contact_verified_at,
+        portalAccess: x.portal_access || "default",
         total, uploaded: Number(x.uploaded), ready: Number(x.ready),
         verified, rejected: Number(x.rejected), issues: Number(x.issues),
         flagged, cleared: total > 0 && verified === total && x.slot_confirmed,
@@ -552,7 +624,7 @@ router.post("/students", requireSupervisor, async (req, res, next) => {
     if (!appNo || !name || !isDate(dob) || !program) return res.status(400).json({ error: "Application number, name, a valid date of birth, and program are required." });
     if (!isValidProfile(profile)) return res.status(400).json({ error: "Profile must be UG or PG." });
     /* v8 — soft-validate category if provided (free text still accepted for legacy data) */
-    const category = b.category ? String(b.category).trim() : null;
+    const category = b.category ? normalizeCategory(String(b.category).trim()) : null;
     const verificationDate = isDate(b.verificationDate) ? b.verificationDate
       : (isDate(b.orientationDate) ? b.orientationDate : null);
     const ex = await pool.query("SELECT 1 FROM students WHERE LOWER(app_no)=LOWER($1)", [appNo]);
@@ -565,7 +637,7 @@ router.post("/students", requireSupervisor, async (req, res, next) => {
         category, b.section ? String(b.section).trim() : null,
         profile, isDate(b.orientationDate) ? b.orientationDate : null, verificationDate]
     );
-    await ensureDocuments(ins.rows[0].id, profile, category);
+    await ensureDocuments(ins.rows[0].id, profile, category, program);
     await audit(req, "admin", req.admin.staffId, "STUDENT_ADDED", `${appNo} (${profile})`);
     res.json({ ok: true, appNo });
   } catch (e) { next(e); }
@@ -615,8 +687,8 @@ router.get("/students/:appNo", async (req, res, next) => {
     const s = sr.rows[0];
     if (!s) return res.status(404).json({ error: "Student not found." });
     /* v8 — backfill docs in case checklist evolved while student was active. */
-    await ensureDocuments(s.id, s.profile, s.category);
-    const docCtx = { profile: s.profile, category: s.category };
+    await ensureDocuments(s.id, s.profile, s.category, s.program);
+    const docCtx = { profile: s.profile, category: s.category, program: s.program };
     const dr = await pool.query(
       `SELECT ${DOC_SELECT_WITH_VERIFIER} FROM documents d ${DOC_JOIN_VERIFIER} WHERE d.student_id=$1 ORDER BY d.id`,
       [s.id]);
@@ -648,6 +720,7 @@ router.get("/students/:appNo", async (req, res, next) => {
         appNo: s.app_no, name: s.name, dob: s.dob, email: s.email, phone: s.phone,
         program: s.program, department: s.department, batch: s.batch,
         category: s.category, section: s.section, profile: s.profile,
+        portalAccess: s.portal_access || "default",
         orientationDate: s.orientation_date, admissionStatus: s.admission_status,
         declared: s.declared, slotConfirmed: s.slot_confirmed,
         slotRejected: s.slot_rejected, slotRejectReason: s.slot_reject_reason || null,
@@ -661,7 +734,7 @@ router.get("/students/:appNo", async (req, res, next) => {
         ...serializeContact(s),
       },
       /* v8 — hide legacy doc codes from admin view (PAN/BANK/CASTE/MEDICAL). */
-      documents: filterVisible(dr.rows).map((d) => serializeDocAdmin(d, docCtx)),
+      documents: filterForProfile(dr.rows, s.profile, s.category, s.program).map((d) => serializeDocAdmin(d, docCtx)),
       slot,
       verifySlot,
       followupRemarks: await listFollowupRemarks(s.id),
@@ -681,11 +754,13 @@ router.patch("/students/:appNo", requireSupervisor, async (req, res, next) => {
          category=COALESCE($7,category), section=COALESCE($8,section),
          orientation_date=COALESCE($9,orientation_date) WHERE id=$10`,
       [b.name || null, b.email || null, b.phone || null, b.program || null,
-       b.department || null, b.batch || null, b.category || null, b.section || null,
+       b.department || null, b.batch || null,
+       b.category ? normalizeCategory(String(b.category).trim()) : null,
+       b.section || null,
        isDate(b.orientationDate) ? b.orientationDate : null, s.id]
     );
-    const fresh = await pool.query("SELECT profile, category FROM students WHERE id=$1", [s.id]);
-    await ensureDocuments(s.id, fresh.rows[0].profile, fresh.rows[0].category);
+    const fresh = await pool.query("SELECT profile, category, program FROM students WHERE id=$1", [s.id]);
+    await ensureDocuments(s.id, fresh.rows[0].profile, fresh.rows[0].category, fresh.rows[0].program);
     await audit(req, "admin", req.admin.staffId, "STUDENT_EDITED", s.app_no);
     res.json({ ok: true });
   } catch (e) { next(e); }
@@ -763,8 +838,8 @@ router.patch("/documents/:id", async (req, res, next) => {
         [note || "Rejected by verification staff.", req.admin.id,
          note || "Rejected by verification staff. Please re-upload a correct copy.", id, physicalSubmission]
       );
-      const sr = await pool.query("SELECT profile, category FROM students WHERE id=$1", [doc.student_id]);
-      const mandatory = checklistFor(sr.rows[0]?.profile, sr.rows[0]?.category);
+      const sr = await pool.query("SELECT profile, category, program FROM students WHERE id=$1", [doc.student_id]);
+      const mandatory = checklistFor(sr.rows[0]?.profile, sr.rows[0]?.category, sr.rows[0]?.program);
       if (mandatory.includes(doc.doc_code)) {
         const client = await pool.connect();
         try {
@@ -782,6 +857,23 @@ router.patch("/documents/:id", async (req, res, next) => {
           client.release();
         }
       }
+      pool.query(
+        `SELECT s.id, s.app_no, s.name, s.email, s.parent_name, s.parent_email,
+                s.profile, s.category, s.program
+           FROM students s WHERE s.id=$1`,
+        [doc.student_id]
+      ).then((sr) => {
+        const student = sr.rows[0];
+        if (!student) return;
+        return notifyDocumentRejected({
+          student,
+          documentId: doc.id,
+          docCode: doc.doc_code,
+          staffNote: note || "Rejected by verification staff. Please re-upload a correct copy.",
+          verifierStaffId: req.admin.staffId,
+          verifierName: null,
+        });
+      }).catch((e) => console.warn("[notify] doc rejected:", e.message));
     } else if (status === "verified") {
       await pool.query(
         `UPDATE documents SET staff_status='verified', staff_note=$1, verified_by=$2, verified_at=now(),
@@ -799,8 +891,8 @@ router.patch("/documents/:id", async (req, res, next) => {
       );
     }
     const fresh = await pool.query(`SELECT ${DOC_SELECT_WITH_VERIFIER} FROM documents d ${DOC_JOIN_VERIFIER} WHERE d.id=$1`, [id]);
-    const sr = await pool.query("SELECT profile, category FROM students WHERE id=$1", [doc.student_id]);
-    const docCtx = sr.rows[0] ? { profile: sr.rows[0].profile, category: sr.rows[0].category } : {};
+    const sr = await pool.query("SELECT profile, category, program FROM students WHERE id=$1", [doc.student_id]);
+    const docCtx = sr.rows[0] ? { profile: sr.rows[0].profile, category: sr.rows[0].category, program: sr.rows[0].program } : {};
     await audit(req, "admin", req.admin.staffId, "DOC_" + status.toUpperCase(), `doc#${id} (${doc.doc_code})`);
     res.json({ document: serializeDocAdmin(fresh.rows[0], docCtx) });
   } catch (e) { next(e); }
@@ -826,8 +918,8 @@ router.post("/documents/:id/undo", requireSupervisor, async (req, res, next) => 
               updated_at=now() WHERE id=$1`,
       [id]
     );
-    const sr0 = await pool.query("SELECT profile, category FROM students WHERE id=$1", [doc.student_id]);
-    const mandatory = checklistFor(sr0.rows[0]?.profile, sr0.rows[0]?.category);
+    const sr0 = await pool.query("SELECT profile, category, program FROM students WHERE id=$1", [doc.student_id]);
+    const mandatory = checklistFor(sr0.rows[0]?.profile, sr0.rows[0]?.category, sr0.rows[0]?.program);
     if (mandatory.includes(doc.doc_code)) {
       await pool.query(
         "UPDATE students SET declared=false, declared_at=NULL WHERE id=$1",
@@ -840,8 +932,8 @@ router.post("/documents/:id/undo", requireSupervisor, async (req, res, next) => 
       `SELECT ${DOC_SELECT_WITH_VERIFIER} FROM documents d ${DOC_JOIN_VERIFIER} WHERE d.id=$1`,
       [id]
     );
-    const sr = await pool.query("SELECT profile, category FROM students WHERE id=$1", [doc.student_id]);
-    const docCtx = sr.rows[0] ? { profile: sr.rows[0].profile, category: sr.rows[0].category } : {};
+    const sr = await pool.query("SELECT profile, category, program FROM students WHERE id=$1", [doc.student_id]);
+    const docCtx = sr.rows[0] ? { profile: sr.rows[0].profile, category: sr.rows[0].category, program: sr.rows[0].program } : {};
     res.json({ document: serializeDocAdmin(fresh.rows[0], docCtx) });
   } catch (e) { next(e); }
 });

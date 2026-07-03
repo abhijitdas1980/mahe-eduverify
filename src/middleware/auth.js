@@ -25,14 +25,24 @@ function readToken(req) {
   }
 }
 
-/** Gate a route to logged-in students only. */
-function requireStudent(req, res, next) {
+/** Gate a route to logged-in students only (portal deadline + access enforced). */
+async function requireStudent(req, res, next) {
   const t = readToken(req);
   if (!t || t.type !== "student") {
     return res.status(401).json({ error: "Please log in as a student to continue." });
   }
-  req.student = t;
-  next();
+  try {
+    const { resolveStudentPortalAccess, portalDenyBody } = require("../lib/portalAccess");
+    const access = await resolveStudentPortalAccess({ studentId: t.id });
+    if (!access.allowed) {
+      return res.status(403).json(portalDenyBody(access));
+    }
+    req.student = t;
+    req.portalAccess = access;
+    next();
+  } catch (e) {
+    next(e);
+  }
 }
 
 /** Gate a route to any verification-cell staff (verifier or supervisor). */

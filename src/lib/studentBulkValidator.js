@@ -1,5 +1,5 @@
 /* Row-level validation for student bulk Excel uploads. */
-const { CATEGORIES, PROFILES, isValidProfile } = require("../config/checklists");
+const { CATEGORIES, PROFILES, isValidProfile, normalizeCategory } = require("../config/checklists");
 const {
   REQUIRED_FIELDS,
   GENDERS,
@@ -158,8 +158,9 @@ function validateRow(row, ctx) {
     if (r.category.length > FIELD_LIMITS.category) {
       errors.push(`category must be at most ${FIELD_LIMITS.category} characters.`);
     } else {
-      normalized.category = r.category;
-      if (!CATEGORIES.includes(r.category)) {
+      const canonical = normalizeCategory(r.category);
+      normalized.category = canonical;
+      if (!CATEGORIES.includes(canonical)) {
         warnings.push(`category "${r.category}" is not in the standard list (${CATEGORIES.join(", ")}).`);
       }
     }

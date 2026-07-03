@@ -176,6 +176,13 @@ Or set manually in **Azure Portal → MAHE-CI-DOC-UAT-APP01 → Environment vari
 | `SEED_ADMIN_PASSWORD` | _(strong UAT admin password)_ |
 | `CORS_ORIGIN` | `https://mahe-ci-doc-uat-app01.azurewebsites.net` |
 | `PG_POOL_MAX` | `25` |
+| `NOTIFY_EMAIL_ENABLED` | `true` |
+| `SMTP_HOST` | `smtp.office365.com` |
+| `SMTP_PORT` | `587` |
+| `SMTP_USER` | `admissions.maheblr@manipal.edu` |
+| `SMTP_PASS` | _(M365 mailbox password or app password — store in Key Vault)_ |
+| `SMTP_FROM` | `MAHE Admissions <admissions.maheblr@manipal.edu>` |
+| `PORTAL_URL` | UAT or prod portal URL (linked in rejection emails) |
 | `WEBSITE_NODE_DEFAULT_VERSION` | `~20` |
 
 ### Step 5 — Deploy application code to UAT
@@ -284,6 +291,7 @@ App Service reference format:
 | Upload fails | Container `eduverify-documents` exists; connection string or MI has Blob Contributor |
 | Login fails | `AUTO_SETUP=true`, restart app; check `SEED_ADMIN_PASSWORD` |
 | CORS errors | `CORS_ORIGIN` must match browser URL exactly |
+| Rejection email not sent | Check `SMTP_USER`/`SMTP_PASS` in App Service; query `notification_log` for `failed`/`skipped` rows |
 
 ---
 

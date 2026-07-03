@@ -9,6 +9,10 @@
    - TC is mandatory for all profiles (v33).
    - Category-specific mandatory docs: AICTE → ITR_PARENTS; NRI / NRI Sponsored → NRI_AFFIDAVIT
    - v35: student profile is UG or PG only; category drives international/extra docs.
+   - v36: PG — 10th/12th marks cards are not mandatory; 10th marksheet optional (DoB proof only).
+   - v37: PG — Parent/Guardian Anti-Ragging Undertaking (ANTI_RAG_P) is mandatory.
+   - v38: English Proficiency (ENGLISH) mandatory only when program name includes Dual Degree.
+   - v39: NRI Sponsored — Passport Copy and Visa Copy mandatory (with category name normalization).
    Legacy doc rows on existing students remain in the DB but are filtered
    out of all student/admin views (see lib/docs.js + routes).
 */
@@ -27,13 +31,13 @@ const DOC_META = {
   CHAR_CERT:  { name: "Character / Conduct Certificate (from Last Institution Studied)", original: true, needsInstitution: true, imageOnly: false, optional: false },
   PHOTOS:     { name: "Passport-size Photographs (white background)",                  original: true,  needsInstitution: false, imageOnly: true,  optional: false },
   ANTI_RAG_S: { name: "Anti-Ragging Undertaking (Student)",                            original: true,  needsInstitution: false, imageOnly: false, optional: false },
-  ANTI_RAG_P: { name: "Anti-Ragging Undertaking (Parent)",                             original: true,  needsInstitution: false, imageOnly: false, optional: false },
+  ANTI_RAG_P: { name: "Anti-Ragging Undertaking (Parent / Guardian)",                  original: true,  needsInstitution: false, imageOnly: false, optional: false },
   ANTI_SUB:   { name: "Anti-Substance Abuse Declaration",                              original: true,  needsInstitution: false, imageOnly: false, optional: false },
   INCOME:     { name: "ITR – AICTE Fee Waiver",                                        original: true,  needsInstitution: false, imageOnly: false, optional: false },
   ITR_PARENTS:{ name: "ITR of both parents (mandatory document for students admitted under AICTE Category)", original: true, needsInstitution: false, imageOnly: false, optional: false },
   NRI_AFFIDAVIT: { name: "NRI Affidavit (format enclosed; mandatory document for NRI/NRI Sponsored students)", original: true, needsInstitution: false, imageOnly: false, optional: false },
-  PASSPORT:   { name: "Passport (NRI/Foreign)",                                        original: true,  needsInstitution: false, imageOnly: false, optional: false },
-  VISA:       { name: "Valid Student Visa",                                            original: true,  needsInstitution: false, imageOnly: false, optional: false },
+  PASSPORT:   { name: "Passport Copy",                                                 original: true,  needsInstitution: false, imageOnly: false, optional: false },
+  VISA:       { name: "Visa Copy",                                                     original: true,  needsInstitution: false, imageOnly: false, optional: false },
   EQUIV:      { name: "AIU / Equivalence Certificate",                                 original: true,  needsInstitution: true,  imageOnly: false, optional: false },
   ENGLISH:    { name: "English Proficiency (IELTS/TOEFL)",                             original: false, needsInstitution: true,  imageOnly: false, optional: false },
 };
@@ -44,7 +48,39 @@ const PROFILES = ["UG", "PG"];
 /* MANDATORY checklists per profile — these gate declaration + slot booking. */
 const CHECKLISTS = {
   UG: ["SSLC", "PUC", "CHAR_CERT", "TC", "AADHAAR", "APAAR", "PAN_PARENT", "PHOTOS", "ANTI_RAG_S", "ANTI_RAG_P", "ANTI_SUB"],
-  PG: ["SSLC", "PUC", "UG_DEGREE", "UG_MARKS", "CHAR_CERT", "TC", "AADHAAR", "APAAR", "PAN_PARENT", "PHOTOS", "ANTI_RAG_S", "ANTI_SUB"],
+  PG: ["UG_DEGREE", "UG_MARKS", "CHAR_CERT", "TC", "AADHAAR", "APAAR", "PAN_PARENT", "PHOTOS", "ANTI_RAG_S", "ANTI_RAG_P", "ANTI_SUB"],
+};
+
+/* Profile-specific optional documents (shown but do not block declaration). */
+const PROFILE_OPTIONAL = {
+  PG: ["SSLC"],
+};
+
+/* Per-profile overrides for doc display / upload rules. */
+const PROFILE_DOC_META = {
+  PG: {
+    SSLC: {
+      name: "10th (SSLC) Marksheet (DoB proof only)",
+      original: false,
+      needsInstitution: false,
+    },
+  },
+};
+
+/* Per-category overrides for doc display (e.g. clearer labels per admission category). */
+const CATEGORY_DOC_META = {
+  NRI: {
+    PASSPORT: { name: "Passport Copy" },
+    VISA: { name: "Visa Copy" },
+  },
+  "NRI Sponsored": {
+    PASSPORT: { name: "Passport Copy" },
+    VISA: { name: "Visa Copy" },
+  },
+  Foreign: {
+    PASSPORT: { name: "Passport Copy" },
+    VISA: { name: "Visa Copy" },
+  },
 };
 
 /* Category-specific mandatory documents (added to profile checklist). */
@@ -52,7 +88,12 @@ const CATEGORY_MANDATORY = {
   AICTE: ["ITR_PARENTS"],
   NRI: ["NRI_AFFIDAVIT", "PASSPORT", "VISA", "EQUIV"],
   "NRI Sponsored": ["NRI_AFFIDAVIT", "PASSPORT", "VISA", "EQUIV"],
-  Foreign: ["PASSPORT", "VISA", "EQUIV", "ENGLISH"],
+  Foreign: ["PASSPORT", "VISA", "EQUIV"],
+};
+
+/* Program-specific mandatory documents (matched against students.program). */
+const PROGRAM_MANDATORY = {
+  dualDegree: ["ENGLISH"],
 };
 
 /* OPTIONAL documents shown to every student. Student can submit without them. */
@@ -80,15 +121,47 @@ function isValidProfile(profile) {
   return PROFILES.includes(String(profile || "").trim().toUpperCase());
 }
 
-function categoryMandatoryFor(category) {
-  if (!category) return [];
-  return CATEGORY_MANDATORY[category] || [];
+/** Map bulk-upload / legacy category strings to canonical CATEGORIES keys. */
+function normalizeCategory(category) {
+  if (!category) return null;
+  const c = String(category).trim();
+  if (CATEGORIES.includes(c)) return c;
+  const key = c.toLowerCase().replace(/[\s_-]+/g, " ").trim();
+  const aliases = {
+    "nri sponsored": "NRI Sponsored",
+    nri: "NRI",
+    foreign: "Foreign",
+    general: "General",
+    oci: "OCI",
+    aict: "AICTE",
+    aicte: "AICTE",
+  };
+  if (aliases[key]) return aliases[key];
+  for (const cat of CATEGORIES) {
+    if (cat.toLowerCase().replace(/[\s_-]+/g, " ") === key) return cat;
+  }
+  return c;
 }
 
-function checklistFor(profile, category) {
+function categoryMandatoryFor(category) {
+  const key = normalizeCategory(category);
+  if (!key) return [];
+  return CATEGORY_MANDATORY[key] || [];
+}
+
+/** True when program field mentions Dual Degree (any casing/spacing). */
+function isDualDegreeProgram(program) {
+  return /dual\s*degree/i.test(String(program || "").trim());
+}
+
+function programMandatoryFor(program) {
+  return isDualDegreeProgram(program) ? PROGRAM_MANDATORY.dualDegree.slice() : [];
+}
+
+function checklistFor(profile, category, program) {
   const p = normalizeProfile(profile);
   const base = CHECKLISTS[p] || CHECKLISTS.UG;
-  const extra = categoryMandatoryFor(category);
+  const extra = [...categoryMandatoryFor(category), ...programMandatoryFor(program)];
   const seen = new Set(base);
   const out = [...base];
   for (const code of extra) {
@@ -100,21 +173,39 @@ function checklistFor(profile, category) {
   return out;
 }
 
-function optionalDocsFor(_profile) { return OPTIONAL_DOCS.slice(); }
-function fullDocSetFor(profile, category) {
-  return [...checklistFor(profile, category), ...OPTIONAL_DOCS];
+function optionalDocsFor(profile) {
+  const p = normalizeProfile(profile);
+  const seen = new Set(OPTIONAL_DOCS);
+  const out = OPTIONAL_DOCS.slice();
+  for (const code of PROFILE_OPTIONAL[p] || []) {
+    if (!seen.has(code)) {
+      out.push(code);
+      seen.add(code);
+    }
+  }
+  return out;
+}
+function fullDocSetFor(profile, category, program) {
+  return [...checklistFor(profile, category, program), ...optionalDocsFor(profile)];
+}
+function docMetaFor(code, profile, category) {
+  const base = DOC_META[code] || {};
+  const profileOverride = PROFILE_DOC_META[normalizeProfile(profile)]?.[code] || {};
+  const categoryOverride = CATEGORY_DOC_META[normalizeCategory(category)]?.[code] || {};
+  return { ...base, ...profileOverride, ...categoryOverride };
 }
 function isLegacyCode(code) { return LEGACY_DOC_CODES.includes(code); }
 function isOptionalCode(code) { return OPTIONAL_DOCS.includes(code); }
 
-function isMandatoryForStudent(docCode, profile, category) {
+function isMandatoryForStudent(docCode, profile, category, program) {
   if (isLegacyCode(docCode)) return false;
-  return checklistFor(profile, category).includes(docCode);
+  return checklistFor(profile, category, program).includes(docCode);
 }
 
 module.exports = {
-  DOC_META, CHECKLISTS, CATEGORY_MANDATORY, OPTIONAL_DOCS, LEGACY_DOC_CODES, CATEGORIES, PROFILES,
-  normalizeProfile, isValidProfile,
-  checklistFor, categoryMandatoryFor, optionalDocsFor, fullDocSetFor,
+  DOC_META, CHECKLISTS, CATEGORY_MANDATORY, CATEGORY_DOC_META, PROGRAM_MANDATORY, PROFILE_OPTIONAL, PROFILE_DOC_META,
+  OPTIONAL_DOCS, LEGACY_DOC_CODES, CATEGORIES, PROFILES,
+  normalizeProfile, normalizeCategory, isValidProfile, isDualDegreeProgram,
+  checklistFor, categoryMandatoryFor, programMandatoryFor, optionalDocsFor, fullDocSetFor, docMetaFor,
   isLegacyCode, isOptionalCode, isMandatoryForStudent,
 };

@@ -4,7 +4,7 @@
 */
 const { pool } = require("../config/db");
 const {
-  checklistFor, fullDocSetFor, DOC_META,
+  checklistFor, fullDocSetFor, DOC_META, docMetaFor,
   isLegacyCode, isOptionalCode, isMandatoryForStudent,
 } = require("../config/checklists");
 const { signedUrl } = require("../config/storage");
@@ -16,8 +16,8 @@ const CONFIRM_KEY = "confirmed";
 /* Legacy six-key flow from v7 — still honoured for old self_verify payloads. */
 const LEGACY_VERIFY_KEYS = ["clarity", "complete", "name", "signature", "date", "authentic"];
 
-async function ensureDocuments(studentId, profile, category) {
-  for (const code of fullDocSetFor(profile, category)) {
+async function ensureDocuments(studentId, profile, category, program) {
+  for (const code of fullDocSetFor(profile, category, program)) {
     await pool.query(
       `INSERT INTO documents (student_id, doc_code) VALUES ($1,$2)
        ON CONFLICT (student_id, doc_code) DO NOTHING`,
@@ -31,6 +31,12 @@ function filterVisible(docRows) {
   return (docRows || []).filter((d) => !isLegacyCode(d.doc_code));
 }
 
+/** Keep only documents in the student's current profile checklist (+ optional). */
+function filterForProfile(docRows, profile, category, program) {
+  const allowed = new Set(fullDocSetFor(profile, category, program));
+  return filterVisible(docRows).filter((d) => allowed.has(d.doc_code));
+}
+
 /* v9 — true if the student has confirmed the document via the new single
    checkbox, OR via the legacy six checkboxes. */
 function isConfirmed(selfVerify) {
@@ -41,7 +47,7 @@ function isConfirmed(selfVerify) {
 
 function docOptionalFlag(d, ctx) {
   if (ctx?.profile) {
-    return !isMandatoryForStudent(d.doc_code, ctx.profile, ctx.category);
+    return !isMandatoryForStudent(d.doc_code, ctx.profile, ctx.category, ctx.program);
   }
   return !!DOC_META[d.doc_code]?.optional || isOptionalCode(d.doc_code);
 }
@@ -68,11 +74,12 @@ function docUrls(d, role) {
 function serializeDoc(d, ctx) {
   const sv = d.self_verify || {};
   const urls = docUrls(d, "student");
+  const meta = docMetaFor(d.doc_code, ctx?.profile, ctx?.category);
   return {
     docCode: d.doc_code,
-    name: DOC_META[d.doc_code]?.name || d.doc_code,
-    original: !!DOC_META[d.doc_code]?.original,
-    needsInstitution: !!DOC_META[d.doc_code]?.needsInstitution,
+    name: meta.name || d.doc_code,
+    original: !!meta.original,
+    needsInstitution: !!meta.needsInstitution,
     optional: docOptionalFlag(d, ctx),
     hasFile: !!d.file_public_id,
     fileName: d.file_name || null,
@@ -101,12 +108,13 @@ function serializeDoc(d, ctx) {
 function serializeDocAdmin(d, ctx) {
   const sv = d.self_verify || {};
   const urls = docUrls(d, "admin");
+  const meta = docMetaFor(d.doc_code, ctx?.profile, ctx?.category);
   return {
     id: d.id,
     docCode: d.doc_code,
-    name: DOC_META[d.doc_code]?.name || d.doc_code,
-    original: !!DOC_META[d.doc_code]?.original,
-    needsInstitution: !!DOC_META[d.doc_code]?.needsInstitution,
+    name: meta.name || d.doc_code,
+    original: !!meta.original,
+    needsInstitution: !!meta.needsInstitution,
     optional: docOptionalFlag(d, ctx),
     hasFile: !!d.file_public_id,
     fileName: d.file_name || null,
@@ -143,7 +151,7 @@ module.exports = {
   /* legacy alias so older callers don't break — same semantics now */
   allChecksTrue: isConfirmed,
   VERIFY_KEYS: LEGACY_VERIFY_KEYS,
-  ensureDocuments, filterVisible,
+  ensureDocuments, filterVisible, filterForProfile,
   serializeDoc, serializeDocAdmin,
   DOC_SELECT_WITH_VERIFIER, DOC_JOIN_VERIFIER,
 };

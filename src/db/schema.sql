@@ -210,8 +210,33 @@ CREATE TABLE IF NOT EXISTS student_followup_remarks (
 CREATE INDEX IF NOT EXISTS idx_followup_student ON student_followup_remarks(student_id);
 CREATE INDEX IF NOT EXISTS idx_followup_created ON student_followup_remarks(created_at);
 
--- ====== v36: enable / disable verifier staff accounts ======
-ALTER TABLE admins ADD COLUMN IF NOT EXISTS enabled BOOLEAN NOT NULL DEFAULT true;
+-- ====== v39: student portal deadline + per-student login access ======
+ALTER TABLE students ADD COLUMN IF NOT EXISTS portal_access VARCHAR(20) NOT NULL DEFAULT 'default';
+
+INSERT INTO system_settings (key, value) VALUES
+  ('student_portal_deadline', ''),
+  ('student_portal_deadline_time', '23:59'),
+  ('student_portal_mode', 'open'),
+  ('student_portal_closed_message', 'The document upload window has closed. Please contact the Admissions Cell for assistance.')
+ON CONFLICT (key) DO NOTHING;
+
+-- ====== v40: transactional email notification log ======
+CREATE TABLE IF NOT EXISTS notification_log (
+  id             SERIAL PRIMARY KEY,
+  student_id     INT REFERENCES students(id) ON DELETE SET NULL,
+  document_id    INT REFERENCES documents(id) ON DELETE SET NULL,
+  channel        VARCHAR(20) NOT NULL DEFAULT 'email',
+  event_type     VARCHAR(40) NOT NULL,
+  recipient      VARCHAR(160),
+  recipient_role VARCHAR(20),
+  subject        TEXT,
+  status         VARCHAR(20) NOT NULL,
+  error          TEXT,
+  metadata       JSONB,
+  created_at     TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_notification_log_student ON notification_log(student_id);
+CREATE INDEX IF NOT EXISTS idx_notification_log_created ON notification_log(created_at);
 
 -- ====== v37: allow deleting admins referenced from verify_schedule ======
 ALTER TABLE verify_schedule DROP CONSTRAINT IF EXISTS verify_schedule_verified_by_fkey;

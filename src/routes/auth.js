@@ -11,11 +11,50 @@ const { pool } = require("../config/db");
 const { sign } = require("../middleware/auth");
 const { authLimiter, resetPasswordLimiter } = require("../middleware/security");
 const { audit } = require("../lib/audit");
+const {
+  resolveStudentPortalAccess,
+  portalDenyBody,
+  getPortalSettings,
+} = require("../lib/portalAccess");
 
 const router = express.Router();
 router.use(authLimiter); // brute-force protection on every auth route
 
 const isDate = (v) => /^\d{4}-\d{2}-\d{2}$/.test(v || "");
+
+async function assertStudentPortalOpen(student) {
+  const access = await resolveStudentPortalAccess({
+    studentId: student.id,
+    portalAccess: student.portal_access,
+  });
+  if (!access.allowed) {
+    const err = new Error(access.message);
+    err.status = 403;
+    err.body = portalDenyBody(access);
+    throw err;
+  }
+  return access;
+}
+
+function sendPortalError(res, err) {
+  if (err.body) return res.status(err.status || 403).json(err.body);
+  return res.status(err.status || 500).json({ error: err.message });
+}
+
+/** Public — portal deadline banner on login screen (no student identity). */
+router.get("/student/portal-status", async (_req, res, next) => {
+  try {
+    const settings = await getPortalSettings();
+    res.json({
+      mode: settings.mode,
+      deadline: settings.deadline || null,
+      deadlineTime: settings.deadlineTime,
+      globallyOpen: settings.globallyOpen,
+      daysRemaining: settings.daysRemaining,
+      closedMessage: settings.closedMessage,
+    });
+  } catch (e) { next(e); }
+});
 
 function studentSummary(s) {
   return { appNo: s.app_no, name: s.name, program: s.program, profile: s.profile };
@@ -30,11 +69,16 @@ router.post("/student/check", async (req, res, next) => {
       return res.status(400).json({ error: "Enter your application number and date of birth." });
     }
     const r = await pool.query(
-      "SELECT app_no,name,password_hash FROM students WHERE LOWER(app_no)=LOWER($1) AND dob=$2",
+      "SELECT app_no,name,password_hash,portal_access FROM students WHERE LOWER(app_no)=LOWER($1) AND dob=$2",
       [appNo, dob]
     );
     if (!r.rows.length) {
       return res.status(404).json({ error: "No admitted student found for that application number and date of birth." });
+    }
+    try {
+      await assertStudentPortalOpen(r.rows[0]);
+    } catch (e) {
+      return sendPortalError(res, e);
     }
     res.json({ firstLogin: !r.rows[0].password_hash, name: r.rows[0].name });
   } catch (e) { next(e); }
@@ -61,6 +105,11 @@ router.post("/student/register", async (req, res, next) => {
     if (s.password_hash) {
       return res.status(409).json({ error: "A password is already set. Please log in instead." });
     }
+    try {
+      await assertStudentPortalOpen(s);
+    } catch (e) {
+      return sendPortalError(res, e);
+    }
     const hash = await bcrypt.hash(password, 12);
     await pool.query("UPDATE students SET password_hash=$1 WHERE id=$2", [hash, s.id]);
     await audit(req, "student", s.app_no, "PASSWORD_SET", "First-login password created");
@@ -81,6 +130,11 @@ router.post("/student/login", async (req, res, next) => {
     if (!s || !s.password_hash || !(await bcrypt.compare(password, s.password_hash))) {
       await audit(req, "student", appNo, "LOGIN_FAIL", "Bad credentials");
       return res.status(401).json({ error: "Incorrect application number or password." });
+    }
+    try {
+      await assertStudentPortalOpen(s);
+    } catch (e) {
+      return sendPortalError(res, e);
     }
     await audit(req, "student", s.app_no, "LOGIN", "Student logged in");
     res.json({ token: sign({ type: "student", id: s.id, appNo: s.app_no }), student: studentSummary(s) });
@@ -107,6 +161,11 @@ router.post("/student/reset-password", resetPasswordLimiter, async (req, res, ne
       return res.status(404).json({ error: "Application number and date of birth do not match our records." });
     }
     const s = r.rows[0];
+    try {
+      await assertStudentPortalOpen(s);
+    } catch (e) {
+      return sendPortalError(res, e);
+    }
     const hash = await bcrypt.hash(password, 12);
     await pool.query("UPDATE students SET password_hash=$1 WHERE id=$2", [hash, s.id]);
     await audit(req, "student", s.app_no, "PASSWORD_RESET", "Password reset via app no + DOB");
