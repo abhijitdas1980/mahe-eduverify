@@ -183,7 +183,6 @@ Or set manually in **Azure Portal → MAHE-CI-DOC-UAT-APP01 → Environment vari
 | `SMTP_PASS` | **Mandatory** — M365 mailbox password or app password (store in Key Vault). App will not start without it. |
 | `SMTP_FROM` | `MAHE Admissions <admissions.maheblr@manipal.edu>` |
 | `PORTAL_URL` | UAT or prod portal URL (linked in rejection emails) |
-| `CAMPAIGN_MANAGER_URL` | Optional — standalone Campaign Manager URL (shows button in Verification Cell) |
 | `WEBSITE_NODE_DEFAULT_VERSION` | `~20` |
 
 ### Step 5 — Deploy application code to UAT
