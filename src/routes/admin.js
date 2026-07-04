@@ -116,6 +116,7 @@ router.get("/meta", async (_req, res, next) => {
     const d = await pool.query("SELECT DISTINCT department FROM students WHERE department IS NOT NULL ORDER BY department");
     const s = await pool.query("SELECT DISTINCT section FROM students WHERE section IS NOT NULL ORDER BY section");
     const b = await pool.query("SELECT DISTINCT batch FROM students WHERE batch IS NOT NULL ORDER BY batch");
+    const campaignManagerUrl = (process.env.CAMPAIGN_MANAGER_URL || "").trim().replace(/\/$/, "");
     res.json({
       departments: d.rows.map((r) => r.department),
       sections: s.rows.map((r) => r.section),
@@ -123,6 +124,8 @@ router.get("/meta", async (_req, res, next) => {
       profiles: PROFILES.slice(),
       /* v8 — extended category dropdown. */
       categories: CATEGORIES.slice(),
+      /* Level A integration — separate Campaign Manager app (optional). */
+      campaignManagerUrl: campaignManagerUrl || null,
     });
   } catch (e) { next(e); }
 });
