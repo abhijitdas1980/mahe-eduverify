@@ -99,7 +99,7 @@ function LoginGate({ onAuth }) {
   );
 }
 
-function ComposeTab({ meta, templates, initialAppNo, initialAppNos, onRefresh }) {
+function ComposeTab({ meta, templates, initialAppNo, initialAppNos, initialTemplateId, onRefresh, onQueued, onCreateTemplate, onSaveAsTemplate }) {
   const [subject, setSubject] = useState("");
   const [bodyHtml, setBodyHtml] = useState("<p>Dear {{StudentName}},</p><p></p>{{ScheduleBlock}}");
   const [parentBodyHtml, setParentBodyHtml] = useState("");
@@ -125,6 +125,10 @@ function ComposeTab({ meta, templates, initialAppNo, initialAppNos, onRefresh })
   useEffect(() => {
     if (meta?.fromDefault) setFromAddress(meta.fromDefault);
   }, [meta]);
+
+  useEffect(() => {
+    if (initialTemplateId) setTemplateId(String(initialTemplateId));
+  }, [initialTemplateId]);
 
   useEffect(() => {
     const tpl = templates.find(t => String(t.id) === String(templateId));
@@ -195,11 +199,21 @@ function ComposeTab({ meta, templates, initialAppNo, initialAppNos, onRefresh })
         setMsg("Draft saved.");
       } else {
         const r = await API.postForm("/api/admin/communication/messages/send", fd);
-        setMsg(r.scheduled ? "Email scheduled." : `Sent ${r.sent} email(s)${r.failed ? `, ${r.failed} failed` : ""}.`);
+        if (r.scheduled) {
+          setMsg("Email scheduled. It will send automatically at the chosen time.");
+        } else if (r.queued) {
+          setMsg(`Sending started for ${r.recipientCount} student(s). Track delivery in the History tab — emails go out in the background.`);
+          if (onQueued) onQueued();
+        } else {
+          setMsg(`Sent ${r.sent} email(s)${r.failed ? `, ${r.failed} failed` : ""}.`);
+        }
       }
       onRefresh();
-    } catch (ex) { setErr(ex.message); }
-    setBusy(false);
+    } catch (ex) {
+      setErr(ex.message || "Send failed. Check SMTP settings and try again.");
+    } finally {
+      setBusy(false);
+    }
   };
 
   const wrapTag = (tag) => {
@@ -219,7 +233,16 @@ function ComposeTab({ meta, templates, initialAppNo, initialAppNos, onRefresh })
           <div className="text-sm font-semibold text-slate-800">Compose Email</div>
           <div className="grid sm:grid-cols-2 gap-3">
             <Field label="From (Official MAHE email)"><input className="ev-input" value={fromAddress} onChange={e=>setFromAddress(e.target.value)} placeholder="MAHE Admissions &lt;admissions@...&gt;" /></Field>
-            <Field label="Template"><select className="ev-input" value={templateId} onChange={e=>setTemplateId(e.target.value)}><option value="">— Select template —</option>{templates.map(t=><option key={t.id} value={t.id}>{t.name}</option>)}</select></Field>
+            <Field label="Template">
+              <div className="flex flex-wrap gap-2 items-center">
+                <select className="ev-input flex-1 min-w-[160px]" value={templateId} onChange={e=>setTemplateId(e.target.value)}>
+                  <option value="">— Select template —</option>
+                  {templates.map(t=><option key={t.id} value={t.id}>{t.name}{t.isSystem ? " (system)" : ""}</option>)}
+                </select>
+                <button type="button" onClick={()=>onCreateTemplate && onCreateTemplate()} className="text-xs whitespace-nowrap border border-indigo-300 text-indigo-800 px-2 py-1.5 rounded-md hover:bg-indigo-50">+ New template</button>
+                <button type="button" onClick={()=>onSaveAsTemplate && onSaveAsTemplate({ subject, bodyHtml, audience })} className="text-xs whitespace-nowrap border border-slate-300 text-slate-700 px-2 py-1.5 rounded-md hover:bg-slate-50">Save as template</button>
+              </div>
+            </Field>
             <Field label="CC"><input className="ev-input" value={cc} onChange={e=>setCc(e.target.value)} placeholder="optional" /></Field>
             <Field label="BCC"><input className="ev-input" value={bcc} onChange={e=>setBcc(e.target.value)} placeholder="optional" /></Field>
           </div>
@@ -241,7 +264,7 @@ function ComposeTab({ meta, templates, initialAppNo, initialAppNos, onRefresh })
               <textarea rows={6} className="ev-input font-mono text-xs" value={parentBodyHtml} onChange={e=>setParentBodyHtml(e.target.value)} placeholder="Dear {{ParentName}}, … your ward {{StudentName}} …" />
             </Field>
           )}
-          <Field label="Attachments (PDF, images, DOCX, PPT, ZIP — max {meta?.settings?.maxAttachmentMb || 10} MB each)">
+          <Field label={"Attachments (PDF, images, DOCX, PPT, ZIP — max " + (meta?.settings?.maxAttachmentMb || 10) + " MB each)"}>
             <input type="file" multiple accept=".pdf,.jpg,.jpeg,.png,.doc,.docx,.ppt,.pptx,.xlsx,.zip" onChange={e=>setFiles(Array.from(e.target.files||[]))} className="ev-input text-xs" />
             {files.length>0 && <div className="text-xs text-slate-500 mt-1">{files.map(f=>f.name).join(", ")}</div>}
           </Field>
@@ -345,29 +368,219 @@ function MessageList({ status, onOpen }) {
   );
 }
 
-function TemplatesTab({ templates, onRefresh }) {
-  const [editing, setEditing] = useState(null);
-  const [form, setForm] = useState({ name:"", subject:"", bodyHtml:"", category:"general", audience:"both" });
+const TEMPLATE_CATEGORIES = [
+  { id: "general", label: "General" },
+  { id: "orientation", label: "Orientation" },
+  { id: "verification", label: "Verification" },
+  { id: "documents", label: "Documents" },
+  { id: "reporting", label: "Reporting" },
+  { id: "parent", label: "Parent" },
+];
+
+const DEFAULT_TEMPLATE_BODY = `<p>Dear {{StudentName}},</p>
+<p></p>
+{{ScheduleBlock}}
+<p>Log in to EduVerify: <a href="{{PortalUrl}}">{{PortalUrl}}</a></p>
+<p>Helpdesk: {{HelpDeskPhone}}</p>`;
+
+function TemplateEditorModal({ open, mode, initial, placeholders, onClose, onSaved }) {
+  const [form, setForm] = useState({ name:"", subject:"", bodyHtml:DEFAULT_TEMPLATE_BODY, category:"general", audience:"both" });
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState("");
+  const [ok, setOk] = useState("");
+
+  useEffect(() => {
+    if (!open) return;
+    setErr(""); setOk("");
+    if (initial) {
+      setForm({
+        name: initial.name || "",
+        subject: initial.subject || "",
+        bodyHtml: initial.bodyHtml || DEFAULT_TEMPLATE_BODY,
+        category: initial.category || "general",
+        audience: initial.audience || "both",
+      });
+    } else {
+      setForm({ name:"", subject:"", bodyHtml:DEFAULT_TEMPLATE_BODY, category:"general", audience:"both" });
+    }
+  }, [open, initial]);
+
+  if (!open) return null;
+
+  const title = mode === "edit" ? "Edit template" : mode === "duplicate" ? "Duplicate template" : "Create new template";
+
   const save = async () => {
-    if (editing?.id) await API.patch("/api/admin/communication/templates/"+editing.id, form);
-    else await API.post("/api/admin/communication/templates", form);
-    setEditing(null); onRefresh();
+    if (!form.name.trim()) { setErr("Template name is required."); return; }
+    if (!form.subject.trim()) { setErr("Subject is required."); return; }
+    if (!form.bodyHtml.trim()) { setErr("Message body is required."); return; }
+    setBusy(true); setErr(""); setOk("");
+    try {
+      if (mode === "edit" && initial?.id && !initial?.isSystem) {
+        await API.patch("/api/admin/communication/templates/" + initial.id, form);
+        setOk("Template updated.");
+      } else {
+        const payload = mode === "duplicate" && initial?.name
+          ? { ...form, name: form.name.trim() || (initial.name + " (copy)") }
+          : form;
+        await API.post("/api/admin/communication/templates", payload);
+        setOk(mode === "duplicate" ? "Template duplicated." : "Template created.");
+      }
+      onSaved && onSaved();
+      setTimeout(() => onClose(), 600);
+    } catch (ex) {
+      setErr(ex.message || "Could not save template.");
+    }
+    setBusy(false);
   };
+
   return (
-    <div className="grid lg:grid-cols-2 gap-6">
-      <div className="bg-white border rounded-xl p-4">
-        <div className="flex justify-between items-center mb-3"><div className="font-semibold">Saved templates</div><button onClick={()=>{setEditing({}); setForm({name:"",subject:"",bodyHtml:"",category:"general",audience:"both"});}} className="text-xs bg-indigo-700 text-white px-3 py-1.5 rounded">+ New</button></div>
-        <div className="divide-y max-h-[480px] overflow-y-auto">{templates.map(t=><div key={t.id} className="py-3 flex justify-between gap-2"><div><div className="font-medium text-sm">{t.name}{t.isSystem&&<span className="ml-1 text-[10px] text-slate-400">system</span>}</div><div className="text-xs text-slate-500">{t.subject}</div></div><button onClick={()=>{setEditing(t); setForm({name:t.name,subject:t.subject,bodyHtml:t.bodyHtml,category:t.category,audience:t.audience});}} className="text-xs text-indigo-700 shrink-0">Use / Edit</button></div>)}</div>
-      </div>
-      {editing !== null && (
-        <div className="bg-white border rounded-xl p-4 space-y-3">
-          <div className="font-semibold">{editing.id ? "Edit template" : "New template"}</div>
-          <Field label="Name"><input className="ev-input" value={form.name} onChange={e=>setForm({...form,name:e.target.value})} /></Field>
-          <Field label="Subject"><input className="ev-input" value={form.subject} onChange={e=>setForm({...form,subject:e.target.value})} /></Field>
-          <Field label="Body HTML"><textarea rows={10} className="ev-input font-mono text-xs" value={form.bodyHtml} onChange={e=>setForm({...form,bodyHtml:e.target.value})} /></Field>
-          <div className="flex gap-2"><button onClick={save} className="text-sm bg-indigo-700 text-white px-4 py-2 rounded-lg">Save</button><button onClick={()=>setEditing(null)} className="text-sm border px-4 py-2 rounded-lg">Cancel</button></div>
+    <div className="fixed inset-0 z-50 bg-black/40 grid place-items-center p-4" onClick={onClose}>
+      <div className="bg-white rounded-2xl max-w-2xl w-full max-h-[92vh] overflow-hidden flex flex-col shadow-xl" onClick={e=>e.stopPropagation()}>
+        <div className="p-5 border-b border-slate-200 flex items-start justify-between">
+          <div>
+            <div className="text-xs text-indigo-600 font-semibold uppercase tracking-wider">Email templates</div>
+            <div className="font-bold text-slate-900 text-lg">{title}</div>
+            <div className="text-xs text-slate-500 mt-1">Use placeholders like {"{{StudentName}}"}, {"{{VerificationDate}}"}, {"{{ScheduleBlock}}"}</div>
+          </div>
+          <button type="button" onClick={onClose} className="text-slate-400 hover:text-slate-700 text-2xl leading-none">×</button>
         </div>
-      )}
+        <div className="p-5 overflow-y-auto space-y-3">
+          <Field label="Template name *"><input className="ev-input" value={form.name} onChange={e=>setForm({...form,name:e.target.value})} placeholder="e.g. Orientation Invitation — Batch 1" /></Field>
+          <div className="grid sm:grid-cols-2 gap-3">
+            <Field label="Category">
+              <select className="ev-input" value={form.category} onChange={e=>setForm({...form,category:e.target.value})}>
+                {TEMPLATE_CATEGORIES.map(c=><option key={c.id} value={c.id}>{c.label}</option>)}
+              </select>
+            </Field>
+            <Field label="Default audience">
+              <select className="ev-input" value={form.audience} onChange={e=>setForm({...form,audience:e.target.value})}>
+                <option value="both">Student + Parent</option>
+                <option value="student">Student only</option>
+                <option value="parent">Parent only</option>
+              </select>
+            </Field>
+          </div>
+          <Field label="Subject *"><input className="ev-input" value={form.subject} onChange={e=>setForm({...form,subject:e.target.value})} placeholder="MAHE — Your orientation schedule (App {{ApplicationNo}})" /></Field>
+          <Field label="Message body (HTML) *">
+            <textarea rows={12} className="ev-input font-mono text-xs" value={form.bodyHtml} onChange={e=>setForm({...form,bodyHtml:e.target.value})} />
+          </Field>
+          {placeholders?.length > 0 && (
+            <div className="text-[10px] text-slate-500 bg-slate-50 border border-slate-200 rounded-lg p-2">
+              <b>Placeholders:</b> {placeholders.slice(0, 12).join(", ")}…
+            </div>
+          )}
+          {err && <div className="text-sm text-rose-700 bg-rose-50 border border-rose-200 rounded-lg p-3">{err}</div>}
+          {ok && <div className="text-sm text-green-800 bg-green-50 border border-green-200 rounded-lg p-3">{ok}</div>}
+        </div>
+        <div className="p-5 border-t border-slate-200 flex flex-wrap gap-2 justify-end">
+          <button type="button" onClick={onClose} className="text-sm border border-slate-300 px-4 py-2 rounded-lg hover:bg-slate-50">Cancel</button>
+          <button type="button" disabled={busy} onClick={save} className="text-sm bg-indigo-700 text-white px-4 py-2 rounded-lg hover:bg-indigo-800 disabled:opacity-60">{busy ? "Saving…" : "Save template"}</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function TemplatesTab({ templates, placeholders, onRefresh, onUseTemplate, onCreateNew }) {
+  const [editor, setEditor] = useState(null);
+
+  const openCreate = () => {
+    if (onCreateNew) onCreateNew();
+    else setEditor({ mode: "create", initial: null });
+  };
+
+  const openDuplicate = (t) => setEditor({
+    mode: "duplicate",
+    initial: {
+      name: t.name + " (copy)",
+      subject: t.subject,
+      bodyHtml: t.bodyHtml,
+      category: t.category,
+      audience: t.audience,
+      isSystem: t.isSystem,
+    },
+  });
+
+  const openEdit = (t) => {
+    if (t.isSystem) { openDuplicate(t); return; }
+    setEditor({ mode: "edit", initial: t });
+  };
+
+  const remove = async (t) => {
+    if (!window.confirm("Delete template \"" + t.name + "\"?")) return;
+    try {
+      await API.del("/api/admin/communication/templates/" + t.id);
+      onRefresh();
+    } catch (ex) {
+      alert(ex.message);
+    }
+  };
+
+  const custom = templates.filter(t => !t.isSystem);
+  const system = templates.filter(t => t.isSystem);
+
+  return (
+    <div>
+      <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
+        <div>
+          <div className="font-semibold text-slate-900">Email templates</div>
+          <div className="text-xs text-slate-500">Reusable messages with personalised placeholders for each student.</div>
+        </div>
+        <button type="button" onClick={openCreate} className="text-sm bg-indigo-700 text-white px-4 py-2 rounded-lg hover:bg-indigo-800 shadow-sm">+ Create new template</button>
+      </div>
+
+      <div className="grid lg:grid-cols-2 gap-6">
+        <div className="bg-white border border-slate-200 rounded-xl p-4">
+          <div className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-3">Your templates ({custom.length})</div>
+          {!custom.length && (
+            <div className="text-sm text-slate-500 border border-dashed border-slate-300 rounded-lg p-6 text-center">
+              No custom templates yet.<br />
+              <button type="button" onClick={openCreate} className="mt-2 text-indigo-700 font-medium hover:underline">Create your first template</button>
+            </div>
+          )}
+          <div className="divide-y">{custom.map(t=>(
+            <div key={t.id} className="py-3 flex flex-wrap items-start justify-between gap-2">
+              <div className="min-w-0">
+                <div className="font-medium text-sm text-slate-800">{t.name}</div>
+                <div className="text-xs text-slate-500 truncate">{t.subject}</div>
+                <div className="text-[10px] text-slate-400 mt-0.5">{t.category} · {t.audience}</div>
+              </div>
+              <div className="flex flex-wrap gap-1 shrink-0">
+                <button type="button" onClick={()=>onUseTemplate && onUseTemplate(t)} className="text-xs bg-indigo-50 text-indigo-800 px-2 py-1 rounded border border-indigo-200">Use</button>
+                <button type="button" onClick={()=>openEdit(t)} className="text-xs border px-2 py-1 rounded">Edit</button>
+                <button type="button" onClick={()=>openDuplicate(t)} className="text-xs border px-2 py-1 rounded">Duplicate</button>
+                <button type="button" onClick={()=>remove(t)} className="text-xs text-rose-700 border border-rose-200 px-2 py-1 rounded">Delete</button>
+              </div>
+            </div>
+          ))}</div>
+        </div>
+
+        <div className="bg-white border border-slate-200 rounded-xl p-4">
+          <div className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-3">System templates ({system.length})</div>
+          <div className="text-[11px] text-slate-500 mb-3">Built-in templates cannot be edited — duplicate to customise.</div>
+          <div className="divide-y max-h-[520px] overflow-y-auto">{system.map(t=>(
+            <div key={t.id} className="py-3 flex flex-wrap items-start justify-between gap-2">
+              <div className="min-w-0">
+                <div className="font-medium text-sm">{t.name}</div>
+                <div className="text-xs text-slate-500 truncate">{t.subject}</div>
+              </div>
+              <div className="flex flex-wrap gap-1 shrink-0">
+                <button type="button" onClick={()=>onUseTemplate && onUseTemplate(t)} className="text-xs bg-indigo-50 text-indigo-800 px-2 py-1 rounded border border-indigo-200">Use</button>
+                <button type="button" onClick={()=>openDuplicate(t)} className="text-xs border px-2 py-1 rounded">Duplicate</button>
+              </div>
+            </div>
+          ))}</div>
+        </div>
+      </div>
+
+      <TemplateEditorModal
+        open={!!editor}
+        mode={editor?.mode}
+        initial={editor?.initial}
+        placeholders={placeholders}
+        onClose={()=>setEditor(null)}
+        onSaved={onRefresh}
+      />
     </div>
   );
 }
@@ -419,6 +632,9 @@ function CommunicationApp({ auth }) {
   const [tab, setTab] = useState(init.tab);
   const [meta, setMeta] = useState(null);
   const [templates, setTemplates] = useState([]);
+  const [pickTemplateId, setPickTemplateId] = useState("");
+  const [templateEditor, setTemplateEditor] = useState(null);
+
   const load = useCallback(async () => {
     const [m, t] = await Promise.all([
       API.get("/api/admin/communication/meta"),
@@ -428,6 +644,28 @@ function CommunicationApp({ auth }) {
     setTemplates(t.templates||[]);
   }, []);
   useEffect(()=>{ load(); }, [load]);
+
+  const useTemplate = (t) => {
+    setPickTemplateId(String(t.id));
+    setTab("compose");
+  };
+
+  const openCreateTemplate = (initial) => {
+    setTemplateEditor({ mode: "create", initial: initial || null });
+  };
+
+  const saveAsTemplate = (draft) => {
+    setTemplateEditor({
+      mode: "create",
+      initial: {
+        name: "",
+        subject: draft.subject || "",
+        bodyHtml: draft.bodyHtml || DEFAULT_TEMPLATE_BODY,
+        category: "general",
+        audience: draft.audience || "both",
+      },
+    });
+  };
 
   const tabs = [
     ["compose","+ New Email"], ["drafts","Drafts"], ["templates","Templates"], ["scheduled","Scheduled"],
@@ -452,15 +690,23 @@ function CommunicationApp({ auth }) {
         </div>
       </header>
       <main className="max-w-7xl mx-auto px-4 py-6">
-        {tab==="compose" && <ComposeTab meta={meta} templates={templates} initialAppNo={init.appNo} initialAppNos={init.appNos} onRefresh={load} />}
+        {tab==="compose" && <ComposeTab meta={meta} templates={templates} initialAppNo={init.appNo} initialAppNos={init.appNos} initialTemplateId={pickTemplateId} onRefresh={load} onQueued={()=>setTab("history")} onCreateTemplate={()=>openCreateTemplate()} onSaveAsTemplate={saveAsTemplate} />}
         {tab==="drafts" && <MessageList status="draft" onOpen={()=>setTab("compose")} />}
         {tab==="scheduled" && <MessageList status="scheduled" />}
         {tab==="sent" && <MessageList status="sent" />}
         {tab==="failed" && <MessageList status="failed" />}
-        {tab==="templates" && <TemplatesTab templates={templates} onRefresh={load} />}
+        {tab==="templates" && <TemplatesTab templates={templates} placeholders={meta?.placeholders} onRefresh={load} onUseTemplate={useTemplate} onCreateNew={()=>openCreateTemplate()} />}
         {tab==="history" && <HistoryTab />}
         {tab==="analytics" && <AnalyticsTab analytics={meta?.analytics} />}
       </main>
+      <TemplateEditorModal
+        open={!!templateEditor}
+        mode={templateEditor?.mode}
+        initial={templateEditor?.initial}
+        placeholders={meta?.placeholders}
+        onClose={()=>setTemplateEditor(null)}
+        onSaved={load}
+      />
     </div>
   );
 }

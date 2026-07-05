@@ -1,9 +1,14 @@
 /* Communication Center — compose, send, schedule, preview. */
-const crypto = require("crypto");
 const { isEmailConfigured, sendEmail } = require("../notifications");
 const { renderForRecipient, loadStudentContext, PLACEHOLDER_LIST, htmlToPlain } = require("./placeholders");
 const { resolveRecipients, countRecipients, filterOptions } = require("./recipients");
 const repo = require("./repository");
+
+const EMAIL_DELAY_MS = Math.max(0, parseInt(process.env.COMM_EMAIL_DELAY_MS || "1500", 10) || 1500);
+
+function sleep(ms) {
+  return new Promise((r) => setTimeout(r, ms));
+}
 
 function fromAddress(settings) {
   return (settings.defaultFrom || process.env.SMTP_FROM || process.env.SMTP_USER || "").trim()
@@ -146,12 +151,14 @@ async function scheduleMessage(id, scheduledAt, staffId) {
 async function sendMessage(id, staffId) {
   if (!isEmailConfigured()) throw new Error("SMTP not configured.");
 
-  const msg = await repo.getMessage(id);
+  const claimed = await repo.claimMessageForSending(id);
+  const msg = claimed || await repo.getMessage(id);
   if (!msg) throw new Error("Message not found.");
-  if (msg.status === "sent") throw new Error("Message already sent.");
-  if (msg.status === "sending") throw new Error("Message is already being sent.");
-
-  await repo.updateMessage(id, { status: "sending" });
+  if (!claimed) {
+    if (msg.status === "sent") throw new Error("Message already sent.");
+    if (msg.status === "sending") throw new Error("Message is already being sent.");
+    throw new Error(`Cannot send message in status "${msg.status}".`);
+  }
 
   const students = await resolveRecipients({
     mode: msg.recipient_mode,
@@ -169,7 +176,6 @@ async function sendMessage(id, staffId) {
   const mailFrom = msg.from_address || fromAddress(settings);
   let sent = 0;
   let failed = 0;
-  let opened = 0;
 
   for (const row of students) {
     const ctx = await loadStudentContext(row.id);
@@ -216,10 +222,11 @@ async function sendMessage(id, staffId) {
         await repo.markDeliveryFailed(delivery.id, e.message);
         failed += 1;
       }
+      if (EMAIL_DELAY_MS > 0) await sleep(EMAIL_DELAY_MS);
     }
   }
 
-  const stats = { sent, failed, opened, recipients: students.length };
+  const stats = { sent, failed, recipients: students.length };
   await repo.updateMessage(id, {
     status: failed && !sent ? "failed" : "sent",
     sentAt: new Date(),
@@ -229,14 +236,42 @@ async function sendMessage(id, staffId) {
   return { messageId: id, ...stats };
 }
 
+async function queueMessage(id) {
+  const msg = await repo.getMessage(id);
+  if (!msg) throw new Error("Message not found.");
+  if (msg.status === "sent") throw new Error("Message already sent.");
+  await repo.updateMessage(id, { status: "queued" });
+  return repo.getMessage(id);
+}
+
 async function createAndSend(payload, staffId, files = []) {
   const draft = await saveDraft(payload, staffId, files);
   if (payload.scheduledAt) {
     await scheduleMessage(draft.id, payload.scheduledAt, staffId);
-    return { scheduled: true, message: await repo.serializeMessage(await repo.getMessage(draft.id)) };
+    return { scheduled: true, messageId: draft.id, message: repo.serializeMessage(await repo.getMessage(draft.id)) };
   }
-  const result = await sendMessage(draft.id, staffId);
-  return { scheduled: false, ...result };
+
+  const preview = await countRecipients({
+    mode: payload.recipientMode || "selected",
+    filter: payload.recipientFilter || {},
+    appNos: payload.selectedAppNos || [],
+  });
+  if (!preview.count) throw new Error("No recipients matched the selection.");
+
+  await queueMessage(draft.id);
+
+  // Kick background worker immediately (do not await full send).
+  try {
+    const { processCommunicationQueue } = require("./worker");
+    processCommunicationQueue().catch(() => {});
+  } catch (_) { /* worker optional in tests */ }
+
+  return {
+    queued: true,
+    messageId: draft.id,
+    recipientCount: preview.count,
+    estimatedEmails: preview.withStudentEmail + preview.withParentEmail,
+  };
 }
 
 async function getMessageDetail(id) {
@@ -262,6 +297,7 @@ module.exports = {
   updateDraft,
   scheduleMessage,
   sendMessage,
+  queueMessage,
   createAndSend,
   getMessageDetail,
   fromAddress,

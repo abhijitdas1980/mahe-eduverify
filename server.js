@@ -129,7 +129,7 @@ async function start() {
     console.log(`Storage: ${storageProvider()}${isStorageConfigured() ? "" : " (not configured)"}`);
     console.log(`Email: ${emailBoot.configured ? "SMTP ready (" + emailBoot.smtpUser + ")" : emailBoot.reason}`);
     console.log("Health check: /api/health");
-    startCommunicationWorker(60000);
+    startCommunicationWorker(15000);
   });
 }
 start();

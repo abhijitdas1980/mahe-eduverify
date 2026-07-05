@@ -36,6 +36,9 @@ function getTransporter() {
         pass: process.env.SMTP_PASS,
       },
       tls: { minVersion: "TLSv1.2" },
+      connectionTimeout: 20000,
+      greetingTimeout: 20000,
+      socketTimeout: 30000,
     });
   }
   return transporter;

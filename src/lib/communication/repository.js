@@ -311,9 +311,37 @@ async function listDueScheduled() {
   const r = await pool.query(
     `SELECT * FROM comm_messages
       WHERE status='scheduled' AND scheduled_at IS NOT NULL AND scheduled_at <= now()
-      ORDER BY scheduled_at LIMIT 10`
+      ORDER BY scheduled_at LIMIT 5`
   );
   return r.rows;
+}
+
+async function listQueuedMessages(limit = 3) {
+  const r = await pool.query(
+    `SELECT * FROM comm_messages
+      WHERE status='queued'
+      ORDER BY created_at LIMIT $1`,
+    [limit]
+  );
+  return r.rows;
+}
+
+async function claimMessageForSending(id) {
+  const r = await pool.query(
+    `UPDATE comm_messages SET status='sending', updated_at=now()
+      WHERE id=$1 AND status IN ('queued','scheduled')
+      RETURNING *`,
+    [id]
+  );
+  return r.rows[0] || null;
+}
+
+async function resetStuckSending(maxAgeMinutes = 15) {
+  await pool.query(
+    `UPDATE comm_messages SET status='queued', updated_at=now()
+      WHERE status='sending' AND updated_at < now() - ($1::text || ' minutes')::interval`,
+    [String(maxAgeMinutes)]
+  );
 }
 
 module.exports = {
@@ -338,4 +366,7 @@ module.exports = {
   listDeliveries,
   analyticsSummary,
   listDueScheduled,
+  listQueuedMessages,
+  claimMessageForSending,
+  resetStuckSending,
 };

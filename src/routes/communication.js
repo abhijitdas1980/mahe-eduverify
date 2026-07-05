@@ -172,9 +172,12 @@ router.post("/messages/:id/schedule", async (req, res, next) => {
 
 router.post("/messages/:id/send", async (req, res, next) => {
   try {
-    const result = await comm.sendMessage(parseInt(req.params.id, 10), req.admin.staffId);
-    await audit(req, "admin", req.admin.staffId, "COMM_SEND", `#${req.params.id} sent=${result.sent}`);
-    res.json(result);
+    const id = parseInt(req.params.id, 10);
+    await comm.queueMessage(id);
+    const { processCommunicationQueue } = require("../lib/communication/worker");
+    processCommunicationQueue().catch(() => {});
+    await audit(req, "admin", req.admin.staffId, "COMM_SEND", `#${id} queued`);
+    res.json({ queued: true, messageId: id });
   } catch (e) {
     res.status(400).json({ error: e.message });
   }
@@ -184,7 +187,7 @@ router.post("/messages/send", emailAttachments("attachments"), async (req, res, 
   try {
     const body = parseBody(req.body || {});
     const result = await comm.createAndSend(body, req.admin.staffId, req.files || []);
-    await audit(req, "admin", req.admin.staffId, "COMM_SEND", result.scheduled ? "scheduled" : `sent=${result.sent}`);
+    await audit(req, "admin", req.admin.staffId, "COMM_SEND", result.scheduled ? "scheduled" : result.queued ? `queued #${result.messageId}` : `sent=${result.sent}`);
     res.json(result);
   } catch (e) {
     res.status(400).json({ error: e.message });
