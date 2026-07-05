@@ -53,6 +53,13 @@ const {
   sendTestEmail,
   getEmailStatus,
 } = require("../lib/notifications");
+const {
+  listEmailTemplates,
+  previewAdminEmail,
+  sendAdminEmail,
+  sendAdminEmailBulk,
+} = require("../lib/adminEmail");
+const { emailAttachments } = require("../middleware/emailAttachmentUpload");
 
 const studentBulkRoutes = require("./studentBulk");
 
@@ -819,6 +826,97 @@ router.post("/notifications/test-email", requireSupervisor, async (req, res, nex
     res.status(400).json({ error: e.message || "Test email failed." });
   }
 });
+
+router.get("/email/templates", requireSupervisor, (_req, res) => {
+  res.json({ templates: listEmailTemplates() });
+});
+
+router.post("/students/:appNo/email-preview", requireSupervisor, async (req, res, next) => {
+  try {
+    const b = req.body || {};
+    const preview = await previewAdminEmail({
+      appNo: req.params.appNo,
+      templateId: b.templateId || "schedule",
+      customSubject: b.customSubject,
+      customBody: b.customBody,
+      recipientRole: b.recipientRole === "parent" ? "parent" : "student",
+    });
+    res.json(preview);
+  } catch (e) {
+    res.status(400).json({ error: e.message || "Preview failed." });
+  }
+});
+
+router.post(
+  "/students/:appNo/send-email",
+  requireSupervisor,
+  emailAttachments("attachments"),
+  async (req, res, next) => {
+    try {
+      const b = req.body || {};
+      const sendToStudent = b.sendToStudent !== "false" && b.sendToStudent !== false;
+      const sendToParent = b.sendToParent !== "false" && b.sendToParent !== false;
+      const result = await sendAdminEmail({
+        appNo: req.params.appNo,
+        templateId: b.templateId || "schedule",
+        customSubject: b.customSubject,
+        customBody: b.customBody,
+        sendToStudent,
+        sendToParent,
+        attachments: req.files || [],
+        staffId: req.admin.staffId,
+      });
+      await audit(
+        req,
+        "admin",
+        req.admin.staffId,
+        "ADMIN_EMAIL_SENT",
+        `${req.params.appNo} sent=${result.sent} failed=${result.failed}`
+      );
+      res.json(result);
+    } catch (e) {
+      res.status(400).json({ error: e.message || "Send failed." });
+    }
+  }
+);
+
+router.post(
+  "/students/bulk-send-email",
+  requireSupervisor,
+  emailAttachments("attachments"),
+  async (req, res, next) => {
+    try {
+      const b = req.body || {};
+      let appNos = [];
+      if (Array.isArray(b.appNos)) appNos = b.appNos;
+      else if (typeof b.appNos === "string" && b.appNos.trim()) {
+        try { appNos = JSON.parse(b.appNos); } catch (_) { appNos = b.appNos.split(",").map((s) => s.trim()).filter(Boolean); }
+      }
+      const sendToStudent = b.sendToStudent !== "false" && b.sendToStudent !== false;
+      const sendToParent = b.sendToParent !== "false" && b.sendToParent !== false;
+      const result = await sendAdminEmailBulk({
+        appNos,
+        templateId: b.templateId || "schedule",
+        customSubject: b.customSubject,
+        customBody: b.customBody,
+        sendToStudent,
+        sendToParent,
+        attachments: req.files || [],
+        staffId: req.admin.staffId,
+      });
+      await audit(
+        req,
+        "admin",
+        req.admin.staffId,
+        "ADMIN_EMAIL_BULK",
+        `${appNos.length} students sent=${result.sent} failed=${result.failed}`
+      );
+      res.json(result);
+    } catch (e) {
+      res.status(400).json({ error: e.message || "Bulk send failed." });
+    }
+  }
+);
 
 router.patch("/students/:appNo", requireSupervisor, async (req, res, next) => {
   try {

@@ -153,16 +153,18 @@ function escapeHtml(s) {
     .replace(/"/g, "&quot;");
 }
 
-async function sendEmail({ to, subject, text, html }) {
+async function sendEmail({ to, subject, text, html, attachments }) {
   const tx = getTransporter();
   if (!tx) throw new Error("SMTP not configured.");
-  await tx.sendMail({
+  const mail = {
     from: fromAddress(),
     to,
     subject,
     text,
     html,
-  });
+  };
+  if (attachments?.length) mail.attachments = attachments;
+  await tx.sendMail(mail);
 }
 
 /**
@@ -326,4 +328,9 @@ module.exports = {
   notifyDocumentRejected,
   listNotificationsForStudent,
   sendTestEmail,
+  sendEmail,
+  logNotification,
+  uniqueRecipients,
+  greeting,
+  greetingHtml,
 };
