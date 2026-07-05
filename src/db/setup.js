@@ -84,6 +84,10 @@ async function runSetup({ closePool = false, quiet = false } = {}) {
       log("[setup] Blacklist already has entries, skipping seed.");
     }
 
+    log("[setup] Seeding Communication Center templates ...");
+    const { seedCommunicationTemplates } = require("../lib/communication/seedTemplates");
+    await seedCommunicationTemplates();
+
     await client.query(
       `INSERT INTO audit_log (actor_type, actor_id, action, detail)
        VALUES ('system','setup','DB_SETUP','Schema upgraded; students via bulk upload only')`

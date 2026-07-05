@@ -62,11 +62,13 @@ const {
 const { emailAttachments } = require("../middleware/emailAttachmentUpload");
 
 const studentBulkRoutes = require("./studentBulk");
+const communicationRoutes = require("./communication");
 
 const router = express.Router();
 router.use(requireAdmin);
 router.use(requireActiveAdmin);
 router.use("/students/bulk-upload", studentBulkRoutes);
+router.use("/communication", communicationRoutes);
 
 const isDate = (v) => /^\d{4}-\d{2}-\d{2}$/.test(v || "");
 const SLOT_STATUSES = ["open", "hidden", "closed"];

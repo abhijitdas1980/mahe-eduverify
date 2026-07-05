@@ -6,7 +6,7 @@ const MAX_BYTES = 10 * 1024 * 1024; // 10 MB per file
 const MAX_FILES = 5;
 
 const ALLOWED_EXT = new Set([
-  "pdf", "jpg", "jpeg", "png", "gif", "webp",
+  "pdf", "jpg", "jpeg", "png", "gif", "webp", "zip",
   "doc", "docx", "xls", "xlsx", "ppt", "pptx", "txt",
 ]);
 
@@ -23,6 +23,8 @@ const ALLOWED_MIME = new Set([
   "application/vnd.ms-powerpoint",
   "application/vnd.openxmlformats-officedocument.presentationml.presentation",
   "text/plain",
+  "application/zip",
+  "application/x-zip-compressed",
   "application/octet-stream",
 ]);
 

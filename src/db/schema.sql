@@ -264,3 +264,88 @@ UPDATE students s
      SELECT 1 FROM verify_schedule vs
      WHERE vs.id = s.verify_schedule_id AND vs.student_id = s.id
    );
+
+-- ====== v41: Communication Center (email management) ======
+CREATE TABLE IF NOT EXISTS comm_settings (
+  key        VARCHAR(80) PRIMARY KEY,
+  value      TEXT NOT NULL,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+INSERT INTO comm_settings (key, value) VALUES
+  ('max_attachment_mb', '10'),
+  ('max_attachments', '5'),
+  ('default_from', '')
+ON CONFLICT (key) DO NOTHING;
+
+CREATE TABLE IF NOT EXISTS comm_templates (
+  id          SERIAL PRIMARY KEY,
+  name        VARCHAR(120) NOT NULL,
+  slug        VARCHAR(80) UNIQUE,
+  category    VARCHAR(40) NOT NULL DEFAULT 'general',
+  subject     TEXT NOT NULL,
+  body_html   TEXT NOT NULL,
+  body_text   TEXT,
+  audience    VARCHAR(20) NOT NULL DEFAULT 'both',
+  is_system   BOOLEAN NOT NULL DEFAULT false,
+  created_by  VARCHAR(40),
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS comm_messages (
+  id               SERIAL PRIMARY KEY,
+  status           VARCHAR(20) NOT NULL DEFAULT 'draft',
+  subject          TEXT NOT NULL,
+  body_html        TEXT NOT NULL,
+  body_text        TEXT,
+  parent_body_html TEXT,
+  from_address     VARCHAR(160),
+  cc               TEXT,
+  bcc              TEXT,
+  audience         VARCHAR(20) NOT NULL DEFAULT 'both',
+  recipient_mode   VARCHAR(30) NOT NULL DEFAULT 'selected',
+  recipient_filter JSONB,
+  selected_app_nos TEXT[],
+  scheduled_at     TIMESTAMPTZ,
+  sent_at          TIMESTAMPTZ,
+  template_id      INT REFERENCES comm_templates(id) ON DELETE SET NULL,
+  stats            JSONB NOT NULL DEFAULT '{}',
+  created_by       VARCHAR(40) NOT NULL,
+  created_at       TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at       TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_comm_messages_status ON comm_messages(status);
+CREATE INDEX IF NOT EXISTS idx_comm_messages_scheduled ON comm_messages(scheduled_at) WHERE status = 'scheduled';
+
+CREATE TABLE IF NOT EXISTS comm_message_attachments (
+  id          SERIAL PRIMARY KEY,
+  message_id  INT NOT NULL REFERENCES comm_messages(id) ON DELETE CASCADE,
+  filename    VARCHAR(255) NOT NULL,
+  mime_type   VARCHAR(80),
+  size_bytes  INT NOT NULL DEFAULT 0,
+  data        BYTEA NOT NULL,
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_comm_attachments_message ON comm_message_attachments(message_id);
+
+CREATE TABLE IF NOT EXISTS comm_deliveries (
+  id              SERIAL PRIMARY KEY,
+  message_id      INT NOT NULL REFERENCES comm_messages(id) ON DELETE CASCADE,
+  student_id      INT REFERENCES students(id) ON DELETE SET NULL,
+  recipient_email VARCHAR(160) NOT NULL,
+  recipient_role  VARCHAR(20) NOT NULL,
+  recipient_name  VARCHAR(160),
+  subject         TEXT,
+  status          VARCHAR(20) NOT NULL DEFAULT 'pending',
+  tracking_token  VARCHAR(64) UNIQUE,
+  error           TEXT,
+  sent_at         TIMESTAMPTZ,
+  opened_at       TIMESTAMPTZ,
+  metadata        JSONB,
+  created_at      TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_comm_deliveries_message ON comm_deliveries(message_id);
+CREATE INDEX IF NOT EXISTS idx_comm_deliveries_status ON comm_deliveries(status);
+CREATE INDEX IF NOT EXISTS idx_comm_deliveries_created ON comm_deliveries(created_at);
+CREATE INDEX IF NOT EXISTS idx_comm_deliveries_token ON comm_deliveries(tracking_token);

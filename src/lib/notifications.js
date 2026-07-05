@@ -153,17 +153,19 @@ function escapeHtml(s) {
     .replace(/"/g, "&quot;");
 }
 
-async function sendEmail({ to, subject, text, html, attachments }) {
+async function sendEmail({ to, subject, text, html, attachments, from, cc, bcc }) {
   const tx = getTransporter();
   if (!tx) throw new Error("SMTP not configured.");
   const mail = {
-    from: fromAddress(),
+    from: from || fromAddress(),
     to,
     subject,
     text,
     html,
   };
   if (attachments?.length) mail.attachments = attachments;
+  if (cc) mail.cc = cc;
+  if (bcc) mail.bcc = bcc;
   await tx.sendMail(mail);
 }
 

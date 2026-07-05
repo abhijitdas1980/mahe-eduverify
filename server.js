@@ -26,6 +26,8 @@ const authRoutes = require("./src/routes/auth");
 const studentRoutes = require("./src/routes/student");
 const adminRoutes = require("./src/routes/admin");
 const verifyRoutes = require("./src/routes/verify");
+const commTrackRoutes = require("./src/routes/commTrack");
+const { startCommunicationWorker } = require("./src/lib/communication/worker");
 
 const app = express();
 const PORT = process.env.PORT || 8080;
@@ -95,6 +97,7 @@ app.use("/api/auth", authRoutes);
 app.use("/api/student", studentRoutes);
 app.use("/api/admin", adminRoutes);
 app.use("/api/admin/verify", verifyRoutes);
+app.use("/api/comm", commTrackRoutes);
 
 app.use(express.static(path.join(__dirname, "public")));
 app.get(/^(?!\/api).*/, (req, res) => {
@@ -126,6 +129,7 @@ async function start() {
     console.log(`Storage: ${storageProvider()}${isStorageConfigured() ? "" : " (not configured)"}`);
     console.log(`Email: ${emailBoot.configured ? "SMTP ready (" + emailBoot.smtpUser + ")" : emailBoot.reason}`);
     console.log("Health check: /api/health");
+    startCommunicationWorker(60000);
   });
 }
 start();
