@@ -1,4 +1,4 @@
-/* Shared verification slip PDF — student copy + university verifier copy. */
+/* Verification slip PDF — uploaded documents only, bring in same order. */
 (function (global) {
   const DEFAULT_SUPPORT = { phone: "+91-80-4567-8900", email: "admissions@eduverify.ac.in" };
 
@@ -37,6 +37,11 @@
     return minsToTimeLabel(mins - minutesBefore);
   }
 
+  /** Uploaded docs only, keeping the same order as the student checklist. */
+  function uploadedDocsInOrder(documents) {
+    return [...(documents || [])].filter((d) => d && d.hasFile);
+  }
+
   function downloadVerificationPdf({
     student,
     documents,
@@ -48,9 +53,6 @@
   }) {
     if (!window.jspdf) {
       const msg = "PDF library not loaded. Please refresh the page and try again.";
-      // #region agent log
-      fetch('http://127.0.0.1:7412/ingest/96947b93-38f7-483c-b9f7-e456e9d89bb3',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'e101d5'},body:JSON.stringify({sessionId:'e101d5',location:'verification-pdf.js:jspdf',message:'jspdf_missing',data:{hasStudent:!!student?.appNo},timestamp:Date.now(),hypothesisId:'H4',runId:'audit'})}).catch(()=>{});
-      // #endregion
       if (onError) onError(msg);
       return;
     }
@@ -61,228 +63,145 @@
 
     const { jsPDF } = window.jspdf;
     const pdf = new jsPDF({ unit: "pt", format: "a4", orientation: "portrait" });
-    const margin = 40;
+    const margin = 48;
     const pageW = pdf.internal.pageSize.getWidth();
     const pageH = pdf.internal.pageSize.getHeight();
     const contentW = pageW - margin * 2;
     const crimson = [123, 30, 21];
     const slate = [71, 85, 105];
-    const sortedDocs = [...(documents || [])].sort((a, b) => {
-      if (!!a.optional !== !!b.optional) return a.optional ? 1 : -1;
-      return String(a.name).localeCompare(String(b.name));
-    });
+    const uploaded = uploadedDocsInOrder(documents);
 
-    const drawCheckboxPair = (x, y, w) => {
-      const box = 11;
-      const mid = x + w / 2;
-      pdf.setDrawColor(100, 116, 139);
-      pdf.setLineWidth(0.6);
-      pdf.rect(mid - box - 14, y - 9, box, box);
-      pdf.setFontSize(7);
-      pdf.setTextColor(...slate);
-      pdf.text("Yes", mid - box - 14, y + 6);
-      pdf.rect(mid + 6, y - 9, box, box);
-      pdf.text("No", mid + 6, y + 6);
-    };
+    let y = margin;
 
-    const drawCopy = (copyLabel, copyNote, copyIdx) => {
-      if (copyIdx > 0) pdf.addPage();
-      let y = margin;
+    pdf.setFillColor(...crimson);
+    pdf.rect(margin, y, contentW, 3, "F");
+    y += 18;
+    pdf.setFont("helvetica", "bold");
+    pdf.setFontSize(13);
+    pdf.setTextColor(...crimson);
+    pdf.text("Manipal Academy of Higher Education", margin, y);
+    y += 16;
+    pdf.setFontSize(11);
+    pdf.text("EduVerify — Documents to bring for verification", margin, y);
+    y += 22;
 
-      pdf.setFillColor(...crimson);
-      pdf.rect(margin, y, contentW, 3, "F");
-      y += 10;
+    pdf.setFont("helvetica", "normal");
+    pdf.setFontSize(9);
+    pdf.setTextColor(...slate);
+    pdf.text(`Application No.: ${student.appNo || "—"}`, margin, y);
+    y += 13;
+    pdf.setFont("helvetica", "bold");
+    pdf.setFontSize(11);
+    pdf.setTextColor(30, 41, 59);
+    pdf.text(student.name || "—", margin, y);
+    y += 14;
+    pdf.setFont("helvetica", "normal");
+    pdf.setFontSize(9);
+    pdf.setTextColor(...slate);
+    const meta = [
+      student.program || "—",
+      student.section ? `Sec ${student.section}` : null,
+      student.category || null,
+    ].filter(Boolean).join(" · ");
+    pdf.text(meta, margin, y);
+    y += 18;
+
+    if (verifySlot) {
       pdf.setFont("helvetica", "bold");
-      pdf.setFontSize(13);
-      pdf.setTextColor(...crimson);
-      pdf.text("Manipal Academy of Higher Education", margin, y);
-      y += 14;
-      pdf.setFontSize(11);
-      pdf.text("EduVerify — Original Document Verification", margin, y);
-      y += 16;
+      pdf.setFontSize(9);
+      pdf.setTextColor(5, 150, 105);
+      pdf.text("Verification slot", margin, y);
+      y += 12;
+      pdf.setFont("helvetica", "normal");
+      pdf.setFontSize(9);
+      pdf.setTextColor(30, 41, 59);
+      const slotLine = [
+        `Date: ${fmtDate(verifySlot.date)}`,
+        `Room: ${verifySlot.room || "—"}`,
+        `Slot #${verifySlot.slotNo || "—"}`,
+        `Time: ${verifySlot.startTime || "—"}${verifySlot.endTime ? " – " + verifySlot.endTime : ""}`,
+        `Report by: ${reportingTime(verifySlot.startTime)}`,
+      ].join("   ·   ");
+      const slotLines = pdf.splitTextToSize(slotLine, contentW);
+      pdf.text(slotLines, margin, y);
+      y += slotLines.length * 12 + 10;
+    } else if (useReportingSlots && slot) {
       pdf.setFontSize(9);
       pdf.setTextColor(...slate);
-      pdf.text(copyLabel, margin, y);
+      pdf.text(`Reporting appointment: ${fmtDate(slot.date)} at ${slot.time || "—"}`, margin, y);
+      y += 16;
+    }
+
+    /* Instruction box */
+    pdf.setFillColor(239, 246, 255);
+    pdf.setDrawColor(191, 219, 254);
+    pdf.roundedRect(margin, y, contentW, 42, 4, 4, "FD");
+    pdf.setFont("helvetica", "bold");
+    pdf.setFontSize(9);
+    pdf.setTextColor(30, 64, 175);
+    pdf.text("Bring originals in the same order listed below for faster verification.", margin + 10, y + 16);
+    pdf.setFont("helvetica", "normal");
+    pdf.setFontSize(8);
+    pdf.setTextColor(51, 65, 85);
+    pdf.text("Arrange physical documents in this sequence and present them at the verification counter.", margin + 10, y + 30);
+    y += 56;
+
+    pdf.setFont("helvetica", "bold");
+    pdf.setFontSize(10);
+    pdf.setTextColor(30, 41, 59);
+    pdf.text(`Uploaded documents (${uploaded.length})`, margin, y);
+    y += 8;
+
+    if (!uploaded.length) {
+      y += 14;
       pdf.setFont("helvetica", "normal");
-      pdf.text(copyNote, margin, y + 12);
-      y += 28;
-
-      pdf.setDrawColor(226, 232, 240);
-      pdf.setLineWidth(0.5);
-      pdf.roundedRect(margin, y, contentW, 88, 4, 4);
-      pdf.setFontSize(8.5);
-      pdf.setTextColor(30, 41, 59);
-      const infoColW = contentW / 2 - 12;
-      const info = [
-        ["Application No.", student.appNo || "—"],
-        ["Student Name", student.name || "—"],
-        ["Program", student.program || "—"],
-        ["Section / Category", `${student.section || "—"} · ${student.category || "—"}`],
-        ["Profile", (student.profile || "—").replace(/-/g, " / ")],
-        ["Orientation Date", fmtDate(student.orientationDate)],
-      ];
-      info.forEach(([label, value], i) => {
-        const col = i % 2;
-        const row = Math.floor(i / 2);
-        const x = margin + 10 + col * (infoColW + 8);
-        const iy = y + 14 + row * 26;
-        pdf.setFont("helvetica", "normal");
-        pdf.setTextColor(...slate);
-        pdf.text(label, x, iy);
-        pdf.setFont("helvetica", "bold");
-        pdf.setTextColor(30, 41, 59);
-        const lines = pdf.splitTextToSize(String(value), infoColW);
-        pdf.text(lines, x, iy + 11);
-      });
-      y += 98;
-
-      if (verifySlot) {
-        pdf.setFont("helvetica", "bold");
-        pdf.setFontSize(9);
-        pdf.setTextColor(5, 150, 105);
-        pdf.text("Assigned Verification Slot", margin, y);
-        y += 12;
-        pdf.setFont("helvetica", "normal");
-        pdf.setFontSize(8.5);
-        pdf.setTextColor(30, 41, 59);
-        const slotLine = [
-          `Date: ${fmtDate(verifySlot.date)}`,
-          `Room: ${verifySlot.room || "—"}`,
-          `Slot #${verifySlot.slotNo || "—"}`,
-          `Time: ${verifySlot.startTime || "—"}${verifySlot.endTime ? " – " + verifySlot.endTime : ""}`,
-          `Report by: ${reportingTime(verifySlot.startTime)} (30 min before)`,
-        ].join("   ·   ");
-        const slotLines = pdf.splitTextToSize(slotLine, contentW);
-        pdf.text(slotLines, margin, y);
-        y += slotLines.length * 11 + 6;
-        pdf.setFontSize(8);
-        pdf.setTextColor(...slate);
-        pdf.text("Bring all original documents listed below. Present this printout at the verification counter.", margin, y);
-        y += 16;
-      } else {
-        pdf.setFontSize(8.5);
-        pdf.setTextColor(...slate);
-        pdf.text("Verification slot will be assigned after mandatory document uploads and self-declaration.", margin, y);
-        y += 16;
-      }
-
-      if (useReportingSlots && slot) {
-        pdf.setFontSize(8);
-        pdf.text(`Reporting appointment: ${fmtDate(slot.date)} at ${slot.time || "—"}`, margin, y);
-        y += 14;
-      }
-
-      const cols = [
-        { label: "#", w: 22 },
-        { label: "Document", w: 198 },
-        { label: "Type", w: 42 },
-        { label: "Campus", w: 58 },
-        { label: "Online", w: 48 },
-        { label: "Original submitted?", w: contentW - 22 - 198 - 42 - 58 - 48 },
-      ];
-      const rowH = 20;
-      const headerH = 22;
-      let x = margin;
-      pdf.setFillColor(248, 250, 252);
-      pdf.rect(margin, y, contentW, headerH, "F");
-      pdf.setDrawColor(203, 213, 225);
-      pdf.setLineWidth(0.5);
-      pdf.setFont("helvetica", "bold");
-      pdf.setFontSize(7.5);
-      pdf.setTextColor(51, 65, 85);
-      cols.forEach((c) => {
-        pdf.rect(x, y, c.w, headerH);
-        const labelLines = pdf.splitTextToSize(c.label, c.w - 6);
-        pdf.text(labelLines, x + 4, y + 10);
-        x += c.w;
-      });
-      y += headerH;
-
-      sortedDocs.forEach((d, idx) => {
-        if (y + rowH > pageH - 90) {
+      pdf.setFontSize(9);
+      pdf.setTextColor(...slate);
+      pdf.text("No documents have been uploaded yet.", margin, y);
+    } else {
+      uploaded.forEach((d, idx) => {
+        const label = `${idx + 1}.  ${d.name || d.docCode || "Document"}`;
+        const lines = pdf.splitTextToSize(label, contentW - 8);
+        const blockH = Math.max(18, lines.length * 11 + 6);
+        if (y + blockH > pageH - 60) {
           pdf.addPage();
           y = margin;
-          pdf.setFontSize(8);
-          pdf.setTextColor(...slate);
-          pdf.text(`${copyLabel} (continued)`, margin, y);
-          y += 16;
         }
-        x = margin;
-        const uploaded = d.hasFile ? "Yes" : "No";
-        const campusReq = d.original ? "Original" : "Photocopy";
-        const cells = [
-          String(idx + 1),
-          d.name + (d.flagged ? " *" : ""),
-          d.optional ? "Optional" : "Mandatory",
-          campusReq,
-          uploaded,
-          "",
-        ];
-        pdf.setFont("helvetica", "normal");
-        pdf.setFontSize(7.5);
-        pdf.setTextColor(30, 41, 59);
-        cols.forEach((c, ci) => {
-          pdf.rect(x, y, c.w, rowH);
-          if (ci === cols.length - 1) {
-            drawCheckboxPair(x, y + 13, c.w);
-          } else {
-            const lines = pdf.splitTextToSize(cells[ci], c.w - 6);
-            pdf.text(lines.slice(0, 2), x + 4, y + 12);
-          }
-          x += c.w;
-        });
-        y += rowH;
-      });
-
-      if (sortedDocs.some((d) => d.flagged)) {
         y += 6;
-        pdf.setFontSize(7);
-        pdf.setTextColor(190, 18, 60);
-        pdf.text("* Flagged for additional review by the verification cell.", margin, y);
-        y += 12;
-      }
-
-      y += 10;
-      pdf.setDrawColor(203, 213, 225);
-      pdf.setLineDashPattern([3, 2], 0);
+        pdf.setDrawColor(226, 232, 240);
+        pdf.setLineWidth(0.4);
+        pdf.line(margin, y, margin + contentW, y);
+        y += 14;
+        pdf.setFont("helvetica", "normal");
+        pdf.setFontSize(10);
+        pdf.setTextColor(30, 41, 59);
+        pdf.text(lines, margin + 4, y);
+        y += (lines.length - 1) * 11 + 4;
+      });
+      y += 8;
+      pdf.setDrawColor(226, 232, 240);
       pdf.line(margin, y, margin + contentW, y);
-      pdf.setLineDashPattern([], 0);
-      y += 16;
-
-      pdf.setFontSize(8);
-      pdf.setTextColor(30, 41, 59);
-      if (copyLabel.includes("STUDENT")) {
-        pdf.text("I confirm that I will produce the originals listed above at the verification counter on my assigned slot.", margin, y);
-        y += 22;
-        pdf.text("Student signature:", margin, y);
-        pdf.line(margin + 88, y + 1, margin + 260, y + 1);
-        pdf.text("Date:", margin + 280, y);
-        pdf.line(margin + 305, y + 1, margin + contentW, y + 1);
-      } else {
-        pdf.text("Verifier: tick Original submitted (Yes/No) for each document after physical checking.", margin, y);
-        y += 22;
-        pdf.text("Verifier signature:", margin, y);
-        pdf.line(margin + 92, y + 1, margin + 240, y + 1);
-        pdf.text("Staff ID:", margin + 255, y);
-        pdf.line(margin + 295, y + 1, margin + 360, y + 1);
-        pdf.text("Date:", margin + 375, y);
-        pdf.line(margin + 400, y + 1, margin + contentW, y + 1);
-      }
-
       y += 18;
-      pdf.setFontSize(7);
-      pdf.setTextColor(...slate);
-      pdf.text(`Helpdesk: ${support.phone} · ${support.email}`, margin, y);
-    };
+    }
 
-    drawCopy("STUDENT COPY", "Print, sign, and bring to campus on your verification day.", 0);
-    drawCopy("UNIVERSITY VERIFIER COPY", "For verification cell — retain after checking originals.", 1);
+    pdf.setFont("helvetica", "bold");
+    pdf.setFontSize(9);
+    pdf.setTextColor(...crimson);
+    const reminder = pdf.splitTextToSize(
+      "Please bring the documents listed above in the same order for faster verification.",
+      contentW
+    );
+    pdf.text(reminder, margin, y);
+    y += reminder.length * 12 + 16;
+
+    pdf.setFont("helvetica", "normal");
+    pdf.setFontSize(8);
+    pdf.setTextColor(...slate);
+    pdf.text(`Helpdesk: ${support.phone} · ${support.email}`, margin, y);
 
     pdf.save(`Verification-${student.appNo}.pdf`);
-    // #region agent log
-    fetch('http://127.0.0.1:7412/ingest/96947b93-38f7-483c-b9f7-e456e9d89bb3',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'e101d5'},body:JSON.stringify({sessionId:'e101d5',location:'verification-pdf.js:save',message:'pdf_saved',data:{appNo:student.appNo,docCount:(documents||[]).length,hasVerifySlot:!!verifySlot},timestamp:Date.now(),hypothesisId:'H4',runId:'audit'})}).catch(()=>{});
-    // #endregion
   }
 
   global.downloadVerificationPdf = downloadVerificationPdf;
+  global.uploadedDocsInOrder = uploadedDocsInOrder;
 })(typeof window !== "undefined" ? window : global);

@@ -1,17 +1,17 @@
-/* v19 — multer-based upload middleware.
-   Default allowed types: PDF, JPG, PNG (≤ 6 MB).
-   Photographs (doc code PHOTOS) accept JPG / PNG only — no PDF.
+/* Document upload middleware.
+   Default documents: PDF only (≤ 6 MB).
+   Photographs (doc code PHOTOS): JPG / PNG only — no PDF.
    MIME is normalized from extension when phones send application/octet-stream. */
 const multer = require("multer");
 const path = require("path");
 
 const MAX_BYTES = 6 * 1024 * 1024; // 6 MB
-const ALLOWED = {
+const PDF_ONLY = {
   "application/pdf": "pdf",
-  "image/jpeg": "jpg",
-  "image/png": "png",
 };
 const IMAGE_ONLY = { "image/jpeg": "jpg", "image/png": "png" };
+/** @deprecated use PDF_ONLY — kept as alias for callers that import ALLOWED */
+const ALLOWED = PDF_ONLY;
 
 const EXT_TO_MIME = {
   pdf: "application/pdf",
@@ -39,7 +39,7 @@ function normalizeMime(file) {
 }
 
 function formatForMime(mime, code) {
-  const map = String(code || "").toUpperCase() === "PHOTOS" ? IMAGE_ONLY : ALLOWED;
+  const map = String(code || "").toUpperCase() === "PHOTOS" ? IMAGE_ONLY : PDF_ONLY;
   return map[mime] || null;
 }
 
@@ -55,14 +55,14 @@ const upload = multer({
       ));
     }
     const mime = normalizeMime(file);
-    const allowed = code === "PHOTOS" ? IMAGE_ONLY : ALLOWED;
+    const allowed = code === "PHOTOS" ? IMAGE_ONLY : PDF_ONLY;
     if (allowed[mime]) {
       file.mimetype = mime;
       return cb(null, true);
     }
     const msg = code === "PHOTOS"
       ? "Photographs must be JPG or PNG only — PDFs and HEIC are not accepted."
-      : "Unsupported file type. Upload a PDF, JPG or PNG.";
+      : "Only PDF files are accepted for this document. JPG/PNG images are allowed only for Photographs.";
     cb(new Error(msg));
   },
 });
@@ -86,6 +86,7 @@ module.exports = {
   singleFile,
   MAX_BYTES,
   ALLOWED,
+  PDF_ONLY,
   IMAGE_ONLY,
   normalizeMime,
   formatForMime,

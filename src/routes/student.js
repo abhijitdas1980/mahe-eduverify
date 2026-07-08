@@ -21,19 +21,14 @@ const {
 } = require("../lib/docs");
 const { checkAgainstBlacklist } = require("../lib/blacklist");
 const { tryAllocateVerifySlot } = require("../lib/verifyAlloc");
+const { notifyDocumentsSubmitted } = require("../lib/notifications");
 const { DOC_META, checklistFor, isLegacyCode } = require("../config/checklists");
-const { validateContactPayload, serializeContact } = require("../lib/contact");
+const { institutionOptionsPayload } = require("../config/institutionOptions");
+const { serializeContact } = require("../lib/contact");
 const { portalPayload } = require("../lib/portalAccess");
 
 const router = express.Router();
 router.use(requireStudent);
-
-const CONTACT_REQUIRED_MSG = "Complete your contact details before continuing.";
-
-async function requireContactCompleted(studentId) {
-  const r = await pool.query("SELECT contact_completed_at FROM students WHERE id=$1", [studentId]);
-  return !!r.rows[0]?.contact_completed_at;
-}
 
 async function readSetting(key, fallback) {
   try {
@@ -144,6 +139,10 @@ router.get("/me", async (req, res, next) => {
   } catch (e) { next(e); }
 });
 
+router.get("/institution-options", (req, res) => {
+  res.json(institutionOptionsPayload());
+});
+
 router.get("/documents/:code/preview", async (req, res, next) => {
   try {
     const code = String(req.params.code || "").toUpperCase();
@@ -166,44 +165,14 @@ router.get("/documents/:code/download", async (req, res, next) => {
   } catch (e) { next(e); }
 });
 
-router.post("/contact", async (req, res, next) => {
-  try {
-    const sr = await pool.query(
-      `SELECT s.contact_verified_at, s.physical_reporting_completed, vs.status AS verify_status
-         FROM students s
-         LEFT JOIN verify_schedule vs ON vs.id = s.verify_schedule_id
-         WHERE s.id=$1`,
-      [req.student.id]
-    );
-    const row = sr.rows[0];
-    if (row?.contact_verified_at) {
-      return res.status(400).json({ error: "Contact details were verified by staff and cannot be changed online. Contact the verification cell." });
-    }
-    if (row?.verify_status === "verified" || row?.verify_status === "absent" || row?.physical_reporting_completed) {
-      return res.status(400).json({ error: "Contact details are locked after campus verification. Contact the verification cell to request changes." });
-    }
-    const v = validateContactPayload(req.body || {});
-    if (!v.ok) return res.status(400).json({ error: v.errors[0], errors: v.errors });
-    const { email, phone, parentName, parentRelation, parentEmail, parentPhone } = v.data;
-    await pool.query(
-      `UPDATE students SET
-         email=$1, phone=$2,
-         parent_name=$3, parent_relation=$4, parent_email=$5, parent_phone=$6,
-         contact_completed_at=now()
-       WHERE id=$7`,
-      [email, phone, parentName, parentRelation, parentEmail, parentPhone, req.student.id]
-    );
-    await audit(req, "student", req.student.appNo, "CONTACT_SAVED", `${email} / parent: ${parentEmail}`);
-    const state = await loadState(req.student.id);
-    res.json(state);
-  } catch (e) { next(e); }
+router.post("/contact", async (_req, res) => {
+  return res.status(403).json({
+    error: "Contact details cannot be changed from the student portal. Please contact the verification cell if an update is required.",
+  });
 });
 
 router.post("/documents/:code/upload", uploadLimiter, singleFile("file"), async (req, res, next) => {
   try {
-    if (!await requireContactCompleted(req.student.id)) {
-      return res.status(403).json({ error: CONTACT_REQUIRED_MSG });
-    }
     if (!isConfigured()) return res.status(503).json({ error: "Document storage is not configured. Contact the admin office." });
     if (!req.file) return res.status(400).json({ error: "No file received." });
     const code = String(req.params.code || "").toUpperCase();
@@ -245,9 +214,6 @@ router.post("/documents/:code/upload", uploadLimiter, singleFile("file"), async 
 
 router.patch("/documents/:code", async (req, res, next) => {
   try {
-    if (!await requireContactCompleted(req.student.id)) {
-      return res.status(403).json({ error: CONTACT_REQUIRED_MSG });
-    }
     const code = String(req.params.code || "").toUpperCase();
     if (isLegacyCode(code)) return res.status(400).json({ error: "This document is no longer required." });
     const { selfVerify, confirmed, status, issueNote, institutionName } = req.body;
@@ -309,9 +275,6 @@ router.patch("/documents/:code", async (req, res, next) => {
    missing doc codes so the frontend can render a precise message. */
 router.post("/declare", async (req, res, next) => {
   try {
-    if (!await requireContactCompleted(req.student.id)) {
-      return res.status(403).json({ error: CONTACT_REQUIRED_MSG });
-    }
     const existing = await pool.query("SELECT declared FROM students WHERE id=$1", [req.student.id]);
     if (existing.rows[0]?.declared) {
       return res.status(400).json({ error: "You have already signed the self-declaration. It is locked unless staff reject a document." });
@@ -349,7 +312,14 @@ router.post("/declare", async (req, res, next) => {
       console.warn("[verify] auto-allocate failed for student", req.student.id, e.message);
       allocation = { allocated: false, reason: "error" };
     }
-    res.json({ ok: true, allocation });
+    let emailNotification = { sent: 0, skipped: true, reason: "not-attempted" };
+    try {
+      emailNotification = await notifyDocumentsSubmitted(req.student.id);
+    } catch (e) {
+      console.warn("[notify] submission confirm email failed:", e.message);
+      emailNotification = { sent: 0, skipped: true, reason: "error", error: e.message };
+    }
+    res.json({ ok: true, allocation, emailNotification });
   } catch (e) { next(e); }
 });
 

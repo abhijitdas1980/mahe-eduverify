@@ -1,8 +1,8 @@
 /* ===========================================================
    Authentication routes  ->  /api/auth/*
    Students: application number + date of birth, then a password
-             they set themselves. "Forgot password" re-verifies
-             the application number + date of birth.
+             they set themselves. Forgot password uses a 6-digit OTP
+             sent to the admission email on file.
    Admins:   staff ID + password.
    =========================================================== */
 const express = require("express");
@@ -16,6 +16,7 @@ const {
   portalDenyBody,
   getPortalSettings,
 } = require("../lib/portalAccess");
+const { sendPasswordResetOtp, verifyOtpAndResetPassword } = require("../lib/passwordResetOtp");
 
 const router = express.Router();
 router.use(authLimiter); // brute-force protection on every auth route
@@ -141,36 +142,85 @@ router.post("/student/login", async (req, res, next) => {
   } catch (e) { next(e); }
 });
 
-/* FORGOT PASSWORD - re-verify application number + DOB, then set a new password. */
-router.post("/student/reset-password", resetPasswordLimiter, async (req, res, next) => {
+async function findStudentByAppNoDob(appNo, dob) {
+  const r = await pool.query(
+    "SELECT * FROM students WHERE LOWER(app_no)=LOWER($1) AND dob=$2",
+    [appNo, dob]
+  );
+  return r.rows[0] || null;
+}
+
+/* FORGOT PASSWORD — send 6-digit OTP to admission email on file. */
+router.post("/student/forgot-password/send-otp", resetPasswordLimiter, async (req, res, next) => {
   try {
     const appNo = String(req.body.appNo || "").trim();
     const dob = String(req.body.dob || "").trim();
-    const password = String(req.body.password || "");
     if (!appNo || !isDate(dob)) {
       return res.status(400).json({ error: "Enter your application number and date of birth." });
     }
-    if (password.length < 8) {
-      return res.status(400).json({ error: "Choose a new password of at least 8 characters." });
-    }
-    const r = await pool.query(
-      "SELECT * FROM students WHERE LOWER(app_no)=LOWER($1) AND dob=$2",
-      [appNo, dob]
-    );
-    if (!r.rows.length) {
+    const s = await findStudentByAppNoDob(appNo, dob);
+    if (!s) {
       return res.status(404).json({ error: "Application number and date of birth do not match our records." });
     }
-    const s = r.rows[0];
+    if (!s.password_hash) {
+      return res.status(400).json({
+        error: "You have not set a password yet. Use your application number and date of birth on the login screen to create one.",
+      });
+    }
     try {
       await assertStudentPortalOpen(s);
     } catch (e) {
       return sendPortalError(res, e);
     }
-    const hash = await bcrypt.hash(password, 12);
-    await pool.query("UPDATE students SET password_hash=$1 WHERE id=$2", [hash, s.id]);
-    await audit(req, "student", s.app_no, "PASSWORD_RESET", "Password reset via app no + DOB");
-    res.json({ token: sign({ type: "student", id: s.id, appNo: s.app_no }), student: studentSummary(s) });
-  } catch (e) { next(e); }
+    const { maskedEmail } = await sendPasswordResetOtp(s);
+    await audit(req, "student", s.app_no, "PASSWORD_OTP_SENT", maskedEmail);
+    res.json({ ok: true, maskedEmail, name: s.name });
+  } catch (e) {
+    if (e.message && !e.status) return res.status(400).json({ error: e.message });
+    next(e);
+  }
+});
+
+/* FORGOT PASSWORD — verify OTP and set new password. */
+router.post("/student/forgot-password/reset", resetPasswordLimiter, async (req, res, next) => {
+  try {
+    const appNo = String(req.body.appNo || "").trim();
+    const dob = String(req.body.dob || "").trim();
+    const otp = String(req.body.otp || "").trim();
+    const password = String(req.body.password || "");
+    if (!appNo || !isDate(dob)) {
+      return res.status(400).json({ error: "Enter your application number and date of birth." });
+    }
+    if (!otp) return res.status(400).json({ error: "Enter the verification code from your email." });
+    if (password.length < 8) {
+      return res.status(400).json({ error: "Choose a new password of at least 8 characters." });
+    }
+    const s = await findStudentByAppNoDob(appNo, dob);
+    if (!s) {
+      return res.status(404).json({ error: "Application number and date of birth do not match our records." });
+    }
+    try {
+      await assertStudentPortalOpen(s);
+    } catch (e) {
+      return sendPortalError(res, e);
+    }
+    await verifyOtpAndResetPassword(s, otp, password);
+    await audit(req, "student", s.app_no, "PASSWORD_RESET", "Password reset via email OTP");
+    res.json({
+      token: sign({ type: "student", id: s.id, appNo: s.app_no }),
+      student: studentSummary(s),
+    });
+  } catch (e) {
+    if (e.message && !e.status) return res.status(400).json({ error: e.message });
+    next(e);
+  }
+});
+
+/* Legacy DOB-only reset — disabled; use email OTP flow. */
+router.post("/student/reset-password", resetPasswordLimiter, async (req, res) => {
+  return res.status(410).json({
+    error: "Password reset now uses a verification code sent to your admission email. Click “Forgot password?” on the login screen.",
+  });
 });
 
 /* ADMIN login. */

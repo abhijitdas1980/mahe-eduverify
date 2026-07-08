@@ -1133,8 +1133,8 @@ router.post("/students/:appNo/reject-slot", async (req, res, next) => {
   } catch (e) { next(e); }
 });
 
-/** Staff (verifier or supervisor) can correct student/parent contact details at campus. */
-router.patch("/students/:appNo/contact", async (req, res, next) => {
+/** Supervisor only — correct student/parent contact details. */
+router.patch("/students/:appNo/contact", requireSupervisor, async (req, res, next) => {
   try {
     const sr = await pool.query("SELECT * FROM students WHERE LOWER(app_no)=LOWER($1)", [req.params.appNo]);
     const s = sr.rows[0];
@@ -1171,7 +1171,7 @@ router.patch("/students/:appNo/contact", async (req, res, next) => {
   } catch (e) { next(e); }
 });
 
-router.post("/students/:appNo/verify-contact", async (req, res, next) => {
+router.post("/students/:appNo/verify-contact", requireSupervisor, async (req, res, next) => {
   try {
     const sr = await pool.query("SELECT * FROM students WHERE LOWER(app_no)=LOWER($1)", [req.params.appNo]);
     const s = sr.rows[0];

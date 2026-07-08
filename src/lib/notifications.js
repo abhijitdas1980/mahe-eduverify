@@ -2,6 +2,7 @@
 const nodemailer = require("nodemailer");
 const { pool } = require("../config/db");
 const { docMetaFor } = require("../config/checklists");
+const { filterForProfile } = require("./docs");
 const { isGraphMailConfigured, sendViaGraph } = require("./graphMail");
 
 const DEFAULT_FROM = "MAHE Admissions <admissions.maheblr@manipal.edu>";
@@ -327,6 +328,254 @@ async function listNotificationsForStudent(studentId, limit = 15) {
   }
 }
 
+function fmtDate(v) {
+  if (!v) return "To be announced";
+  const d = new Date(v);
+  if (Number.isNaN(d.getTime())) return String(v);
+  return d.toLocaleDateString("en-IN", { day: "numeric", month: "long", year: "numeric" });
+}
+
+function parseTimeLabel(label) {
+  const s = String(label || "").trim();
+  const m12 = s.match(/^(\d{1,2}):(\d{2})\s*(AM|PM)$/i);
+  if (m12) {
+    let h = parseInt(m12[1], 10);
+    const mm = parseInt(m12[2], 10);
+    const ap = m12[3].toUpperCase();
+    if (ap === "PM" && h !== 12) h += 12;
+    if (ap === "AM" && h === 12) h = 0;
+    return h * 60 + mm;
+  }
+  const m24 = s.match(/^(\d{1,2}):(\d{2})$/);
+  if (m24) return parseInt(m24[1], 10) * 60 + parseInt(m24[2], 10);
+  return null;
+}
+
+function minsToTimeLabel(totalMins) {
+  const m = ((totalMins % (24 * 60)) + (24 * 60)) % (24 * 60);
+  const h24 = Math.floor(m / 60);
+  const mm = String(m % 60).padStart(2, "0");
+  const ap = h24 < 12 ? "AM" : "PM";
+  const h12 = (h24 % 12) === 0 ? 12 : (h24 % 12);
+  return `${h12}:${mm} ${ap}`;
+}
+
+function reportByTime(startTime, minutesBefore = 30) {
+  const mins = parseTimeLabel(startTime);
+  if (mins == null) return startTime || "To be announced";
+  return minsToTimeLabel(mins - minutesBefore);
+}
+
+function fmtSlotTimeRange(start, end) {
+  if (!start) return "To be announced";
+  return end ? `${start} – ${end}` : start;
+}
+
+async function submissionEmailAlreadySent(studentId) {
+  try {
+    const r = await pool.query(
+      `SELECT 1 FROM notification_log
+        WHERE student_id=$1 AND event_type='submission_confirmed' AND status='sent'
+        LIMIT 1`,
+      [studentId]
+    );
+    return r.rows.length > 0;
+  } catch (e) {
+    if (e.code === "42P01") return false;
+    throw e;
+  }
+}
+
+function buildUploadedDocsList(docRows, student) {
+  const visible = filterForProfile(docRows, student.profile, student.category, student.program);
+  return visible
+    .filter((d) => d.file_public_id)
+    .map((d) => docMetaFor(d.doc_code, student.profile, student.category).name || d.doc_code);
+}
+
+function buildSubmissionContent({ student, verifySlot, uploadedDocs, recipientRole }) {
+  const portal = portalUrl();
+  const subject = `MAHE EduVerify — Document upload confirmed (App ${student.app_no})`;
+  const greet = greeting(student, recipientRole);
+  const hasSlot = !!verifySlot;
+  const verificationDate = fmtDate(verifySlot?.schedule_date || student.assigned_verification_date || student.orientation_date);
+  const slotTime = hasSlot ? fmtSlotTimeRange(verifySlot.start_time, verifySlot.end_time) : "To be announced";
+  const reportAt = hasSlot ? reportByTime(verifySlot.start_time) : "To be announced";
+  const room = hasSlot ? (verifySlot.room || "—") : "To be announced";
+  const slotNo = hasSlot ? String(verifySlot.slot_no || "—") : "—";
+
+  const docLines = uploadedDocs.length
+    ? uploadedDocs.map((name, i) => `${i + 1}. ${name}`).join("\n")
+    : "—";
+
+  const slotBlock = hasSlot
+    ? [
+      "Your document verification slot:",
+      `  Date: ${verificationDate}`,
+      `  Room: ${room}`,
+      `  Slot #: ${slotNo}`,
+      `  Slot time: ${slotTime}`,
+      `  Report by: ${reportAt} (please be present 30 minutes before your slot)`,
+    ].join("\n")
+    : [
+      "Your document verification slot:",
+      `  Assigned verification date: ${verificationDate}`,
+      "  Room / slot time: will be communicated shortly. Log in to EduVerify to check for updates.",
+    ].join("\n");
+
+  const text = [
+    greet,
+    "",
+    `Thank you for completing your document upload on EduVerify (Application No. ${student.app_no}).`,
+    "",
+    "We confirm that all mandatory documents have been uploaded and your self-declaration has been signed.",
+    "",
+    slotBlock,
+    "",
+    "Documents you uploaded (bring originals in this same order for faster verification):",
+    docLines,
+    "",
+    "On your verification day, bring the physical originals of the documents listed above in the same sequence.",
+    "",
+    `View your verification summary: ${portal}`,
+    "",
+    `Helpdesk: ${HELPDESK_PHONE}`,
+    `Email: ${HELPDESK_EMAIL}`,
+    "",
+    "— MAHE Admissions Verification Cell",
+  ].join("\n");
+
+  const docListHtml = uploadedDocs.length
+    ? `<ol style="margin:8px 0 0 18px;padding:0">${uploadedDocs.map((n) =>
+      `<li style="margin:4px 0">${escapeHtml(n)}</li>`
+    ).join("")}</ol>`
+    : '<p style="margin:8px 0 0">—</p>';
+
+  const slotRows = hasSlot
+    ? [
+      ["Verification date", verificationDate],
+      ["Room", room],
+      ["Slot #", slotNo],
+      ["Slot time", slotTime],
+      ["Report by", `${reportAt} (30 min before slot)`],
+    ]
+    : [
+      ["Assigned verification date", verificationDate],
+      ["Room / slot time", "Will be communicated shortly — check EduVerify"],
+    ];
+
+  const slotTable = slotRows.map(([k, v]) =>
+    `<tr><td style="padding:6px 12px 6px 0;color:#64748b;vertical-align:top">${escapeHtml(k)}</td><td style="padding:6px 0;font-weight:600">${escapeHtml(v)}</td></tr>`
+  ).join("");
+
+  const html = `<!DOCTYPE html><html><body style="font-family:Arial,sans-serif;color:#1e293b;line-height:1.5;max-width:640px">
+<p>${greetingHtml(student, recipientRole)}</p>
+<p>Thank you for completing your document upload on <b>EduVerify</b> (Application No. <b>${escapeHtml(student.app_no)}</b>).</p>
+<p>We confirm that <b>all mandatory documents have been uploaded</b> and your <b>self-declaration has been signed</b>.</p>
+<div style="background:#ecfdf5;border:1px solid #a7f3d0;border-radius:8px;padding:14px;margin:16px 0">
+<p style="margin:0 0 8px;font-weight:600;color:#065f46">Your document verification slot</p>
+<table style="font-size:14px;line-height:1.5;border-collapse:collapse">${slotTable}</table>
+</div>
+<div style="background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:14px;margin:16px 0">
+<p style="margin:0;font-weight:600;color:#92400e">Bring originals in the same order</p>
+<p style="margin:8px 0 0;font-size:14px">Documents you uploaded — present physical copies at the verification counter in this sequence:</p>
+${docListHtml}
+</div>
+<p><a href="${escapeHtml(portal)}" style="display:inline-block;background:#7b1e15;color:#fff;text-decoration:none;padding:10px 16px;border-radius:6px;font-weight:600">Open EduVerify</a></p>
+<p style="font-size:13px;color:#64748b">Helpdesk: ${escapeHtml(HELPDESK_PHONE)}<br>Email: <a href="mailto:${HELPDESK_EMAIL}">${HELPDESK_EMAIL}</a></p>
+<p style="font-size:12px;color:#94a3b8">— MAHE Admissions Verification Cell</p>
+</body></html>`;
+
+  return { subject, text, html };
+}
+
+/**
+ * Confirm document submission to student (and parent) after self-declaration.
+ * Includes verification date/slot when allocated. Sent once per student.
+ */
+async function notifyDocumentsSubmitted(studentId) {
+  if (!studentId) return { sent: 0, skipped: true, reason: "no-student" };
+  if (await submissionEmailAlreadySent(studentId)) {
+    return { sent: 0, skipped: true, reason: "already-sent" };
+  }
+
+  const sr = await pool.query("SELECT * FROM students WHERE id=$1", [studentId]);
+  const student = sr.rows[0];
+  if (!student) return { sent: 0, skipped: true, reason: "student-not-found" };
+
+  let verifySlot = null;
+  if (student.verify_schedule_id) {
+    const vr = await pool.query("SELECT * FROM verify_schedule WHERE id=$1", [student.verify_schedule_id]);
+    verifySlot = vr.rows[0] || null;
+  }
+
+  const dr = await pool.query(
+    "SELECT doc_code, file_public_id FROM documents WHERE student_id=$1 ORDER BY id",
+    [studentId]
+  );
+  const uploadedDocs = buildUploadedDocsList(dr.rows, student);
+  const recipients = uniqueRecipients(student);
+
+  if (!recipients.length) {
+    await logNotification({
+      studentId,
+      eventType: "submission_confirmed",
+      recipient: null,
+      status: "skipped",
+      error: "No valid student or parent email on file.",
+      metadata: { uploadedCount: uploadedDocs.length, hasSlot: !!verifySlot },
+    });
+    return { sent: 0, skipped: true, reason: "no-email" };
+  }
+
+  if (!isEmailConfigured()) {
+    await logNotification({
+      studentId,
+      eventType: "submission_confirmed",
+      recipient: recipients.map((r) => r.email).join(", "),
+      status: "skipped",
+      error: "Email not configured (Graph OAuth2 or SMTP_USER + SMTP_PASS).",
+      metadata: { uploadedCount: uploadedDocs.length, hasSlot: !!verifySlot },
+    });
+    return { sent: 0, skipped: true, reason: "email-not-configured" };
+  }
+
+  let sent = 0;
+  for (const { email, role } of recipients) {
+    const content = buildSubmissionContent({ student, verifySlot, uploadedDocs, recipientRole: role });
+    try {
+      await sendEmail({ to: email, ...content });
+      await logNotification({
+        studentId,
+        eventType: "submission_confirmed",
+        recipient: email,
+        recipientRole: role,
+        subject: content.subject,
+        status: "sent",
+        metadata: {
+          uploadedCount: uploadedDocs.length,
+          hasSlot: !!verifySlot,
+          slotId: verifySlot?.id || null,
+        },
+      });
+      sent += 1;
+    } catch (e) {
+      console.warn(`[notify] submission email to ${email} failed:`, e.message);
+      await logNotification({
+        studentId,
+        eventType: "submission_confirmed",
+        recipient: email,
+        recipientRole: role,
+        subject: content.subject,
+        status: "failed",
+        error: e.message,
+        metadata: { uploadedCount: uploadedDocs.length, hasSlot: !!verifySlot },
+      });
+    }
+  }
+  return { sent, skipped: false };
+}
+
 async function sendTestEmail(to) {
   if (!isValidEmail(to)) throw new Error("Invalid recipient email.");
   if (!isEmailConfigured()) {
@@ -356,6 +605,7 @@ module.exports = {
   getEmailStatus,
   getEmailHealth,
   notifyDocumentRejected,
+  notifyDocumentsSubmitted,
   listNotificationsForStudent,
   sendTestEmail,
   sendEmail,

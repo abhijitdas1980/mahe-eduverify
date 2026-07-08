@@ -154,30 +154,30 @@ function saveAuth(a) { if (a) { localStorage.setItem(AUTH_KEY, JSON.stringify(a)
 const USE_REPORTING_SLOTS = false;
 /* v8 — removed: PAN, BANK, CASTE, MEDICAL. MIGRATION is optional; TC is mandatory for all. */
 const DOC_CATALOG = {
-  AADHAAR:    { copies:2, formats:"PDF, JPG, PNG (max 6MB)", mistakes:["Photo edges cropped","Aadhaar number not visible","Name mismatch with college record"] },
-  PAN_PARENT: { copies:1, formats:"PDF, JPG (max 6MB)",      mistakes:["Wrong parent's PAN uploaded","Blurred PAN number","Cropped corners"] },
-  APAAR:      { copies:1, formats:"PDF (max 6MB)",           mistakes:["Old non-APAAR ID submitted","Wrong DOB on APAAR"] },
-  SSLC:       { copies:2, formats:"PDF, JPG (max 6MB)",      mistakes:["Photocopy faded","Reverse side missing","Stamp not visible"] },
-  PUC:        { copies:2, formats:"PDF, JPG (max 6MB)",      mistakes:["Provisional marks card uploaded","Missing principal signature"] },
-  UG_DEGREE:  { copies:2, formats:"PDF (max 6MB)",           mistakes:["Convocation certificate not yet issued — provisional accepted","Photo missing"] },
-  UG_MARKS:   { copies:2, formats:"PDF (max 6MB)",           mistakes:["Semester-wise instead of consolidated","CGPA conversion certificate missing"] },
-  DIPLOMA:    { copies:2, formats:"PDF (max 6MB)",           mistakes:["All semester marks not combined","Diploma certificate missing seal"] },
-  TC:         { copies:1, formats:"PDF (max 6MB)", mistakes:["TC from earlier school instead of last institution studied","Issued over 6 months ago without validity","Date of leaving missing"] },
-  MIGRATION:  { copies:1, formats:"PDF (max 6MB) · OPTIONAL", mistakes:["Migration from wrong board/university","Migration from an earlier institution instead of the last","Original not provided"] },
-  CHAR_CERT:  { copies:1, formats:"PDF (max 6MB)",           mistakes:["Older than 6 months","No school/college letterhead","From earlier institution, not the last one studied"] },
+  AADHAAR:    { copies:2, formats:"PDF only (max 6MB)", mistakes:["Photo edges cropped","Aadhaar number not visible","Name mismatch with college record","Uploaded JPG/PNG instead of PDF"] },
+  PAN_PARENT: { copies:1, formats:"PDF only (max 6MB)", mistakes:["Wrong parent's PAN uploaded","Blurred PAN number","Cropped corners","Uploaded JPG/PNG instead of PDF"] },
+  APAAR:      { copies:1, formats:"PDF only (max 6MB)", mistakes:["Old non-APAAR ID submitted","Wrong DOB on APAAR"] },
+  SSLC:       { copies:2, formats:"PDF only (max 6MB)", mistakes:["Photocopy faded","Reverse side missing","Stamp not visible","Uploaded JPG/PNG instead of PDF"] },
+  PUC:        { copies:2, formats:"PDF only (max 6MB)", mistakes:["Provisional marks card uploaded","Missing principal signature","Uploaded JPG/PNG instead of PDF"] },
+  UG_DEGREE:  { copies:2, formats:"PDF only (max 6MB)", mistakes:["Convocation certificate not yet issued — provisional accepted","Photo missing"] },
+  UG_MARKS:   { copies:2, formats:"PDF only (max 6MB)", mistakes:["Semester-wise instead of consolidated","CGPA conversion certificate missing"] },
+  DIPLOMA:    { copies:2, formats:"PDF only (max 6MB)", mistakes:["All semester marks not combined","Diploma certificate missing seal"] },
+  TC:         { copies:1, formats:"PDF only (max 6MB)", mistakes:["TC from earlier school instead of last institution studied","Issued over 6 months ago without validity","Date of leaving missing"] },
+  MIGRATION:  { copies:1, formats:"PDF only (max 6MB) · OPTIONAL", mistakes:["Migration from wrong board/university","Migration from an earlier institution instead of the last","Original not provided"] },
+  CHAR_CERT:  { copies:1, formats:"PDF only (max 6MB)", mistakes:["Older than 6 months","No school/college letterhead","From earlier institution, not the last one studied"] },
   PHOTOS:     { copies:6, formats:"JPG or PNG only · 3.5×4.5 cm · WHITE background only", mistakes:["Selfies submitted","Any non-white background (blue/red/grey not allowed)","Sunglasses or hats","Old photo (over 6 months)","Uploading a PDF instead of an image"] },
-  ANTI_RAG_S: { copies:1, formats:"PDF (max 6MB) · fill online at antiragging.in, then upload", mistakes:["Not filled via antiragging.in online form","Downloaded PDF not uploaded","Wrong student/parent details on affidavit"] },
-  ANTI_RAG_P: { copies:1, formats:"PDF (max 6MB) · fill online at antiragging.in, then upload", mistakes:["Parent/guardian affidavit not filled online","Parent name mismatch with records","Downloaded PDF not uploaded"] },
-  ANTI_SUB:   { copies:1, formats:"PDF (max 6MB) · standard template (see Standard Templates)", mistakes:["Form unsigned","Wrong year","Not on the prescribed format"] },
-  INCOME:     { copies:1, formats:"PDF (max 6MB)",           mistakes:["ITR for wrong assessment year","Acknowledgment page missing","Not in parent/guardian name"] },
-  ITR_PARENTS:{ copies:1, formats:"PDF (max 6MB)",           mistakes:["Only one parent's ITR uploaded","Wrong assessment year","Acknowledgment page missing"] },
-  NRI_AFFIDAVIT: { copies:1, formats:"PDF (max 6MB) · download enclosed format below", mistakes:["Not on prescribed affidavit format","Not signed by parent/guardian","Not notarised where required"] },
-  PASSPORT:   { copies:1, formats:"PDF (max 6MB)",           mistakes:["Only front page uploaded","Expired passport","Not a clear copy of passport"] },
-  VISA:       { copies:1, formats:"PDF (max 6MB)",           mistakes:["Tourist visa uploaded","Visa expiry before course end","Not a clear copy of visa"] },
-  EQUIV:      { copies:1, formats:"PDF (max 6MB)",           mistakes:["Provisional letter uploaded instead","Not on AIU letterhead"] },
-  ENGLISH:    { copies:1, formats:"PDF (max 6MB)",           mistakes:["Score expired","Score report image not official"] },
+  ANTI_RAG_S: { copies:1, formats:"PDF only (max 6MB) · fill online at antiragging.in, then upload", mistakes:["Not filled via antiragging.in online form","Downloaded PDF not uploaded","Wrong student/parent details on affidavit"] },
+  ANTI_RAG_P: { copies:1, formats:"PDF only (max 6MB) · fill online at antiragging.in, then upload", mistakes:["Parent/guardian affidavit not filled online","Parent name mismatch with records","Downloaded PDF not uploaded"] },
+  ANTI_SUB:   { copies:1, formats:"PDF only (max 6MB) · standard template (see Standard Templates)", mistakes:["Form unsigned","Wrong year","Not on the prescribed format"] },
+  INCOME:     { copies:1, formats:"PDF only (max 6MB)", mistakes:["ITR for wrong assessment year","Acknowledgment page missing","Not in parent/guardian name"] },
+  ITR_PARENTS:{ copies:1, formats:"PDF only (max 6MB)", mistakes:["Only one parent's ITR uploaded","Wrong assessment year","Acknowledgment page missing"] },
+  NRI_AFFIDAVIT: { copies:1, formats:"PDF only (max 6MB) · download enclosed format below", mistakes:["Not on prescribed affidavit format","Not signed by parent/guardian","Not notarised where required"] },
+  PASSPORT:   { copies:1, formats:"PDF only (max 6MB)", mistakes:["Only front page uploaded","Expired passport","Not a clear copy of passport"] },
+  VISA:       { copies:1, formats:"PDF only (max 6MB)", mistakes:["Tourist visa uploaded","Visa expiry before course end","Not a clear copy of visa"] },
+  EQUIV:      { copies:1, formats:"PDF only (max 6MB)", mistakes:["Provisional letter uploaded instead","Not on AIU letterhead"] },
+  ENGLISH:    { copies:1, formats:"PDF only (max 6MB)", mistakes:["Score expired","Score report image not official"] },
 };
-const catalog = (code) => DOC_CATALOG[code] || { copies:1, formats:"PDF, JPG (max 6MB)", mistakes:[] };
+const catalog = (code) => DOC_CATALOG[code] || { copies:1, formats:"PDF only (max 6MB)", mistakes:[] };
 
 /* v9 — single confirmation per document (replaces v7's six-checkbox flow).
    Server still accepts legacy 6-key payloads as confirmed for backward compat. */
@@ -198,6 +198,77 @@ const ISSUE_REASONS = [
   "Other",
 ];
 
+const INSTITUTION_OTHER = "__OTHER__";
+let _institutionOptionsCache = null;
+
+function InstitutionField({ value, onChange, onBlur, disabled }) {
+  const [groups, setGroups] = useState(_institutionOptionsCache?.groups || null);
+  const [selectVal, setSelectVal] = useState("");
+  const [otherVal, setOtherVal] = useState("");
+
+  useEffect(() => {
+    if (_institutionOptionsCache) return;
+    API.get("/api/student/institution-options").then((r) => {
+      _institutionOptionsCache = r;
+      setGroups(r.groups || []);
+    }).catch(() => setGroups([]));
+  }, []);
+
+  const allOptions = useMemo(() => (groups || []).flatMap((g) => g.options || []), [groups]);
+
+  useEffect(() => {
+    const saved = String(value || "").trim();
+    if (!saved) { setSelectVal(""); setOtherVal(""); return; }
+    if (allOptions.includes(saved)) { setSelectVal(saved); setOtherVal(""); return; }
+    setSelectVal(INSTITUTION_OTHER); setOtherVal(saved);
+  }, [value, allOptions.join("|")]);
+
+  const emit = (sel, oth) => {
+    const resolved = sel === INSTITUTION_OTHER ? String(oth || "").trim() : sel;
+    onChange(resolved);
+  };
+
+  return (
+    <div className="mt-4">
+      <label className="text-xs font-medium text-slate-600">Issuing institution / board <MandStar/></label>
+      <select
+        value={selectVal}
+        disabled={disabled || !groups}
+        onChange={(e) => {
+          const sel = e.target.value;
+          setSelectVal(sel);
+          if (sel !== INSTITUTION_OTHER) setOtherVal("");
+          emit(sel, sel === INSTITUTION_OTHER ? otherVal : "");
+          if (sel !== INSTITUTION_OTHER && sel) onBlur?.();
+        }}
+        className="ev-input mt-1"
+      >
+        <option value="">{groups ? "Select institution / board…" : "Loading list…"}</option>
+        {(groups || []).map((g) => (
+          <optgroup key={g.label} label={g.label}>
+            {g.options.map((o) => <option key={o} value={o}>{o}</option>)}
+          </optgroup>
+        ))}
+        <option value={INSTITUTION_OTHER}>Others (not in list)</option>
+      </select>
+      {selectVal === INSTITUTION_OTHER && (
+        <input
+          value={otherVal}
+          disabled={disabled}
+          onChange={(e) => {
+            setOtherVal(e.target.value);
+            emit(INSTITUTION_OTHER, e.target.value);
+          }}
+          onBlur={onBlur}
+          placeholder="Type issuing institution / board name"
+          className="ev-input mt-2"
+        />
+      )}
+      <div className="text-[11px] text-slate-500 mt-1">Choose from the list, or select Others and type the name. Non-recognised institutions are auto-flagged.</div>
+    </div>
+  );
+}
+
 /* v8 — extended category dropdown (was: General / NRI / AICTE). */
 const CATEGORIES = ["General", "NRI", "NRI Sponsored", "Foreign", "OCI", "AICTE"];
 const PARENT_RELATIONS = ["Father", "Mother", "Guardian", "Other"];
@@ -207,7 +278,7 @@ const FAQ = [
   { q:"How do I get the Anti-Ragging undertakings?", a:"Open the Anti-Ragging item in your Document Checklist and click 'Fill online form'. Complete the affidavit at antiragging.in, download the PDF, then upload it here. Parent/guardian must do the same for their undertaking." },
   { q:"How do I get the NRI Affidavit format?", a:"Open the NRI Affidavit item in your Document Checklist (or Standard Templates) and click 'Download PDF'. Print on stamp paper, fill, sign, get it notarised if required, scan, and upload." },
   { q:"I don't have an APAAR ID yet — can I proceed?", a:"Generate it free at apaar.education.gov.in using your Aadhaar, then upload it." },
-  { q:"I forgot my password — how do I get back in?", a:"On the login screen click 'Forgot password?'. Re-confirm your application number and date of birth, and set a new password immediately." },
+  { q:"I forgot my password — how do I get back in?", a:"On the login screen click 'Forgot password?'. Confirm your application number and date of birth, then enter the 6-digit code sent to your admission email to set a new password." },
   ...(USE_REPORTING_SLOTS ? [{ q:"Why am I not seeing all the reporting dates?", a:"Reporting dates are released in batches by the admissions office. As more dates open up, you'll see them appear in the Book Reporting Slot section." }] : []),
   { q:"Why is my photograph being rejected?", a:"Photographs must be JPG or PNG (NOT PDF), on a WHITE background, passport-size 3.5×4.5 cm, recent (under 6 months), and not a selfie or filtered. The system blocks the upload if these rules are not met." },
   { q:"A document was rejected — what next?", a:"Open the document, read the staff rejection note, then upload the corrected file (the Replace option re-enables only after rejection)." },
@@ -600,7 +671,7 @@ function useFocusTrap(active, onEscape) {
 
 /* ============================================================ AUTH & LANDING ============================================================ */
 const LANDING_STEPS = [
-  { n: "01", t: "Validate",  d: "You and parents' contact details", i: "badge-check" },
+  { n: "01", t: "Log in",    d: "Sign in with your application number and password.", i: "badge-check" },
   { n: "02", t: "Checklist", d: "Receive a document list built for your program and category.", i: "list-checks" },
   { n: "03", t: "Upload",    d: "Upload each of your documents through a secure, encrypted connection.", i: "upload-cloud" },
   { n: "04", t: "Declare",   d: "Sign your digital self-declaration confirming everything is accurate.", i: "pen-line" },
@@ -1017,19 +1088,174 @@ function AuthScreen({ onAuth }) {
   );
 }
 function StudentLogin({ onAuth, back }) {
-  const [step, setStep] = useState("identify"); const [appNo, setAppNo] = useState(""); const [dob, setDob] = useState(""); const [name, setName] = useState(""); const [pwd, setPwd] = useState(""); const [pwd2, setPwd2] = useState(""); const [err, setErr] = useState(""); const [busy, setBusy] = useState(false);
+  const [step, setStep] = useState("identify");
+  const [appNo, setAppNo] = useState("");
+  const [dob, setDob] = useState("");
+  const [name, setName] = useState("");
+  const [pwd, setPwd] = useState("");
+  const [pwd2, setPwd2] = useState("");
+  const [otp, setOtp] = useState("");
+  const [maskedEmail, setMaskedEmail] = useState("");
+  const [err, setErr] = useState("");
+  const [busy, setBusy] = useState(false);
   const [portalInfo, setPortalInfo] = useState(null);
+
   useEffect(() => { API.get("/api/auth/student/portal-status").then(setPortalInfo).catch(() => {}); }, []);
+
   const portalBanner = portalInfo && !portalInfo.globallyOpen ? (
     <div className="mt-4 text-sm bg-amber-50 border border-amber-300 text-amber-900 rounded-lg p-3">{portalInfo.closedMessage || "The student portal is currently closed."}</div>
   ) : portalInfo && portalInfo.deadline && portalInfo.daysRemaining != null && portalInfo.daysRemaining <= 7 ? (
     <div className="mt-4 text-sm bg-blue-50 border border-blue-200 text-blue-900 rounded-lg p-3"><b>Reminder:</b> Document upload deadline is <b>{fmtDate(portalInfo.deadline)}</b> ({portalInfo.deadlineTime} IST){portalInfo.daysRemaining <= 0 ? " — deadline is today." : portalInfo.daysRemaining === 1 ? " — 1 day left." : ` — ${portalInfo.daysRemaining} days left.`}</div>
   ) : null;
-  const check = async (e) => { e.preventDefault(); setErr(""); setBusy(true); try { const r = await API.post("/api/auth/student/check", { appNo, dob }); setName(r.name); setStep(r.firstLogin ? "setPwd" : "login"); } catch (ex) { setErr(ex.message); } setBusy(false); };
-  const register = async (e) => { e.preventDefault(); setErr(""); if (pwd.length < 8) { setErr("Password must be at least 8 characters."); return; } if (pwd !== pwd2) { setErr("The two passwords do not match."); return; } setBusy(true); try { const r = await API.post("/api/auth/student/register", { appNo, dob, password: pwd }); onAuth({ token:r.token, role:"student", name:r.student.name, appNo:r.student.appNo }); } catch (ex) { setErr(ex.message); } setBusy(false); };
-  const login = async (e) => { e.preventDefault(); setErr(""); setBusy(true); try { const r = await API.post("/api/auth/student/login", { appNo, password: pwd }); onAuth({ token:r.token, role:"student", name:r.student.name, appNo:r.student.appNo }); } catch (ex) { setErr(ex.message); } setBusy(false); };
-  const reset = async (e) => { e.preventDefault(); setErr(""); if (pwd.length < 8) { setErr("New password must be at least 8 characters."); return; } if (pwd !== pwd2) { setErr("The two passwords do not match."); return; } setBusy(true); try { const r = await API.post("/api/auth/student/reset-password", { appNo, dob, password: pwd }); onAuth({ token:r.token, role:"student", name:r.student.name, appNo:r.student.appNo }); } catch (ex) { setErr(ex.message); } setBusy(false); };
-  return (<div className="max-w-md mx-auto px-4 sm:px-6 py-12 fade-in"><div className="bg-white dark:bg-[#281412] rounded-2xl shadow-sm border border-[#ead9d6] dark:border-[#3d201d] p-6"><h2 className="text-2xl font-heading font-bold text-[#2a1311] dark:text-[#f7ecea]">Student Login</h2><p className="text-sm text-[#6e5350] dark:text-[#c9a9a5] mt-1">{step==="identify" && "Enter your application number and date of birth."}{step==="setPwd" && `Welcome, ${name}. Set a password for your account.`}{step==="login" && `Welcome back, ${name}. Enter your password.`}{step==="forgot" && `Reset the password for ${appNo}.`}</p>{portalBanner}{step==="identify" && (<form onSubmit={check} className="mt-5 space-y-4"><Field label="Application Number"><input value={appNo} onChange={e=>setAppNo(e.target.value)} placeholder="e.g. CSE2026001" required className="ev-input" /></Field><Field label="Date of Birth"><input type="date" value={dob} onChange={e=>setDob(e.target.value)} required className="ev-input" /></Field><ErrorNote msg={err} /><PrimaryBtn busy={busy}>Continue →</PrimaryBtn></form>)}{step==="setPwd" && (<form onSubmit={register} className="mt-5 space-y-4"><Field label="Create Password (min 8 characters)"><input type="password" value={pwd} onChange={e=>setPwd(e.target.value)} required className="ev-input" /></Field><Field label="Confirm Password"><input type="password" value={pwd2} onChange={e=>setPwd2(e.target.value)} required className="ev-input" /></Field><ErrorNote msg={err} /><PrimaryBtn busy={busy}>Create account & continue →</PrimaryBtn></form>)}{step==="login" && (<form onSubmit={login} className="mt-5 space-y-4"><Field label="Password"><input type="password" value={pwd} onChange={e=>setPwd(e.target.value)} required className="ev-input" autoFocus /></Field><ErrorNote msg={err} /><PrimaryBtn busy={busy}>Sign in →</PrimaryBtn><div className="flex justify-between text-sm"><button type="button" onClick={()=>{setStep("forgot");setErr("");setPwd("");setPwd2("");}} className="text-crimson hover:underline">Forgot password?</button><button type="button" onClick={()=>{setStep("identify");setErr("");setPwd("");}} className="text-slate-500 hover:text-slate-800">Different application no.</button></div></form>)}{step==="forgot" && (<form onSubmit={reset} className="mt-5 space-y-4"><div className="text-xs text-slate-600 bg-[#fdf5f4] dark:bg-[#281412] border border-[#ead9d6] dark:border-[#3d201d] rounded-md p-2">Your identity is confirmed by your application number and date of birth.</div><Field label="New Password (min 8 characters)"><input type="password" value={pwd} onChange={e=>setPwd(e.target.value)} required className="ev-input" autoFocus /></Field><Field label="Confirm New Password"><input type="password" value={pwd2} onChange={e=>setPwd2(e.target.value)} required className="ev-input" /></Field><ErrorNote msg={err} /><PrimaryBtn busy={busy}>Reset password & sign in →</PrimaryBtn><button type="button" onClick={()=>{setStep("login");setErr("");setPwd("");setPwd2("");}} className="w-full text-slate-500 text-sm hover:text-slate-800">← Back to login</button></form>)}{step==="identify" && <button type="button" onClick={back} className="w-full text-slate-400 text-sm hover:text-slate-700 mt-4">← Back</button>}</div><p className="text-center text-xs text-slate-400 mt-4">Trouble logging in? Call {SUPPORT.phone}</p></div>);
+
+  const stepHint = {
+    identify: "Enter your application number and date of birth.",
+    setPwd: `Welcome, ${name}. Set a password for your account.`,
+    login: `Welcome back, ${name}. Enter your password.`,
+    forgot: "Confirm your identity to receive a verification code.",
+    forgotOtp: maskedEmail ? `Enter the 6-digit code sent to ${maskedEmail}.` : "Enter the verification code from your email.",
+  }[step] || "";
+
+  const check = async (e) => {
+    e.preventDefault(); setErr(""); setBusy(true);
+    try {
+      const r = await API.post("/api/auth/student/check", { appNo, dob });
+      setName(r.name);
+      setStep(r.firstLogin ? "setPwd" : "login");
+    } catch (ex) { setErr(ex.message); }
+    setBusy(false);
+  };
+
+  const register = async (e) => {
+    e.preventDefault(); setErr("");
+    if (pwd.length < 8) { setErr("Password must be at least 8 characters."); return; }
+    if (pwd !== pwd2) { setErr("The two passwords do not match."); return; }
+    setBusy(true);
+    try {
+      const r = await API.post("/api/auth/student/register", { appNo, dob, password: pwd });
+      onAuth({ token: r.token, role: "student", name: r.student.name, appNo: r.student.appNo });
+    } catch (ex) { setErr(ex.message); }
+    setBusy(false);
+  };
+
+  const login = async (e) => {
+    e.preventDefault(); setErr(""); setBusy(true);
+    try {
+      const r = await API.post("/api/auth/student/login", { appNo, password: pwd });
+      onAuth({ token: r.token, role: "student", name: r.student.name, appNo: r.student.appNo });
+    } catch (ex) { setErr(ex.message); }
+    setBusy(false);
+  };
+
+  const sendOtp = async (e) => {
+    e.preventDefault(); setErr(""); setBusy(true);
+    try {
+      const r = await API.post("/api/auth/student/forgot-password/send-otp", { appNo, dob });
+      setName(r.name || name);
+      setMaskedEmail(r.maskedEmail || "");
+      setOtp("");
+      setPwd("");
+      setPwd2("");
+      setStep("forgotOtp");
+    } catch (ex) { setErr(ex.message); }
+    setBusy(false);
+  };
+
+  const resetWithOtp = async (e) => {
+    e.preventDefault(); setErr("");
+    if (pwd.length < 8) { setErr("New password must be at least 8 characters."); return; }
+    if (pwd !== pwd2) { setErr("The two passwords do not match."); return; }
+    setBusy(true);
+    try {
+      const r = await API.post("/api/auth/student/forgot-password/reset", { appNo, dob, otp, password: pwd });
+      onAuth({ token: r.token, role: "student", name: r.student.name, appNo: r.student.appNo });
+    } catch (ex) { setErr(ex.message); }
+    setBusy(false);
+  };
+
+  const goForgot = () => {
+    setStep("forgot");
+    setErr("");
+    setPwd("");
+    setPwd2("");
+    setOtp("");
+    setMaskedEmail("");
+  };
+
+  return (
+    <div className="max-w-md mx-auto px-4 sm:px-6 py-12 fade-in">
+      <div className="bg-white dark:bg-[#281412] rounded-2xl shadow-sm border border-[#ead9d6] dark:border-[#3d201d] p-6">
+        <h2 className="text-2xl font-heading font-bold text-[#2a1311] dark:text-[#f7ecea]">Student Login</h2>
+        <p className="text-sm text-[#6e5350] dark:text-[#c9a9a5] mt-1">{stepHint}</p>
+        {portalBanner}
+
+        {step === "identify" && (
+          <form onSubmit={check} className="mt-5 space-y-4">
+            <Field label="Application Number"><input value={appNo} onChange={e => setAppNo(e.target.value)} placeholder="e.g. CSE2026001" required className="ev-input" /></Field>
+            <Field label="Date of Birth"><input type="date" value={dob} onChange={e => setDob(e.target.value)} required className="ev-input" /></Field>
+            <ErrorNote msg={err} />
+            <PrimaryBtn busy={busy}>Continue →</PrimaryBtn>
+          </form>
+        )}
+
+        {step === "setPwd" && (
+          <form onSubmit={register} className="mt-5 space-y-4">
+            <Field label="Create Password (min 8 characters)"><input type="password" value={pwd} onChange={e => setPwd(e.target.value)} required className="ev-input" /></Field>
+            <Field label="Confirm Password"><input type="password" value={pwd2} onChange={e => setPwd2(e.target.value)} required className="ev-input" /></Field>
+            <ErrorNote msg={err} />
+            <PrimaryBtn busy={busy}>Create account & continue →</PrimaryBtn>
+          </form>
+        )}
+
+        {step === "login" && (
+          <form onSubmit={login} className="mt-5 space-y-4">
+            <Field label="Password"><input type="password" value={pwd} onChange={e => setPwd(e.target.value)} required className="ev-input" autoFocus /></Field>
+            <ErrorNote msg={err} />
+            <PrimaryBtn busy={busy}>Sign in →</PrimaryBtn>
+            <div className="flex justify-between text-sm">
+              <button type="button" onClick={goForgot} className="text-crimson hover:underline">Forgot password?</button>
+              <button type="button" onClick={() => { setStep("identify"); setErr(""); setPwd(""); }} className="text-slate-500 hover:text-slate-800">Different application no.</button>
+            </div>
+          </form>
+        )}
+
+        {step === "forgot" && (
+          <form onSubmit={sendOtp} className="mt-5 space-y-4">
+            <div className="text-xs text-slate-600 bg-[#fdf5f4] dark:bg-[#281412] border border-[#ead9d6] dark:border-[#3d201d] rounded-md p-2">
+              A 6-digit code will be sent to the <b>email address provided during admission</b> for this application.
+            </div>
+            <Field label="Application Number"><input value={appNo} onChange={e => setAppNo(e.target.value)} required className="ev-input" /></Field>
+            <Field label="Date of Birth"><input type="date" value={dob} onChange={e => setDob(e.target.value)} required className="ev-input" /></Field>
+            <ErrorNote msg={err} />
+            <PrimaryBtn busy={busy}>{busy ? "Sending…" : "Send verification code →"}</PrimaryBtn>
+            <button type="button" onClick={() => { setStep(name ? "login" : "identify"); setErr(""); }} className="w-full text-slate-500 text-sm hover:text-slate-800">← Back</button>
+          </form>
+        )}
+
+        {step === "forgotOtp" && (
+          <form onSubmit={resetWithOtp} className="mt-5 space-y-4">
+            {maskedEmail && (
+              <div className="text-xs text-emerald-800 bg-emerald-50 border border-emerald-200 rounded-md p-2">
+                Code sent to <b>{maskedEmail}</b>. Check your inbox and spam folder.
+              </div>
+            )}
+            <Field label="Verification code (6 digits)">
+              <input value={otp} onChange={e => setOtp(e.target.value.replace(/\D/g, "").slice(0, 6))} inputMode="numeric" pattern="[0-9]{6}" maxLength={6} required className="ev-input tracking-widest text-lg font-mono" placeholder="000000" autoFocus />
+            </Field>
+            <Field label="New Password (min 8 characters)"><input type="password" value={pwd} onChange={e => setPwd(e.target.value)} required className="ev-input" /></Field>
+            <Field label="Confirm New Password"><input type="password" value={pwd2} onChange={e => setPwd2(e.target.value)} required className="ev-input" /></Field>
+            <ErrorNote msg={err} />
+            <PrimaryBtn busy={busy}>Reset password & sign in →</PrimaryBtn>
+            <button type="button" disabled={busy} onClick={sendOtp} className="w-full text-sm text-crimson hover:underline disabled:opacity-50">Resend code</button>
+            <button type="button" onClick={() => { setStep("forgot"); setErr(""); setOtp(""); }} className="w-full text-slate-500 text-sm hover:text-slate-800">← Change application no.</button>
+          </form>
+        )}
+
+        {step === "identify" && <button type="button" onClick={back} className="w-full text-slate-400 text-sm hover:text-slate-700 mt-4">← Back</button>}
+      </div>
+      <p className="text-center text-xs text-slate-400 mt-4">Trouble logging in? Call {SUPPORT.phone}</p>
+    </div>
+  );
 }
 
 function AdminLogin({ onAuth, back }) {
@@ -1046,22 +1272,20 @@ function StudentApp({ auth, logout }) {
   const reload = useCallback(async () => { try { const d = await API.get("/api/student/me"); setData(d); setErr(""); } catch (ex) { setErr(ex.message); if (ex.portalClosed || /upload window has closed|portal is currently closed/i.test(ex.message)) logout(); else if (/log in/i.test(ex.message)) logout(); } setLoading(false); }, [logout]);
   useEffect(() => { reload(); }, [reload]);
   const go = (next) => setScreen(next);
-  const right = (<><div className="hidden sm:flex items-center gap-2 bg-[#fdf5f4] dark:bg-[#281412] border border-[#ead9d6] dark:border-[#3d201d] px-3 py-1.5 rounded-lg"><span className="w-2 h-2 rounded-full bg-green-500"></span><span className="text-[#2a1311] dark:text-[#f7ecea]">{auth.name}</span><span className="text-[#c9a9a5]">·</span><span className="text-[#6e5350] dark:text-[#c9a9a5]">{auth.appNo}</span></div>{data?.student?.contactCompleted && <button onClick={()=>setShowTemplates(true)} className="text-crimson hover:underline text-sm">📄 Templates</button>}<button onClick={logout} className="text-[#6e5350] dark:text-[#c9a9a5] hover:text-[#2a1311] dark:hover:text-[#f7ecea]">Logout</button></>);
+  const right = (<><div className="hidden sm:flex items-center gap-2 bg-[#fdf5f4] dark:bg-[#281412] border border-[#ead9d6] dark:border-[#3d201d] px-3 py-1.5 rounded-lg"><span className="w-2 h-2 rounded-full bg-green-500"></span><span className="text-[#2a1311] dark:text-[#f7ecea]">{auth.name}</span><span className="text-[#c9a9a5]">·</span><span className="text-[#6e5350] dark:text-[#c9a9a5]">{auth.appNo}</span></div><button onClick={()=>setShowTemplates(true)} className="text-crimson hover:underline text-sm">📄 Templates</button><button onClick={logout} className="text-[#6e5350] dark:text-[#c9a9a5] hover:text-[#2a1311] dark:hover:text-[#f7ecea]">Logout</button></>);
   let body;
   if (loading) body = <Spinner label="Loading your portal…" />;
   else if (!data) body = <div className="max-w-md mx-auto py-16 text-center"><ErrorNote msg={err || "Could not load your data."} /><button onClick={reload} className="mt-3 text-crimson text-sm">Retry</button></div>;
-  else if (!data.student.contactCompleted) body = <SContactDetails data={data} reload={reload} firstStep />;
-  else if (screen==="contact") body = <SContactDetails data={data} reload={reload} go={()=>go("dashboard")} locked={isContactEditLocked(data.student, data.verifySlot)} />;
   else if (screen==="dashboard") body = <SDashboard data={data} go={go} openTemplates={()=>setShowTemplates(true)} />;
   else if (screen==="checklist") body = <SChecklist data={data} reload={reload} go={go} openTemplates={()=>setShowTemplates(true)} />;
   else if (screen==="declare")   body = <SDeclaration data={data} reload={reload} go={go} />;
   else if (screen==="slot")      body = USE_REPORTING_SLOTS ? <SReportingSlot data={data} reload={reload} go={go} /> : <SSlot data={data} reload={reload} go={go} />;
   else if (screen==="summary")   body = <SSummary data={data} go={go} />;
   else if (screen==="faq")       body = <SFaq go={go} />;
-  return (<PortalShell subtitle="Student Portal" right={right} extra={showTemplates && data?.student?.contactCompleted && <TemplatesModal close={()=>setShowTemplates(false)} />}>{body}</PortalShell>);
+  return (<PortalShell subtitle="Student Portal" right={right} extra={showTemplates && <TemplatesModal close={()=>setShowTemplates(false)} />}>{body}</PortalShell>);
 }
 
-function SContactDetails({ data, reload, go, locked, firstStep }) {
+function SContactDetails({ data, reload, go, locked }) {
   const { student, verifySlot } = data;
   const [form, setForm] = useState({
     email: student.email || "",
@@ -1087,7 +1311,6 @@ function SContactDetails({ data, reload, go, locked, firstStep }) {
   };
   const readOnly = !!locked || isContactEditLocked(student, verifySlot);
   return (<div className="max-w-2xl mx-auto px-4 sm:px-6 py-8 fade-in">
-    {firstStep && !readOnly && (<div className="bg-[#fdf5f4] dark:bg-[#281412] border border-[#ead9d6] dark:border-[#3d201d] rounded-2xl p-4 text-sm text-crimson-dark mb-5"><div className="font-semibold">Step 1 — Contact details (required)</div><div className="mt-1 text-crimson-dark">Before you can upload documents, please confirm your email, mobile number, and parent/guardian contact details.</div></div>)}
     <h2 className="text-2xl font-bold text-slate-800">Contact Details{readOnly ? " — locked" : ""}</h2>
     <p className="text-sm text-slate-500 mt-1">For admission updates, verification reminders, and emergency communication.</p>
     {readOnly && contactLockReason(student, verifySlot) === "staff" && (<div className="mt-3 text-sm bg-green-50 border border-green-200 text-green-800 rounded-lg p-3">🔒 <b>Locked after staff verification.</b> Your contact details cannot be changed online. To request an update, contact the verification cell.</div>)}
@@ -1108,8 +1331,8 @@ function SContactDetails({ data, reload, go, locked, firstStep }) {
       {!readOnly && (<label className="flex items-start gap-2 p-3 bg-slate-50 rounded-lg border border-slate-200 cursor-pointer"><input type="checkbox" className="mt-1 w-4 h-4 accent-crimson" checked={agree} onChange={e=>setAgree(e.target.checked)} /><span className="text-sm text-slate-800">I confirm that the contact details above are correct and may be used by the institution for admission-related communication.</span></label>)}
       <ErrorNote msg={err} />
       <div className="flex gap-3 flex-wrap">
-        {!readOnly && (<button type="submit" disabled={busy || !agree} className={`px-5 py-2.5 rounded-lg font-semibold ${(busy||!agree)?'bg-slate-200 text-slate-400 cursor-not-allowed':'bg-crimson text-white hover:bg-crimson-deep'}`}>{busy?"Saving…":firstStep?"Save & Continue to Documents →":"Update Contact Details"}</button>)}
-        {go && student.contactCompleted && (<button type="button" onClick={()=>go("dashboard")} className="px-4 py-2.5 rounded-lg border border-slate-300 text-slate-700 hover:bg-slate-50">{readOnly ? "← Back to Dashboard" : "← Back to Dashboard"}</button>)}
+        {!readOnly && (<button type="submit" disabled={busy || !agree} className={`px-5 py-2.5 rounded-lg font-semibold ${(busy||!agree)?'bg-slate-200 text-slate-400 cursor-not-allowed':'bg-crimson text-white hover:bg-crimson-deep'}`}>{busy?"Saving…":"Update Contact Details"}</button>)}
+        {go && (<button type="button" onClick={()=>go("dashboard")} className="px-4 py-2.5 rounded-lg border border-slate-300 text-slate-700 hover:bg-slate-50">← Back to Dashboard</button>)}
       </div>
     </form>
   </div>);
@@ -1135,6 +1358,32 @@ function StageNav({ steps }) {
   return (<div className="flex items-center gap-2 flex-wrap text-sm">{steps.map((s, i) => (<React.Fragment key={i}>{i > 0 && <span className="text-slate-300">›</span>}{s.onClick ? <button onClick={s.onClick} className={`hover:underline ${s.active?'text-crimson-deep font-semibold':'text-slate-600'}`}>{s.label}</button> : <span className={s.active?'text-crimson-deep font-semibold':'text-slate-500'}>{s.label}</span>}</React.Fragment>))}</div>);
 }
 
+function ContactDetailsCard({ student, verifySlot }) {
+  const lockReason = contactLockReason(student, verifySlot);
+  return (
+    <div className="bg-white border border-slate-200 rounded-2xl p-5 mt-5">
+      <div className="mb-3">
+        <div className="font-semibold text-slate-800">Your contact details</div>
+        <div className="text-xs text-slate-500 mt-0.5">For admission updates and verification communication. To change these, contact the verification cell.</div>
+      </div>
+      <div className="grid sm:grid-cols-2 md:grid-cols-3 gap-3 text-sm">
+        <Info label="Student email" value={student.email || "—"} />
+        <Info label="Student mobile" value={student.phone || "—"} />
+        <Info label="Parent / guardian" value={student.parentName || "—"} />
+        <Info label="Relation" value={student.parentRelation || "—"} />
+        <Info label="Parent email" value={student.parentEmail || "—"} />
+        <Info label="Parent mobile" value={student.parentPhone || "—"} />
+      </div>
+      {lockReason === "staff" && (
+        <div className="mt-3 text-xs text-green-800 bg-green-50 border border-green-200 rounded-lg p-2">✓ Verified by staff — contact details are locked.</div>
+      )}
+      {lockReason === "campus" && (
+        <div className="mt-3 text-xs text-green-800 bg-green-50 border border-green-200 rounded-lg p-2">✓ Campus verification completed — contact details are locked.</div>
+      )}
+    </div>
+  );
+}
+
 function SDashboard({ data, go, openTemplates }) {
   const { student, documents } = data;
   const st = docStats(documents);
@@ -1155,7 +1404,7 @@ function SDashboard({ data, go, openTemplates }) {
     localStorage.setItem(key, "1");
     try { window.evToast && window.evToast("success", `Slot allocated: ${data.verifySlot.room} · report by ${reportingTime(data.verifySlot.startTime)} on ${fmtDate(data.verifySlot.date)}`); } catch (e) {}
   }, [data.verifySlot, student?.appNo]);
-  return (<div className="max-w-7xl mx-auto px-4 sm:px-6 py-8 fade-in"><h2 className="text-2xl font-bold text-slate-800">Welcome, {student.name.split(" ")[0]}</h2><p className="text-sm text-slate-500">Here is your admission and verification progress.</p>{portalDeadlineBanner}{student.contactCompleted && !isContactEditLocked(student, data.verifySlot) && (<div className="bg-blue-50 border border-blue-200 rounded-2xl p-4 mt-5 text-sm text-blue-900 flex flex-wrap items-center justify-between gap-2"><div><div className="font-semibold">Contact details submitted</div><div className="text-xs text-blue-800 mt-0.5">You can update them until verified by staff at campus.</div></div><button onClick={()=>go("contact")} className="text-xs bg-white border border-blue-300 text-blue-800 px-3 py-1.5 rounded-md hover:bg-blue-100">Edit contact details</button></div>)}{student.contactCompleted && contactLockReason(student, data.verifySlot) === "staff" && (<div className="bg-green-50 border border-green-200 rounded-2xl p-4 mt-5 text-sm text-green-900 flex flex-wrap items-center justify-between gap-2"><div><div className="font-semibold">✓ Contact details verified by staff</div><div className="text-xs text-green-800 mt-0.5">🔒 Locked — edits are disabled after staff verification.</div></div><button onClick={()=>go("contact")} className="text-xs bg-white border border-green-300 text-green-800 px-3 py-1.5 rounded-md hover:bg-green-100">View contact details</button></div>)}{student.contactCompleted && contactLockReason(student, data.verifySlot) === "campus" && (<div className="bg-green-50 border border-green-200 rounded-2xl p-4 mt-5 text-sm text-green-900 flex flex-wrap items-center justify-between gap-2"><div><div className="font-semibold">✓ Campus verification completed</div><div className="text-xs text-green-800 mt-0.5">🔒 Contact details are locked after your campus verification.</div></div><button onClick={()=>go("contact")} className="text-xs bg-white border border-green-300 text-green-800 px-3 py-1.5 rounded-md hover:bg-green-100">View contact details</button></div>)}{pending && (<div className="bg-amber-50 border border-amber-300 rounded-2xl p-4 mt-5 fade-in"><div className="font-semibold text-amber-900">⚠ Pending items recorded by the verification cell</div>{student.pendingDocs && <div className="mt-1 text-sm text-amber-800 whitespace-pre-line">{student.pendingDocs}</div>}{student.submissionDeadline && <div className="mt-1 text-xs text-amber-700">Please submit by <b>{fmtDate(student.submissionDeadline)}</b>.</div>}</div>)}{USE_REPORTING_SLOTS && slotRej && (<div className="bg-rose-50 border border-rose-300 rounded-2xl p-4 mt-5 fade-in"><div className="font-semibold text-rose-900">⚠ Reporting slot rejected by the verification cell</div>{student.slotRejectReason && <div className="mt-1 text-sm text-rose-800">{student.slotRejectReason}</div>}<button onClick={()=>go("slot")} className="mt-2 text-sm bg-rose-600 text-white px-3 py-1.5 rounded-md hover:bg-rose-700">Pick a new slot →</button></div>)}<div className="grid md:grid-cols-3 gap-5 mt-6"><div className="md:col-span-2 bg-white p-5 rounded-2xl border border-slate-200"><div className="flex items-start justify-between"><div><div className="text-xs text-slate-500">Admission Status</div><div className="mt-1 inline-flex items-center gap-2 bg-amber-50 text-amber-800 border border-amber-200 px-3 py-1 rounded-full text-sm font-medium"><span className="w-2 h-2 rounded-full bg-amber-500 blink"></span> Provisionally Admitted</div></div><div className="text-right"><div className="text-xs text-slate-500">Application No.</div><div className="font-mono text-slate-700 text-sm">{student.appNo}</div></div></div><div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mt-5 text-sm"><Info label="Program" value={student.program} /><Info label="Category" value={student.category} /><Info label="Section" value={student.section} /><Info label="Orientation" value={fmtDate(student.orientationDate)} /></div></div><div className="bg-white p-5 rounded-2xl border border-slate-200"><div className="text-xs text-slate-500">Document Readiness</div><div className="mt-1 text-3xl font-bold text-slate-800">{pct}%</div><div className="w-full bg-slate-100 rounded-full h-2 mt-2 overflow-hidden"><div className={`h-2 ${pct===100?'bg-green-500':pct>0?'bg-yellow-400':'bg-slate-300'}`} style={{width:`${pct}%`}}></div></div><div className="mt-3 flex items-center text-xs gap-3 flex-wrap"><span><span className={`traffic-light ${lightColor("ready")}`}></span>{st.ready} ready</span><span><span className={`traffic-light ${lightColor("pending")}`}></span>{st.pending} pending</span><span><span className={`traffic-light ${lightColor("issue")}`}></span>{st.issue} issue</span>{st.flagged>0 && <span className="text-rose-700">⚑ {st.flagged} flagged</span>}</div></div></div><VerifySlotPanel student={student} verifySlot={data.verifySlot} /><div className="bg-white border border-slate-200 rounded-2xl p-5 mt-5"><div className="grid sm:grid-cols-3 gap-4"><StepCard n="1" t="Document Checklist" d={`${st.ready}/${st.total} mandatory ready${st.optTotal>0 ? ` · ${st.optUploaded}/${st.optTotal} optional uploaded` : ""}`} done={st.allReady} cta="Open Checklist" onClick={()=>go("checklist")} /><StepCard n="2" t="Verification Slot (auto-allocated)" d={data.verifySlot ? `${data.verifySlot.room} · slot #${data.verifySlot.slotNo} · ${data.verifySlot.startTime}` : (student.declared && st.allReady ? "No slot available — contact verification cell" : (st.allReady ? "Sign self-declaration to get your slot" : "Waiting for mandatory docs to be confirmed"))} done={!!data.verifySlot} cta={data.verifySlot ? "View Slot" : (st.allReady ? "Sign Declaration" : "Open Checklist")} onClick={()=>go(data.verifySlot ? "slot" : (st.allReady ? "declare" : "checklist"))} disabled={false} /><StepCard n="3" t="Original Document Verification" d={data.verifySlot ? (data.verifySlot.status==="verified" ? "Verified at campus" : "Report on assigned day/time") : "After slot allocation"} done={data.verifySlot && data.verifySlot.status==="verified"} cta="View Verification" onClick={()=>go("summary")} disabled={!data.verifySlot} hint="Slot is assigned after you sign the self-declaration" /></div></div><div className="mt-5 grid md:grid-cols-3 gap-5"><div className="md:col-span-2 bg-amber-50 border border-amber-200 rounded-2xl p-5 text-sm text-amber-800"><div className="font-semibold text-amber-900">Tip — finish in one sitting (~15 mins)</div>Keep your documents ready as PDFs or JPGs under 6 MB. For marks cards and certificates also enter the issuing board / university so we can pre-verify it.<div className="mt-2 flex flex-wrap gap-2"><button onClick={openTemplates} className="text-amber-900 underline">📄 Download Standard Templates</button><span className="text-amber-700">·</span><button onClick={()=>go("faq")} className="text-amber-900 underline">Read the FAQ</button></div></div><SupportCard /></div></div>);
+  return (<div className="max-w-7xl mx-auto px-4 sm:px-6 py-8 fade-in"><h2 className="text-2xl font-bold text-slate-800">Welcome, {student.name.split(" ")[0]}</h2><p className="text-sm text-slate-500">Here is your admission and verification progress.</p>{portalDeadlineBanner}<ContactDetailsCard student={student} verifySlot={data.verifySlot} />{pending && (<div className="bg-amber-50 border border-amber-300 rounded-2xl p-4 mt-5 fade-in"><div className="font-semibold text-amber-900">⚠ Pending items recorded by the verification cell</div>{student.pendingDocs && <div className="mt-1 text-sm text-amber-800 whitespace-pre-line">{student.pendingDocs}</div>}{student.submissionDeadline && <div className="mt-1 text-xs text-amber-700">Please submit by <b>{fmtDate(student.submissionDeadline)}</b>.</div>}</div>)}{USE_REPORTING_SLOTS && slotRej && (<div className="bg-rose-50 border border-rose-300 rounded-2xl p-4 mt-5 fade-in"><div className="font-semibold text-rose-900">⚠ Reporting slot rejected by the verification cell</div>{student.slotRejectReason && <div className="mt-1 text-sm text-rose-800">{student.slotRejectReason}</div>}<button onClick={()=>go("slot")} className="mt-2 text-sm bg-rose-600 text-white px-3 py-1.5 rounded-md hover:bg-rose-700">Pick a new slot →</button></div>)}<div className="grid md:grid-cols-3 gap-5 mt-6"><div className="md:col-span-2 bg-white p-5 rounded-2xl border border-slate-200"><div className="flex items-start justify-between"><div><div className="text-xs text-slate-500">Admission Status</div><div className="mt-1 inline-flex items-center gap-2 bg-amber-50 text-amber-800 border border-amber-200 px-3 py-1 rounded-full text-sm font-medium"><span className="w-2 h-2 rounded-full bg-amber-500 blink"></span> Provisionally Admitted</div></div><div className="text-right"><div className="text-xs text-slate-500">Application No.</div><div className="font-mono text-slate-700 text-sm">{student.appNo}</div></div></div><div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mt-5 text-sm"><Info label="Program" value={student.program} /><Info label="Category" value={student.category} /><Info label="Section" value={student.section} /><Info label="Orientation" value={fmtDate(student.orientationDate)} /></div></div><div className="bg-white p-5 rounded-2xl border border-slate-200"><div className="text-xs text-slate-500">Document Readiness</div><div className="mt-1 text-3xl font-bold text-slate-800">{pct}%</div><div className="w-full bg-slate-100 rounded-full h-2 mt-2 overflow-hidden"><div className={`h-2 ${pct===100?'bg-green-500':pct>0?'bg-yellow-400':'bg-slate-300'}`} style={{width:`${pct}%`}}></div></div><div className="mt-3 flex items-center text-xs gap-3 flex-wrap"><span><span className={`traffic-light ${lightColor("ready")}`}></span>{st.ready} ready</span><span><span className={`traffic-light ${lightColor("pending")}`}></span>{st.pending} pending</span><span><span className={`traffic-light ${lightColor("issue")}`}></span>{st.issue} issue</span>{st.flagged>0 && <span className="text-rose-700">⚑ {st.flagged} flagged</span>}</div></div></div><VerifySlotPanel student={student} verifySlot={data.verifySlot} /><div className="bg-white border border-slate-200 rounded-2xl p-5 mt-5"><div className="grid sm:grid-cols-3 gap-4"><StepCard n="1" t="Document Checklist" d={`${st.ready}/${st.total} mandatory ready${st.optTotal>0 ? ` · ${st.optUploaded}/${st.optTotal} optional uploaded` : ""}`} done={st.allReady} cta="Open Checklist" onClick={()=>go("checklist")} /><StepCard n="2" t="Verification Slot (auto-allocated)" d={data.verifySlot ? `${data.verifySlot.room} · slot #${data.verifySlot.slotNo} · ${data.verifySlot.startTime}` : (student.declared && st.allReady ? "No slot available — contact verification cell" : (st.allReady ? "Sign self-declaration to get your slot" : "Waiting for mandatory docs to be confirmed"))} done={!!data.verifySlot} cta={data.verifySlot ? "View Slot" : (st.allReady ? "Sign Declaration" : "Open Checklist")} onClick={()=>go(data.verifySlot ? "slot" : (st.allReady ? "declare" : "checklist"))} disabled={false} /><StepCard n="3" t="Original Document Verification" d={data.verifySlot ? (data.verifySlot.status==="verified" ? "Verified at campus" : "Report on assigned day/time") : "After slot allocation"} done={data.verifySlot && data.verifySlot.status==="verified"} cta="View Verification" onClick={()=>go("summary")} disabled={!data.verifySlot} hint="Slot is assigned after you sign the self-declaration" /></div></div><div className="mt-5 grid md:grid-cols-3 gap-5"><div className="md:col-span-2 bg-amber-50 border border-amber-200 rounded-2xl p-5 text-sm text-amber-800"><div className="font-semibold text-amber-900">Tip — finish in one sitting (~15 mins)</div>Keep your documents ready as PDFs or JPGs under 6 MB. For marks cards and certificates also enter the issuing board / university so we can pre-verify it.<div className="mt-2 flex flex-wrap gap-2"><button onClick={openTemplates} className="text-amber-900 underline">📄 Download Standard Templates</button><span className="text-amber-700">·</span><button onClick={()=>go("faq")} className="text-amber-900 underline">Read the FAQ</button></div></div><SupportCard /></div></div>);
 }
 function Info({ label, value }) { return <div><div className="text-xs text-slate-500">{label}</div><div className="font-medium text-slate-800">{value || "—"}</div></div>; }
 /* v14 — Verification slot panel for the student dashboard. */
@@ -1296,6 +1545,14 @@ function DocModal({ doc, reload, close, openTemplates }) {
     if (isPhotosDoc) {
       const photoErr = await validatePhotoFile(f);
       if (photoErr) { setErr(photoErr); e.target.value = ""; return; }
+    } else {
+      const ext = (f.name || "").split(".").pop().toLowerCase();
+      const mime = (f.type || "").toLowerCase().split(";")[0].trim();
+      if (mime !== "application/pdf" && ext !== "pdf") {
+        setErr("Only PDF files are accepted for this document. Upload JPG/PNG only for Photographs.");
+        e.target.value = "";
+        return;
+      }
     }
     setBusy(true);
     try { await API.upload(`/api/student/documents/${code}/upload`, f); await reload(); setTab("verify"); }
@@ -1306,7 +1563,7 @@ function DocModal({ doc, reload, close, openTemplates }) {
   /* v9 — Confirm & Save Document. Sends `confirmed:boolean` shorthand. */
   const confirmAndSave = async () => {
     if (!confirmed) { setErr("Please tick the confirmation before saving."); return; }
-    if (needsInst && !institution.trim()) { setErr("Enter the issuing institution / board first."); return; }
+    if (needsInst && !institution.trim()) { setErr("Select or enter the issuing institution / board first."); return; }
     setErr(""); setBusy(true);
     try { await API.patch(`/api/student/documents/${code}`, { confirmed:true, status:"ready", institutionName: institution }); await reload(); close(); }
     catch (ex) { setErr(ex.message); }
@@ -1328,7 +1585,7 @@ function DocModal({ doc, reload, close, openTemplates }) {
       {isAntiRagging && (<div className="mb-4 text-sm bg-[#fdf5f4] dark:bg-[#281412] border border-[#ead9d6] dark:border-[#3d201d] rounded-xl p-4 text-crimson-dark"><div className="font-semibold">{code === "ANTI_RAG_P" ? "Parent / Guardian Anti-Ragging Undertaking" : "Student Anti-Ragging Undertaking"}</div><ol className="mt-2 text-xs text-crimson-dark list-decimal list-inside space-y-1"><li>Open the official online affidavit form on <b>antiragging.in</b>.</li><li>Fill in the required details and complete the form.</li><li>Download the generated PDF from the website.</li><li>Upload the downloaded PDF below.</li></ol><a href={ANTI_RAGGING_ONLINE_FORM} target="_blank" rel="noopener noreferrer" className="mt-3 inline-block text-xs bg-crimson text-white px-3 py-1.5 rounded-md hover:bg-crimson-deep">Fill online form →</a></div>)}
       <div className="border-2 border-dashed border-slate-300 rounded-xl p-6 text-center bg-slate-50">
         <div className="text-3xl">⤴</div><div className="font-semibold mt-2 text-slate-700">Upload scanned copy</div><div className="text-xs text-slate-500">Accepted: {cat.formats}</div>
-        {canUpload ? (<label className={`mt-3 inline-block px-4 py-2 rounded-lg cursor-pointer ${busy?'bg-slate-300 text-slate-500':'bg-crimson text-white hover:bg-crimson-deep'}`}>{busy?"Uploading…":(doc.hasFile?"Replace file":"Choose file")}<input type="file" className="hidden" accept={isPhotosDoc ? "image/jpeg,image/png,.jpg,.jpeg,.png" : ".pdf,.jpg,.jpeg,.png,image/jpeg,image/png,application/pdf"} disabled={busy} onChange={doUpload} /></label>) : (<div className="mt-3 text-sm text-slate-600 bg-slate-100 border border-slate-200 rounded-lg px-4 py-2">{isStaffLocked ? "🔒 Locked — staff has accepted this document. Contact the verification cell if you need to change it." : "🔒 Locked — you have self-verified this document. Contact the verification cell if you need to replace the file."}</div>)}
+        {canUpload ? (<label className={`mt-3 inline-block px-4 py-2 rounded-lg cursor-pointer ${busy?'bg-slate-300 text-slate-500':'bg-crimson text-white hover:bg-crimson-deep'}`}>{busy?"Uploading…":(doc.hasFile?"Replace file":"Choose file")}<input type="file" className="hidden" accept={isPhotosDoc ? "image/jpeg,image/png,.jpg,.jpeg,.png" : ".pdf,application/pdf"} disabled={busy} onChange={doUpload} /></label>) : (<div className="mt-3 text-sm text-slate-600 bg-slate-100 border border-slate-200 rounded-lg px-4 py-2">{isStaffLocked ? "🔒 Locked — staff has accepted this document. Contact the verification cell if you need to change it." : "🔒 Locked — you have self-verified this document. Contact the verification cell if you need to replace the file."}</div>)}
         {doc.hasFile && (<div className="mt-3 text-sm text-slate-700 flex items-center justify-center gap-2 flex-wrap">Current file: <b>{doc.fileName}</b><button onClick={()=>setPreview(true)} className="text-xs px-2 py-1 rounded-md border border-crimson/30 text-crimson-deep hover:bg-[#fdf5f4] dark:hover:bg-[#281412]">👁 Preview my upload</button></div>)}
       </div>
       {isPhotosDoc && (<div className="mt-4 text-xs text-blue-700 bg-blue-50 border border-blue-200 rounded-lg p-3"><b>Photograph tips:</b><ul className="list-disc list-inside mt-1 space-y-0.5"><li>Plain <b>white background</b> if possible.</li><li>Passport-size, recent (under 6 months), no selfies, sunglasses or hats.</li><li><b>JPG or PNG only</b> (no PDF, no iPhone HEIC) — ≤ 6 MB.</li><li>If your phone saves HEIC, use Gallery → Share/Save as JPG before uploading.</li></ul></div>)}
@@ -1336,7 +1593,7 @@ function DocModal({ doc, reload, close, openTemplates }) {
       <ErrorNote msg={err} />
     </div>)}
     {tab==="sample" && (<div><div className="bg-slate-100 rounded-xl p-4"><div className="text-xs text-slate-500">Sample preview (illustration)</div><SampleDoc title={doc.name} /></div><div className="mt-4"><div className="font-semibold text-slate-800 text-sm">Common mistakes to avoid</div><ul className="mt-2 text-sm text-slate-700 list-disc list-inside space-y-1">{cat.mistakes.map((m,i)=><li key={i}>{m}</li>)}</ul></div></div>)}
-    {tab==="verify" && (<div>{/* v9 — Document Status block */}<div className="bg-slate-50 border border-slate-200 rounded-xl p-3 text-sm space-y-1"><div className="font-semibold text-slate-800">Document Status</div><div className="flex items-center gap-2 text-slate-700"><span className={doc.hasFile?"text-green-600":"text-slate-400"}>{doc.hasFile?"✓":"○"}</span> Uploaded {doc.hasFile ? "Successfully" : "— pending"}</div><div className="flex items-center gap-2 text-slate-700"><span className={doc.hasFile?"text-green-600":"text-slate-400"}>{doc.hasFile?"✓":"○"}</span> Preview {doc.hasFile ? "Available" : "— upload first"}{doc.hasFile && <button onClick={()=>setPreview(true)} className="ml-1 text-xs text-crimson hover:underline">view</button>}</div><div className="flex items-center gap-2 text-slate-700"><span className="text-green-600">✓</span> {doc.optional ? "Optional Document" : "Mandatory Document"}</div></div>{needsInst && (<div className="mt-4"><label className="text-xs font-medium text-slate-600">Issuing institution / board <MandStar/></label><input value={institution} onChange={e=>setInstitution(e.target.value)} onBlur={saveInstitution} placeholder="e.g. Karnataka Secondary Education Examination Board" className="ev-input mt-1" /><div className="text-[11px] text-slate-500 mt-1">The system auto-checks this against a list of non-recognised institutions.</div></div>)}{/* v9 — Single confirmation checkbox */}<label className="mt-4 flex items-start gap-2 p-3 rounded-lg border border-slate-200 hover:bg-slate-50 cursor-pointer"><input type="checkbox" disabled={isReady||isVerified} checked={confirmed} onChange={e=>setConfirmed(e.target.checked)} className="mt-1 w-4 h-4 accent-crimson" /><span className="text-sm text-slate-800"><b>Student Confirmation.</b> {CONFIRM_QUESTION}</span></label>{/* v9 — Information note */}<div className="mt-3 bg-blue-50 border border-blue-200 rounded-lg p-3 text-xs text-blue-900"><div className="font-semibold">Information note — please ensure:</div><ul className="list-disc list-inside mt-1 space-y-0.5">{CONFIRM_NOTE_LINES.map((l,i)=><li key={i}>{l}</li>)}</ul></div><ErrorNote msg={err} /><div className="mt-4 flex flex-wrap gap-2 items-center">{isVerified ? (<span className="text-sm font-semibold bg-green-100 text-green-700 px-3 py-1.5 rounded-md">✓ Accepted by the verification cell</span>) : isReady ? (<span className="text-sm font-semibold bg-green-100 text-green-700 px-3 py-1.5 rounded-md">✓ Uploaded · ✓ Verified by Student — awaiting staff acceptance</span>) : (<><button disabled={!doc.hasFile||!confirmed||busy||(needsInst&&!institution.trim())} onClick={confirmAndSave} className={`px-4 py-2 rounded-lg font-semibold ${(!doc.hasFile||!confirmed||busy||(needsInst&&!institution.trim()))?'bg-slate-200 text-slate-400 cursor-not-allowed':'bg-green-600 text-white hover:bg-green-700'}`}>{busy?"Saving…":"✓ Confirm & Save Document"}</button>{!doc.hasFile && <span className="text-xs text-slate-500">Upload the file first.</span>}{doc.hasFile && !confirmed && <span className="text-xs text-slate-500">Tick the confirmation to enable saving.</span>}</>)}</div></div>)}
+    {tab==="verify" && (<div>{/* v9 — Document Status block */}<div className="bg-slate-50 border border-slate-200 rounded-xl p-3 text-sm space-y-1"><div className="font-semibold text-slate-800">Document Status</div><div className="flex items-center gap-2 text-slate-700"><span className={doc.hasFile?"text-green-600":"text-slate-400"}>{doc.hasFile?"✓":"○"}</span> Uploaded {doc.hasFile ? "Successfully" : "— pending"}</div><div className="flex items-center gap-2 text-slate-700"><span className={doc.hasFile?"text-green-600":"text-slate-400"}>{doc.hasFile?"✓":"○"}</span> Preview {doc.hasFile ? "Available" : "— upload first"}{doc.hasFile && <button onClick={()=>setPreview(true)} className="ml-1 text-xs text-crimson hover:underline">view</button>}</div><div className="flex items-center gap-2 text-slate-700"><span className="text-green-600">✓</span> {doc.optional ? "Optional Document" : "Mandatory Document"}</div></div>{needsInst && <InstitutionField value={institution} onChange={setInstitution} onBlur={saveInstitution} disabled={isReady||isVerified} />}{/* v9 — Single confirmation checkbox */}<label className="mt-4 flex items-start gap-2 p-3 rounded-lg border border-slate-200 hover:bg-slate-50 cursor-pointer"><input type="checkbox" disabled={isReady||isVerified} checked={confirmed} onChange={e=>setConfirmed(e.target.checked)} className="mt-1 w-4 h-4 accent-crimson" /><span className="text-sm text-slate-800"><b>Student Confirmation.</b> {CONFIRM_QUESTION}</span></label>{/* v9 — Information note */}<div className="mt-3 bg-blue-50 border border-blue-200 rounded-lg p-3 text-xs text-blue-900"><div className="font-semibold">Information note — please ensure:</div><ul className="list-disc list-inside mt-1 space-y-0.5">{CONFIRM_NOTE_LINES.map((l,i)=><li key={i}>{l}</li>)}</ul></div><ErrorNote msg={err} /><div className="mt-4 flex flex-wrap gap-2 items-center">{isVerified ? (<span className="text-sm font-semibold bg-green-100 text-green-700 px-3 py-1.5 rounded-md">✓ Accepted by the verification cell</span>) : isReady ? (<span className="text-sm font-semibold bg-green-100 text-green-700 px-3 py-1.5 rounded-md">✓ Uploaded · ✓ Verified by Student — awaiting staff acceptance</span>) : (<><button disabled={!doc.hasFile||!confirmed||busy||(needsInst&&!institution.trim())} onClick={confirmAndSave} className={`px-4 py-2 rounded-lg font-semibold ${(!doc.hasFile||!confirmed||busy||(needsInst&&!institution.trim()))?'bg-slate-200 text-slate-400 cursor-not-allowed':'bg-green-600 text-white hover:bg-green-700'}`}>{busy?"Saving…":"✓ Confirm & Save Document"}</button>{!doc.hasFile && <span className="text-xs text-slate-500">Upload the file first.</span>}{doc.hasFile && !confirmed && <span className="text-xs text-slate-500">Tick the confirmation to enable saving.</span>}</>)}</div></div>)}
     {tab==="issue" && (<div>
       <div className="text-sm text-slate-700">If the document is unavailable, damaged, pending or incorrect, pick the reason:</div>
       <Field label="Reason"><select value={reasonChoice} onChange={e=>setReasonChoice(e.target.value)} className="ev-input"><option value="">Select…</option>{ISSUE_REASONS.map(r=><option key={r} value={r}>{r}</option>)}</select></Field>
@@ -1373,6 +1630,9 @@ function SDeclaration({ data, reload, go }) {
         window.evToast && window.evToast("warning", "Declaration saved, but no verification slots are left on your assigned date. Please contact the verification cell.");
       } else if (r.allocation?.allocated) {
         window.evToast && window.evToast("success", "Verification slot allocated — check your dashboard.");
+      }
+      if (r.emailNotification?.sent > 0) {
+        window.evToast && window.evToast("success", "A confirmation email with your verification details has been sent to your admission email.");
       }
       go(USE_REPORTING_SLOTS ? "slot" : "dashboard");
     } catch (ex) { setErr(ex.message); }
@@ -1469,13 +1729,32 @@ function SSlot({ data, reload, go }) {
 
 function SSummary({ data, go }) {
   const { student, documents, slot, verifySlot } = data;
+  const uploaded = (typeof uploadedDocsInOrder === "function"
+    ? uploadedDocsInOrder(documents)
+    : (documents || []).filter((d) => d.hasFile));
   const download = () => downloadVerificationSlipPdf({ student, documents, slot, verifySlot });
   return (<div className="max-w-4xl mx-auto px-6 py-8 fade-in"><StageNav steps={[{label:"Dashboard",onClick:()=>go("dashboard")},{label:"Document Checklist",onClick:()=>go("checklist")},{label:"Self-Declaration",onClick:()=>go("declare")},...(USE_REPORTING_SLOTS?[{label:"Slot Booking",onClick:()=>go("slot")}]:[]),{label:"Verification",active:true}]} /><h2 className="text-2xl font-bold text-slate-800 mt-3">Original Document Verification</h2>
     {USE_REPORTING_SLOTS && !slot && !student.slotRejected && (<div className="mt-3 bg-amber-50 border border-amber-300 rounded-2xl p-4 text-sm text-amber-900"><div className="font-semibold">Reporting slot not booked yet.</div><div className="mt-1">Book a campus reporting appointment to complete this step.</div><button onClick={()=>go("slot")} className="mt-2 text-sm bg-crimson text-white px-3 py-1.5 rounded-md hover:bg-crimson-deep">Book Reporting Slot →</button></div>)}
     <div className="bg-white border border-slate-200 rounded-2xl p-6 mt-4"><div className="border-b border-dashed pb-4 flex-wrap gap-3"><div className="text-xs text-slate-500">Verification summary</div><div className="text-xl font-bold text-slate-800">{student.name}</div><div className="text-sm text-slate-500 font-mono">{student.appNo}</div></div>
     {verifySlot && (<div className="mt-5 border border-emerald-200 rounded-xl p-4 bg-emerald-50/30"><div className="text-xs uppercase tracking-wider text-emerald-700 font-semibold">Orientation document verification</div><div className="text-lg font-bold text-slate-800 mt-1">{verifySlot.room} · Slot #{verifySlot.slotNo}</div><div className="text-sm text-slate-600 mt-1">{fmtDate(verifySlot.date)} · Report by {reportingTime(verifySlot.startTime)} · Slot {verifySlot.startTime}{verifySlot.endTime ? ` – ${verifySlot.endTime}` : ""}</div><div className="mt-2 text-sm text-emerald-800">Please be present 30 minutes before your slot time.</div><div className="mt-2 text-sm text-emerald-800">Status: <b>{verifySlot.status === "verified" ? "Verified at campus" : verifySlot.status}</b></div></div>)}
     {!verifySlot && (<div className="mt-5 border border-slate-200 rounded-xl p-4 bg-slate-50 text-sm text-slate-600">Orientation verification slot will auto-allocate after you confirm every mandatory document upload.</div>)}
-    <div className="grid sm:grid-cols-2 gap-4 mt-4 text-sm"><div><span className="text-slate-500">Program: </span><b>{student.program}</b></div><div><span className="text-slate-500">Section: </span><b>{student.section}</b></div><div><span className="text-slate-500">Category: </span><b>{student.category}</b></div><div><span className="text-slate-500">Orientation: </span><b>{fmtDate(student.orientationDate)}</b></div></div><div className="mt-5"><div className="font-semibold text-slate-800">Document checklist</div><div className="mt-2 grid sm:grid-cols-2 gap-y-1 text-sm">{documents.map(d=>(<div key={d.docCode} className="flex items-center"><span className={`traffic-light ${lightColor(d.studentStatus)}`}></span>{d.name}<DocBadge doc={d}/><span className="ml-1 text-xs text-slate-500">— {d.staffStatus==="verified"?"Accepted":staffDocStatusLabel(d)}</span>{d.flagged && <span className="ml-1 text-[10px] text-rose-700">⚑</span>}</div>))}</div></div><div className="mt-4 text-sm bg-blue-50 border border-blue-200 rounded-lg p-3 text-blue-900">Download the <b>PDF verification slip</b> with a <b>Student copy</b> and <b>University verifier copy</b>. Each document has boxes to tick when originals are submitted at campus. Print, sign the student copy, and bring it with your originals.</div><div className="flex gap-3 mt-5 flex-wrap"><button onClick={download} className="bg-crimson text-white px-4 py-2 rounded-lg font-semibold hover:bg-crimson-deep">Download Verification (PDF)</button><button onClick={()=>window.print()} className="bg-white border border-slate-300 px-4 py-2 rounded-lg font-medium hover:bg-slate-50">Print this page</button><button onClick={()=>go("checklist")} className="bg-white border border-crimson/30 text-crimson-deep px-4 py-2 rounded-lg font-medium hover:bg-[#fdf5f4] dark:hover:bg-[#281412]">📋 Open Document Checklist</button><button onClick={()=>go("dashboard")} className="bg-white border border-slate-300 px-4 py-2 rounded-lg font-medium hover:bg-slate-50">← Back to Dashboard</button></div></div></div>);
+    <div className="grid sm:grid-cols-2 gap-4 mt-4 text-sm"><div><span className="text-slate-500">Program: </span><b>{student.program}</b></div><div><span className="text-slate-500">Section: </span><b>{student.section}</b></div><div><span className="text-slate-500">Category: </span><b>{student.category}</b></div><div><span className="text-slate-500">Orientation: </span><b>{fmtDate(student.orientationDate)}</b></div></div>
+    <div className="mt-5"><div className="font-semibold text-slate-800">Documents you uploaded ({uploaded.length})</div>
+      <div className="mt-3 text-sm bg-amber-50 border border-amber-200 rounded-lg p-3 text-amber-950"><b>Bring these documents in the same order</b> listed below for faster verification at the campus counter.</div>
+      {uploaded.length === 0 ? (<div className="mt-3 text-sm text-slate-500">No documents uploaded yet.</div>) : (
+        <ol className="mt-3 space-y-2 list-decimal list-inside text-sm text-slate-800">
+          {uploaded.map((d) => (
+            <li key={d.docCode} className="pl-1">
+              <span className="font-medium">{d.name}</span>
+              {d.optional ? <span className="ml-1 text-[11px] text-sky-700">(optional)</span> : null}
+              {d.original ? <span className="ml-1 text-[11px] text-rose-700">· bring original</span> : <span className="ml-1 text-[11px] text-emerald-700">· photocopy ok</span>}
+            </li>
+          ))}
+        </ol>
+      )}
+    </div>
+    <div className="mt-4 text-sm bg-blue-50 border border-blue-200 rounded-lg p-3 text-blue-900">Download the PDF — it lists only the documents you uploaded, in this order. Print it and bring your physical documents in the <b>same sequence</b> for faster verification.</div>
+    <div className="flex gap-3 mt-5 flex-wrap"><button onClick={download} className="bg-crimson text-white px-4 py-2 rounded-lg font-semibold hover:bg-crimson-deep">Download Verification (PDF)</button><button onClick={()=>window.print()} className="bg-white border border-slate-300 px-4 py-2 rounded-lg font-medium hover:bg-slate-50">Print this page</button><button onClick={()=>go("checklist")} className="bg-white border border-crimson/30 text-crimson-deep px-4 py-2 rounded-lg font-medium hover:bg-[#fdf5f4] dark:hover:bg-[#281412]">📋 Open Document Checklist</button><button onClick={()=>go("dashboard")} className="bg-white border border-slate-300 px-4 py-2 rounded-lg font-medium hover:bg-slate-50">← Back to Dashboard</button></div></div></div>);
 }
 
 function SFaq({ go }) {
@@ -2011,11 +2290,11 @@ function AdminDetail({ appNo, role, close, onChange }) {
   const slotTone = s?.slotRejected ? "rose" : detail?.slot && s?.slotConfirmed ? "green" : detail?.slot ? "indigo" : "slate";
   return (<div ref={trapRef} className="fixed inset-0 z-50 bg-black/40 grid place-items-center p-4"><div className="bg-white rounded-2xl max-w-4xl w-full max-h-[92vh] overflow-hidden flex flex-col"><div className="p-5 border-b border-slate-200 flex items-start justify-between"><div><div className="text-xs text-slate-500">Campus Verification</div><div className="font-bold text-slate-800 text-lg">{flagged>0 && <span className="text-rose-600 mr-1">⚑</span>}{s?s.name:appNo}</div>{s && <div className="text-xs text-slate-500 font-mono break-words">{s.appNo} · DOB {fmtDate(s.dob)} · {s.program} · {s.department||""} · Sec {s.section||"—"} · {s.profile.replace(/-/g,' / ')} · Category: {s.category || "—"}</div>}</div><button onClick={close} className="text-slate-400 hover:text-slate-700 text-2xl leading-none">×</button></div>{!detail && <div className="p-5"><Spinner label="Loading student…" /></div>}{detail && (<div className="p-5 overflow-y-auto"><ErrorNote msg={err} />{flagged>0 && (<div className="bg-rose-50 border border-rose-300 text-rose-800 rounded-lg p-3 mb-4 text-sm"><b>⚑ Flagged — Verification Required.</b> {flagged} document{flagged>1?'s':''} reference{flagged>1?'':'s'} an institution on the blacklist.</div>)}<div className="grid grid-cols-2 sm:grid-cols-4 gap-3 my-4"><MiniStat big={`${uploaded}/${docs.length}`} label="Uploaded (incl. optional)" tone="slate" /><MiniStat big={`${verified}/${mandDocs.length}`} label="Accepted (mandatory)" tone="green" /><MiniStat big={USE_REPORTING_SLOTS ? (s.physicalReportingCompleted?"Done":"Pending") : (detail?.verifySlot?.status==="verified"?"Done":"Pending")} label={USE_REPORTING_SLOTS ? "Phys. Reporting" : "Campus verified"} tone={(USE_REPORTING_SLOTS ? s.physicalReportingCompleted : detail?.verifySlot?.status==="verified")?"green":"slate"} small /></div><div className="flex items-center justify-between flex-wrap gap-2 mb-2"><div className="font-semibold text-slate-800">Document Verification &amp; Acceptance <span className="text-[11px] text-slate-500 font-normal ml-1"><MandStar/> Mandatory · <OptionalBadge/> Optional · verify each upload individually</span></div><div className="flex gap-2 flex-wrap"><button type="button" onClick={downloadVerificationSlip} className="text-xs px-3 py-1.5 rounded-md border border-crimson/30 text-crimson-deep hover:bg-[#fdf5f4] dark:hover:bg-[#281412]">📄 Verification Slip (PDF)</button><button onClick={downloadZip} disabled={zipBusy||uploaded===0} className={`text-xs px-3 py-1.5 rounded-md ${(zipBusy||uploaded===0)?'bg-slate-200 text-slate-400 cursor-not-allowed':'bg-slate-800 text-white hover:bg-slate-900'}`}>{zipBusy?"Preparing ZIP…":"⤓ Download All (ZIP)"}</button></div></div>
     <div className="space-y-2">{docs.map(d=>{const locked = d.staffStatus === "verified" || d.staffStatus === "rejected"; return (<div key={d.id} className={`border rounded-lg p-3 ${d.flagged?'border-rose-300 border-l-4 bg-rose-50/40':d.staffStatus==="verified"?'border-green-200 bg-green-50/40':'border-slate-200'}`}><div className="flex items-center justify-between flex-wrap gap-2"><div className="min-w-[180px]"><div className="text-sm font-semibold text-slate-800">{d.flagged && <span className="text-rose-600 mr-1">⚑</span>}{d.name}<DocBadge doc={d}/></div><div className="text-[11px] text-slate-500">{d.hasFile?("File: "+d.fileName):"Not uploaded yet"}{" · "}<span className={d.original?"text-rose-600":"text-emerald-600"}>{d.original?"Original at campus":"Photocopy ok"}</span>{" · self-check: "}{d.confirmed || d.studentStatus==="ready" ? "Confirmed" : "Not confirmed"}</div>{d.institutionName && <div className="text-[11px] text-slate-600 mt-0.5">Institution: <b>{d.institutionName}</b></div>}{d.flagged && <div className="text-[11px] text-rose-700 mt-0.5"><b>Remarks:</b> {d.flagRemarks || ("Matches blacklist entry: "+d.flagMatch)}</div>}{d.staffStatus==="verified" && d.verifiedByStaffId && (<div className="text-[11px] text-green-700 mt-0.5">Verified by <b>{d.verifiedByStaffId}{d.verifiedByName?` (${d.verifiedByName})`:""}</b>{d.verifiedAt?` on ${fmtDate(d.verifiedAt)}`:""}</div>)}</div><div className="flex items-center gap-2 flex-wrap"><button disabled={!d.hasFile} onClick={()=>setPreview(d)} className={`text-xs px-3 py-1.5 rounded-md border ${d.hasFile?'border-crimson/30 text-crimson-deep hover:bg-[#fdf5f4] dark:hover:bg-[#281412]':'border-slate-200 text-slate-300 cursor-not-allowed'}`}>Preview</button><button disabled={!d.hasFile} onClick={()=>window.open(d.downloadUrl,"_blank")} className={`text-xs px-3 py-1.5 rounded-md ${d.hasFile?'bg-slate-800 text-white hover:bg-slate-900':'bg-slate-200 text-slate-400 cursor-not-allowed'}`}>Download</button>{!locked && (<><button disabled={!d.hasFile||busyId===d.id} onClick={()=>{setAccepting(d.id);setAcceptNote("");}} className={`text-xs px-3 py-1.5 rounded-md ${d.hasFile?'bg-green-600 text-white hover:bg-green-700':'bg-slate-200 text-slate-400 cursor-not-allowed'}`}>✓ Accept</button><button disabled={!d.hasFile||busyId===d.id} onClick={()=>{setRejecting(d.id);setNote("");}} className={`text-xs px-3 py-1.5 rounded-md ${d.hasFile?'bg-rose-600 text-white hover:bg-rose-700':'bg-slate-200 text-slate-400 cursor-not-allowed'}`}>✕ Reject</button></>)}{locked && isSupervisor && undoing !== d.id && (<button onClick={()=>{setUndoing(d.id); setUndoReason(""); setUndoErr("");}} className="text-xs px-3 py-1.5 rounded-md border border-amber-300 text-amber-700 hover:bg-amber-50">↶ Undo verification</button>)}<span className={`text-xs font-semibold px-2 py-1 rounded ${d.staffStatus==="verified"?'bg-green-100 text-green-700':d.staffStatus==="rejected"?'bg-rose-100 text-rose-700':'bg-slate-100 text-slate-500'}`}>{d.staffStatus==="verified"?"✓ Accepted":d.staffStatus==="rejected"?"✕ Rejected (awaiting re-upload)":"Awaiting review"}</span></div></div><div className="mt-2 flex flex-wrap items-center gap-2"><label className="text-[11px] text-slate-600">Physical copy:</label><select value={docPhysical[d.id] || ""} disabled={locked} onChange={e=>setDocPhysical(s=>({...s,[d.id]:e.target.value}))} className="text-xs border border-slate-300 rounded-md px-2 py-1 bg-white">{PHYSICAL_SUBMISSION_OPTS.map(([v,l])=><option key={v||"none"} value={v}>{l}</option>)}</select>{d.physicalSubmissionLabel && locked && <span className="text-[11px] text-slate-600">· {d.physicalSubmissionLabel}</span>}</div>{accepting===d.id && (<div className="mt-2 flex gap-2 flex-wrap"><input value={acceptNote} onChange={e=>setAcceptNote(e.target.value)} placeholder="Optional acceptance note (internal / audit)" className="flex-1 min-w-[200px] border border-slate-300 rounded-md px-2 py-1 text-xs outline-none" /><button onClick={()=>verify(d,"verified",acceptNote||null,docPhysical[d.id]||null)} className="text-xs bg-green-600 text-white px-3 py-1 rounded-md hover:bg-green-700">Confirm accept</button><button onClick={()=>setAccepting(null)} className="text-xs px-3 py-1 rounded-md border border-slate-300">Cancel</button></div>)}{rejecting===d.id && (<div className="mt-2 flex gap-2 flex-wrap"><input value={note} onChange={e=>setNote(e.target.value)} placeholder="Reason (shown to student)" className="flex-1 min-w-[200px] border border-slate-300 rounded-md px-2 py-1 text-xs outline-none" /><button onClick={()=>verify(d,"rejected",note||"Document rejected — please re-upload.",docPhysical[d.id]||null)} className="text-xs bg-rose-600 text-white px-3 py-1 rounded-md hover:bg-rose-700">Confirm reject</button><button onClick={()=>setRejecting(null)} className="text-xs px-3 py-1 rounded-md border border-slate-300">Cancel</button></div>)}{undoing===d.id && (<div className="mt-2 p-2 bg-amber-50 border border-amber-200 rounded text-xs"><div className="font-semibold text-amber-900 mb-1">Re-open verification (audit-logged)</div><div className="flex gap-2 flex-wrap"><input value={undoReason} onChange={e=>setUndoReason(e.target.value)} placeholder="Reason for re-opening this document" className="flex-1 min-w-[200px] border border-amber-300 rounded-md px-2 py-1 text-xs outline-none bg-white" /><button onClick={()=>doUndo(d)} className="text-xs bg-amber-600 text-white px-3 py-1 rounded-md hover:bg-amber-700">Confirm undo</button><button onClick={()=>{setUndoing(null); setUndoErr("");}} className="text-xs px-3 py-1 rounded-md border border-amber-300">Cancel</button></div>{undoErr && <div className="mt-2 text-[11px] text-rose-700 bg-rose-50 border border-rose-200 rounded px-2 py-1">{undoErr}</div>}</div>)}{d.staffStatus==="verified" && d.staffNote && <div className="mt-1 text-[11px] text-green-700">Acceptance note: {d.staffNote}</div>}{d.staffStatus==="rejected" && d.staffNote && <div className="mt-1 text-[11px] text-rose-600">Rejection note: {d.staffNote}</div>}{d.issueNote && d.studentStatus==="issue" && d.staffStatus!=="rejected" && <div className="mt-1 text-[11px] text-amber-600">Student note: {d.issueNote}</div>}</div>);})}</div>
-    <div className="flex items-center justify-between flex-wrap gap-2 mt-5 mb-2"><div className="font-semibold text-slate-800">Contact Details</div>{!editingContact && (<button type="button" onClick={startEditContact} className="text-xs bg-white border border-crimson/30 text-crimson-deep px-3 py-1.5 rounded-md hover:bg-[#fdf5f4]">✎ Correct contact details</button>)}</div>
-    {!s?.contactCompleted && !editingContact && (
-      <div className="border border-rose-200 rounded-lg p-3 mb-2 bg-rose-50/40 text-sm text-rose-900">Student has not submitted contact details yet. Staff can enter and verify them here so the student can proceed.</div>
+    <div className="flex items-center justify-between flex-wrap gap-2 mt-5 mb-2"><div className="font-semibold text-slate-800">Contact Details</div>{isSupervisor && !editingContact && (<button type="button" onClick={startEditContact} className="text-xs bg-white border border-crimson/30 text-crimson-deep px-3 py-1.5 rounded-md hover:bg-[#fdf5f4]">✎ Correct contact details</button>)}</div>
+    {isSupervisor && !s?.contactCompleted && !editingContact && (
+      <div className="border border-rose-200 rounded-lg p-3 mb-2 bg-rose-50/40 text-sm text-rose-900">Student has not submitted contact details yet. Supervisor can enter and verify them here.</div>
     )}
-    {editingContact ? (
+    {isSupervisor && editingContact ? (
       <div className="border border-indigo-200 rounded-lg p-4 bg-indigo-50/30 text-sm">
         <div className="text-[11px] text-indigo-900 mb-3">Correct mistakes in student or parent email / phone. You can save only, or save and mark verified at campus in one step.</div>
         <div className="grid sm:grid-cols-2 gap-3">
@@ -2044,9 +2323,9 @@ function AdminDetail({ appNo, role, close, onChange }) {
         </div>
         <div className="mt-3 flex items-center gap-2 flex-wrap">
           <span className={`text-xs font-semibold px-2 py-1 rounded ${s.contactVerified ? "bg-green-100 text-green-700" : "bg-amber-100 text-amber-800"}`}>{s.contactVerified ? "✓ Verified at campus" : "Awaiting campus verification"}</span>
-          {!s.contactVerified && (<button disabled={contactBusy || !(s.email && s.phone && s.parentEmail && s.parentPhone && s.parentName)} onClick={()=>verifyContact(true)} className="text-xs bg-green-600 text-white px-3 py-1.5 rounded-md hover:bg-green-700 disabled:opacity-60">{contactBusy?"…":"✓ Mark Contact Verified at Campus"}</button>)}
-          {s.contactVerified && (<button disabled={contactBusy} onClick={()=>verifyContact(false)} className="text-xs border border-slate-300 text-slate-600 px-3 py-1.5 rounded-md hover:bg-white disabled:opacity-60">Undo contact verification</button>)}
-          <button type="button" onClick={startEditContact} className="text-xs border border-slate-300 text-slate-700 px-3 py-1.5 rounded-md hover:bg-white">✎ Edit</button>
+          {isSupervisor && !s.contactVerified && (<button disabled={contactBusy || !(s.email && s.phone && s.parentEmail && s.parentPhone && s.parentName)} onClick={()=>verifyContact(true)} className="text-xs bg-green-600 text-white px-3 py-1.5 rounded-md hover:bg-green-700 disabled:opacity-60">{contactBusy?"…":"✓ Mark Contact Verified at Campus"}</button>)}
+          {isSupervisor && s.contactVerified && (<button disabled={contactBusy} onClick={()=>verifyContact(false)} className="text-xs border border-slate-300 text-slate-600 px-3 py-1.5 rounded-md hover:bg-white disabled:opacity-60">Undo contact verification</button>)}
+          {isSupervisor && (<button type="button" onClick={startEditContact} className="text-xs border border-slate-300 text-slate-700 px-3 py-1.5 rounded-md hover:bg-white">✎ Edit</button>)}
         </div>
       </div>
     )}

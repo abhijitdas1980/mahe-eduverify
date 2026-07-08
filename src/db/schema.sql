@@ -349,3 +349,16 @@ CREATE INDEX IF NOT EXISTS idx_comm_deliveries_message ON comm_deliveries(messag
 CREATE INDEX IF NOT EXISTS idx_comm_deliveries_status ON comm_deliveries(status);
 CREATE INDEX IF NOT EXISTS idx_comm_deliveries_created ON comm_deliveries(created_at);
 CREATE INDEX IF NOT EXISTS idx_comm_deliveries_token ON comm_deliveries(tracking_token);
+
+-- ====== v42: student password reset email OTP ======
+CREATE TABLE IF NOT EXISTS student_password_otps (
+  id          SERIAL PRIMARY KEY,
+  student_id  INT NOT NULL REFERENCES students(id) ON DELETE CASCADE,
+  otp_hash    VARCHAR(255) NOT NULL,
+  expires_at  TIMESTAMPTZ NOT NULL,
+  attempts    INT NOT NULL DEFAULT 0,
+  used_at     TIMESTAMPTZ,
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_student_password_otps_student ON student_password_otps(student_id);
+CREATE INDEX IF NOT EXISTS idx_student_password_otps_created ON student_password_otps(created_at);
