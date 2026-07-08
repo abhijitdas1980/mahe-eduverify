@@ -679,12 +679,12 @@ const LANDING_STEPS = [
   { n: "06", t: "Walk-in",   d: "Walk in with your original documents and get them verified on campus in minutes.", i: "door-open", active: true },
 ];
 const LANDING_BENEFITS = [
-  { n: "01", t: "Fully paperless",  d: "No printouts, no plastic folders. Every document lives securely in one organised place you can revisit anytime.", i: "leaf" },
+  { n: "01", t: "100% onboarding preparedness",  d: "Stay prepared for a seamless onboarding experience. Complete your pre-arrival formalities and keep everything ready in one place.", i: "leaf" },
   { n: "02", t: "Secure by design", d: "Bank-grade encryption and strict access controls keep academic records private — visible only to authorised staff.", i: "shield-check" },
   { n: "03", t: "Hours saved",      d: "Skip the orientation-day queues. Pre-verified students walk in, confirm originals, and walk out in minutes.", i: "timer" },
 ];
 const LANDING_FAQS = [
-  { q: "Do I still need to visit campus at all?", a: "Yes." },
+  { q: "Do I still need to visit campus at all?", a: "Yes. Document verification is a two-step process which culminates with physical submission on campus — first upload and self-verify online, then bring your originals for confirmation at your assigned verification slot." },
   { q: "Is my personal data safe on EduVerify?", a: "Every upload is encrypted and stored with strict, role-based access. Only the university's authorised verification cell can view your records." },
   { q: "Which documents will I need?", a: "After you log in and validate your admission, EduVerify generates a checklist for your program and category." },
   { q: "What if I miss my assigned slot?", a: "Contact the admissions helpdesk — they can reassign you to the next available verification time." },
@@ -834,6 +834,10 @@ function LandingHero({ go }) {
           <p className="mt-5 max-w-[520px] text-white/90 leading-relaxed text-[clamp(16px,1.7vw,19px)]">
             Upload and verify your admission documents online before orientation. On campus, all that's left is a quick document confirmation.
           </p>
+          <div className="mt-4 max-w-[520px] rounded-xl border border-white/25 bg-white/10 px-4 py-3.5 text-[15px] text-white/95 leading-relaxed backdrop-blur-sm">
+            <strong className="text-white">Two-step verification.</strong>{" "}
+            Document verification is a two-step process which culminates with physical submission on campus.
+          </div>
           <div className="flex flex-wrap gap-3 mt-8">
             <button type="button" onClick={() => go("student")} className="inline-flex items-center gap-2.5 bg-white text-crimson-dark font-bold text-[16px] px-6 py-[15px] rounded-xl shadow-xl hover:-translate-y-0.5 transition-transform">
               Student Login <i data-lucide="arrow-right" className="w-[18px] h-[18px]"></i>
@@ -938,7 +942,7 @@ function LandingHow() {
   return (
     <section id="how" className="bg-[#fbf5f4] dark:bg-[#241211] py-16 lg:py-28">
       <div className="max-w-[1200px] mx-auto px-4 sm:px-6">
-        <LandingSectionHead eyebrow="How It Works" title="Six guided steps to a verified seat" sub="From admission confirmation to the campus walk-in — EduVerify keeps you moving forward, one clear step at a time." />
+        <LandingSectionHead eyebrow="How It Works" title="Six guided steps to a verified seat" sub="Document verification is a two-step process — complete your uploads online, then confirm originals on campus. EduVerify guides you through every step." />
         <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-[18px] mt-11">
           {LANDING_STEPS.map((s) => (
             <div key={s.n} className={"reveal bg-white dark:bg-[#281412] border rounded-[16px] p-[26px] hover:-translate-y-1 transition-all " + (s.active ? "border-crimson dark:border-gold shadow-xl" : "border-[#ead9d6] dark:border-[#3d201d] hover:shadow-xl hover:border-crimson dark:hover:border-gold")}>
