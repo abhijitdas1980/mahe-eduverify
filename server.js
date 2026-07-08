@@ -127,7 +127,7 @@ async function start() {
   app.listen(PORT, () => {
     console.log(`EduVerify server listening on port ${PORT}`);
     console.log(`Storage: ${storageProvider()}${isStorageConfigured() ? "" : " (not configured)"}`);
-    console.log(`Email: ${emailBoot.configured ? "SMTP ready (" + emailBoot.smtpUser + ")" : emailBoot.reason}`);
+    console.log(`Email: ${emailBoot.configured ? `${emailBoot.mailProvider || "mail"} ready (${emailBoot.smtpUser})` : emailBoot.reason}`);
     console.log("Health check: /api/health");
     startCommunicationWorker(15000);
   });

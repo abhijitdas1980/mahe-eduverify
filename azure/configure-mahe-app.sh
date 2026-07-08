@@ -21,7 +21,11 @@ source "$ENV_FILE"
 : "${JWT_SECRET:?Set JWT_SECRET}"
 : "${SEED_ADMIN_PASSWORD:?Set SEED_ADMIN_PASSWORD}"
 : "${AZURE_STORAGE_CONNECTION_STRING:?Set AZURE_STORAGE_CONNECTION_STRING}"
-: "${SMTP_PASS:?Set SMTP_PASS (mandatory — M365 mailbox password for admissions.maheblr@manipal.edu)}"
+: "${SMTP_USER:?Set SMTP_USER (M365 mailbox address)}"
+if [[ -z "${SMTP_PASS:-}" && ( -z "${AZURE_TENANT_ID:-}" || -z "${AZURE_CLIENT_ID:-}" || -z "${AZURE_CLIENT_SECRET:-}" ) ]]; then
+  echo "Set SMTP_PASS (legacy) OR AZURE_TENANT_ID + AZURE_CLIENT_ID + AZURE_CLIENT_SECRET (Graph OAuth2)."
+  exit 1
+fi
 
 echo "Configuring $AZURE_WEBAPP in $AZURE_RG ..."
 
@@ -45,6 +49,10 @@ az webapp config appsettings set \
     CORS_ORIGIN="$CORS_ORIGIN" \
     PG_POOL_MAX="${PG_POOL_MAX:-25}" \
     NOTIFY_EMAIL_ENABLED="${NOTIFY_EMAIL_ENABLED:-true}" \
+    MAIL_PROVIDER="${MAIL_PROVIDER:-auto}" \
+    AZURE_TENANT_ID="${AZURE_TENANT_ID:-}" \
+    AZURE_CLIENT_ID="${AZURE_CLIENT_ID:-}" \
+    AZURE_CLIENT_SECRET="${AZURE_CLIENT_SECRET:-}" \
     SMTP_HOST="${SMTP_HOST:-smtp.office365.com}" \
     SMTP_PORT="${SMTP_PORT:-587}" \
     SMTP_USER="${SMTP_USER:-admissions.maheblr@manipal.edu}" \

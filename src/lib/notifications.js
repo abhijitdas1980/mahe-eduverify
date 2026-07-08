@@ -1,7 +1,8 @@
-/* Transactional email via MAHE Microsoft 365 SMTP (Office 365). */
+/* Transactional email — M365 Graph OAuth2 (preferred) or legacy SMTP. */
 const nodemailer = require("nodemailer");
 const { pool } = require("../config/db");
 const { docMetaFor } = require("../config/checklists");
+const { isGraphMailConfigured, sendViaGraph } = require("./graphMail");
 
 const DEFAULT_FROM = "MAHE Admissions <admissions.maheblr@manipal.edu>";
 const DEFAULT_PORTAL = "https://maheblreduverify.manipal.edu";
@@ -10,9 +11,22 @@ const HELPDESK_EMAIL = "admissions.maheblr@manipal.edu";
 
 let transporter;
 
+function isSmtpPasswordConfigured() {
+  return !!(process.env.SMTP_USER && process.env.SMTP_PASS);
+}
+
+function mailProvider() {
+  const explicit = (process.env.MAIL_PROVIDER || "auto").trim().toLowerCase();
+  if (explicit === "graph") return isGraphMailConfigured() ? "graph" : null;
+  if (explicit === "smtp") return isSmtpPasswordConfigured() ? "smtp" : null;
+  if (isGraphMailConfigured()) return "graph";
+  if (isSmtpPasswordConfigured()) return "smtp";
+  return null;
+}
+
 function isEmailConfigured() {
   if (process.env.NOTIFY_EMAIL_ENABLED === "false") return false;
-  return !!(process.env.SMTP_USER && process.env.SMTP_PASS);
+  return !!mailProvider();
 }
 
 function portalUrl() {
@@ -25,7 +39,7 @@ function fromAddress() {
 }
 
 function getTransporter() {
-  if (!isEmailConfigured()) return null;
+  if (mailProvider() !== "smtp") return null;
   if (!transporter) {
     transporter = nodemailer.createTransport({
       host: process.env.SMTP_HOST || "smtp.office365.com",
@@ -157,6 +171,14 @@ function escapeHtml(s) {
 }
 
 async function sendEmail({ to, subject, text, html, attachments, from, cc, bcc }) {
+  const provider = mailProvider();
+  if (!provider) throw new Error("Email not configured (set Graph OAuth2 or SMTP_USER + SMTP_PASS).");
+
+  if (provider === "graph") {
+    await sendViaGraph({ to, subject, text, html, attachments, from: from || fromAddress(), cc, bcc });
+    return;
+  }
+
   const tx = getTransporter();
   if (!tx) throw new Error("SMTP not configured.");
   const mail = {
@@ -212,7 +234,7 @@ async function notifyDocumentRejected({
       eventType: "doc_rejected",
       recipient: recipients.map((r) => r.email).join(", "),
       status: "skipped",
-      error: "SMTP not configured (set SMTP_USER and SMTP_PASS).",
+      error: "Email not configured (Graph OAuth2 or SMTP_USER + SMTP_PASS).",
       metadata: { docCode, documentName },
     });
     return { sent: 0, skipped: true, reason: "smtp-not-configured" };
@@ -261,13 +283,14 @@ async function notifyDocumentRejected({
 function getEmailStatus() {
   const enabled = process.env.NOTIFY_EMAIL_ENABLED !== "false";
   const hasUser = !!String(process.env.SMTP_USER || "").trim();
-  const hasPass = !!String(process.env.SMTP_PASS || "").trim();
+  const provider = mailProvider();
   let reason = "ready";
   if (!enabled) reason = "disabled";
-  else if (!hasUser || !hasPass) reason = "missing_credentials";
+  else if (!provider) reason = "missing_credentials";
   return {
     enabled,
-    configured: enabled && hasUser && hasPass,
+    configured: enabled && !!provider,
+    mailProvider: provider,
     smtpUser: hasUser ? String(process.env.SMTP_USER).trim() : null,
     reason,
   };
@@ -306,7 +329,9 @@ async function listNotificationsForStudent(studentId, limit = 15) {
 
 async function sendTestEmail(to) {
   if (!isValidEmail(to)) throw new Error("Invalid recipient email.");
-  if (!isEmailConfigured()) throw new Error("SMTP not configured — set SMTP_USER and SMTP_PASS on the server.");
+  if (!isEmailConfigured()) {
+    throw new Error("Email not configured — set Azure Graph OAuth2 (AZURE_TENANT_ID, AZURE_CLIENT_ID, AZURE_CLIENT_SECRET, SMTP_USER) or SMTP_PASS.");
+  }
   const portal = portalUrl();
   const subject = "MAHE EduVerify — test email";
   const text = [

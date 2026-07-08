@@ -2060,7 +2060,7 @@ function AdminDetail({ appNo, role, close, onChange }) {
     <div className="font-semibold text-slate-800 mt-5 mb-2">Email log</div>
     {detail.emailStatus && !detail.emailStatus.configured && (
       <div className="border border-amber-200 bg-amber-50 rounded-lg p-3 mb-2 text-xs text-amber-900">
-        <b>SMTP not configured</b> ({detail.emailStatus.reason}). Emails are skipped until <code className="bg-amber-100 px-1 rounded">SMTP_PASS</code> is set on App Service.
+        <b>Email not configured</b> ({detail.emailStatus.reason}). Set Graph OAuth2 (<code className="bg-amber-100 px-1 rounded">AZURE_TENANT_ID</code>, <code className="bg-amber-100 px-1 rounded">AZURE_CLIENT_ID</code>, <code className="bg-amber-100 px-1 rounded">AZURE_CLIENT_SECRET</code>) or <code className="bg-amber-100 px-1 rounded">SMTP_PASS</code> on App Service.
       </div>
     )}
     {(detail.emailNotifications || []).length === 0 ? (

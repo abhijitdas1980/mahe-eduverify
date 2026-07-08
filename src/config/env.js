@@ -73,17 +73,22 @@ function assertProductionConfig() {
     );
   }
 
-  /* Rejection emails (student + parent) require MAHE M365 SMTP credentials. */
+  /* Email: M365 Graph OAuth2 (preferred) or legacy SMTP password. */
   const smtpUser = (process.env.SMTP_USER || "").trim();
   const smtpPass = (process.env.SMTP_PASS || "").trim();
+  const graphOAuth =
+    (process.env.AZURE_TENANT_ID || "").trim()
+    && (process.env.AZURE_CLIENT_ID || "").trim()
+    && (process.env.AZURE_CLIENT_SECRET || "").trim();
+
   if (!smtpUser) {
     throw new Error(
-      "SMTP_USER must be set in production (e.g. admissions.maheblr@manipal.edu)."
+      "SMTP_USER must be set in production (M365 mailbox address, e.g. admissions.maheblr@manipal.edu)."
     );
   }
-  if (!smtpPass) {
+  if (!smtpPass && !graphOAuth) {
     throw new Error(
-      "SMTP_PASS is mandatory in production. Set the Microsoft 365 mailbox password (or app password) for SMTP_USER."
+      "Email auth required in production: set AZURE_TENANT_ID, AZURE_CLIENT_ID, AZURE_CLIENT_SECRET (Graph OAuth2) or SMTP_PASS (legacy SMTP)."
     );
   }
 }

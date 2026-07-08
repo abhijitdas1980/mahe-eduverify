@@ -331,7 +331,7 @@ async function sendAdminEmail({
   }
 
   if (!isEmailConfigured()) {
-    throw new Error("SMTP not configured — set SMTP_USER and SMTP_PASS on the server.");
+    throw new Error("Email not configured — set Graph OAuth2 (AZURE_*) or SMTP_USER + SMTP_PASS.");
   }
 
   const mailAttachments = normalizeAttachments(attachments);
