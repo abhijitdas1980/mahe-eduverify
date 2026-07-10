@@ -19,10 +19,18 @@ const COLUMNS = [
   "verification_batch",
   "email",
   "phone",
+  "parent_mail",
+  "parent_phone",
+  "relationship",
 ];
 
 /** Headers that may be omitted in older templates. */
-const OPTIONAL_COLUMNS = ["verification_batch"];
+const OPTIONAL_COLUMNS = [
+  "verification_batch",
+  "parent_mail",
+  "parent_phone",
+  "relationship",
+];
 
 const REQUIRED_HEADERS = COLUMNS.filter((c) => !OPTIONAL_COLUMNS.includes(c));
 
@@ -37,6 +45,7 @@ const REQUIRED_FIELDS = [
 ];
 
 const GENDERS = ["Male", "Female", "Other"];
+const PARENT_RELATIONS = ["Father", "Mother", "Guardian", "Other"];
 const DATE_DISPLAY_FORMAT = "dd-mm-yyyy";
 const DATE_REGEX = /^(\d{1,2})-(\d{1,2})-(\d{4})$/;
 /** Application numbers must be digits only (no letters or symbols). */
@@ -52,6 +61,9 @@ const FIELD_LIMITS = {
   category: 20,
   email: 160,
   phone: 20,
+  parent_mail: 160,
+  parent_phone: 20,
+  relationship: 30,
 };
 
 const SESSION_TTL_MS = 30 * 60 * 1000;
@@ -67,6 +79,7 @@ module.exports = {
   OPTIONAL_COLUMNS,
   REQUIRED_FIELDS,
   GENDERS,
+  PARENT_RELATIONS,
   DATE_DISPLAY_FORMAT,
   DATE_REGEX,
   APPLICATION_NUMBER_REGEX,

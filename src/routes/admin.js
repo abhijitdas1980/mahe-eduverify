@@ -63,6 +63,8 @@ const { emailAttachments } = require("../middleware/emailAttachmentUpload");
 
 const studentBulkRoutes = require("./studentBulk");
 const communicationRoutes = require("./communication");
+const { bulkInsertStudents } = require("../lib/studentBulkImport");
+const { validateRow, loadExistingAppNos } = require("../lib/studentBulkValidator");
 
 const router = express.Router();
 router.use(requireAdmin);
@@ -72,6 +74,37 @@ router.use("/communication", communicationRoutes);
 
 const isDate = (v) => /^\d{4}-\d{2}-\d{2}$/.test(v || "");
 const SLOT_STATUSES = ["open", "hidden", "closed"];
+
+function isoToBulkDate(iso) {
+  if (!isDate(iso)) return "";
+  const [y, m, d] = iso.split("-");
+  return `${d}-${m}-${y}`;
+}
+
+function buildBulkRowFromBody(b) {
+  return {
+    application_number: String(b.appNo || b.application_number || "").trim(),
+    full_name: String(b.name || b.full_name || "").trim(),
+    date_of_birth: isoToBulkDate(b.dob || b.date_of_birth),
+    gender: String(b.gender || "").trim(),
+    profile: String(b.profile || "").trim().toUpperCase(),
+    program: String(b.program || "").trim(),
+    department: b.department ? String(b.department).trim() : "",
+    section: b.section ? String(b.section).trim() : "",
+    batch: b.batch ? String(b.batch).trim() : "",
+    category: b.category ? String(b.category).trim() : "",
+    orientation_date: isoToBulkDate(b.orientationDate || b.orientation_date),
+    verification_date: isoToBulkDate(b.verificationDate || b.verification_date),
+    verification_batch: b.verificationBatch != null && b.verificationBatch !== ""
+      ? String(b.verificationBatch).trim()
+      : (b.verification_batch != null && b.verification_batch !== "" ? String(b.verification_batch).trim() : ""),
+    email: b.email ? String(b.email).trim() : "",
+    phone: b.phone ? String(b.phone).trim() : "",
+    parent_mail: (b.parentMail || b.parent_mail || b.parentEmail || b.parent_email || "").toString().trim(),
+    parent_phone: (b.parentPhone || b.parent_phone || "").toString().trim(),
+    relationship: (b.relationship || b.parentRelation || b.parent_relation || "").toString().trim(),
+  };
+}
 
 /* v8 — codes excluded from totals/counts (legacy + optional). Used in SQL via
    d.doc_code <> ALL($::text[]) to keep mandatory-only stats. */
@@ -688,31 +721,24 @@ router.get("/students/login-roster.xlsx", requireSupervisor, async (req, res, ne
 
 router.post("/students", requireSupervisor, async (req, res, next) => {
   try {
-    const b = req.body || {};
-    const appNo = String(b.appNo || "").trim();
-    const name = String(b.name || "").trim();
-    const dob = String(b.dob || "").trim();
-    const program = String(b.program || "").trim();
-    const profile = String(b.profile || "").trim().toUpperCase();
-    if (!appNo || !name || !isDate(dob) || !program) return res.status(400).json({ error: "Application number, name, a valid date of birth, and program are required." });
-    if (!isValidProfile(profile)) return res.status(400).json({ error: "Profile must be UG or PG." });
-    /* v8 — soft-validate category if provided (free text still accepted for legacy data) */
-    const category = b.category ? normalizeCategory(String(b.category).trim()) : null;
-    const verificationDate = isDate(b.verificationDate) ? b.verificationDate
-      : (isDate(b.orientationDate) ? b.orientationDate : null);
-    const ex = await pool.query("SELECT 1 FROM students WHERE LOWER(app_no)=LOWER($1)", [appNo]);
-    if (ex.rows.length) return res.status(409).json({ error: "A student with that application number already exists." });
-    const ins = await pool.query(
-      `INSERT INTO students (app_no,name,dob,email,phone,program,department,batch,category,section,profile,orientation_date,assigned_verification_date)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING id`,
-      [appNo, name, dob, b.email ? String(b.email).trim() : null, b.phone ? String(b.phone).trim() : null,
-        program, b.department ? String(b.department).trim() : null, b.batch ? String(b.batch).trim() : null,
-        category, b.section ? String(b.section).trim() : null,
-        profile, isDate(b.orientationDate) ? b.orientationDate : null, verificationDate]
-    );
-    await ensureDocuments(ins.rows[0].id, profile, category, program);
-    await audit(req, "admin", req.admin.staffId, "STUDENT_ADDED", `${appNo} (${profile})`);
-    res.json({ ok: true, appNo });
+    const bulkRow = buildBulkRowFromBody(req.body || {});
+    const existingAppNos = await loadExistingAppNos(pool, [bulkRow.application_number].filter(Boolean));
+    const result = validateRow(bulkRow, { seenAppNos: new Set(), existingAppNos });
+    if (!result.valid) {
+      return res.status(400).json({
+        error: result.errors[0] || "Invalid student data.",
+        errors: result.errors,
+        warnings: result.warnings,
+      });
+    }
+
+    const { inserted, appNos } = await bulkInsertStudents([result.normalized]);
+    if (!inserted) {
+      return res.status(409).json({ error: "A student with that application number already exists." });
+    }
+
+    await audit(req, "admin", req.admin.staffId, "STUDENT_ADDED", `${appNos[0]} (${result.normalized.profile})`);
+    res.json({ ok: true, appNo: appNos[0], warnings: result.warnings });
   } catch (e) { next(e); }
 });
 

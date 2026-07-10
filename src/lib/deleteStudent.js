@@ -62,4 +62,35 @@ async function deleteStudentsByAppNos(pool, appNos) {
   }
 }
 
-module.exports = { deleteStudentsByAppNos };
+/** Delete every student record (uploads, slots, verification links). */
+async function deleteAllStudents(pool) {
+  const client = await pool.connect();
+  const deleted = [];
+  try {
+    await client.query("BEGIN");
+    const sr = await client.query("SELECT id FROM students ORDER BY id FOR UPDATE");
+    for (const row of sr.rows) {
+      const appNo = await deleteOneStudent(client, row.id);
+      if (appNo) deleted.push(appNo);
+    }
+    await client.query("UPDATE slots SET booked = 0");
+    await client.query(
+      `UPDATE verify_schedule
+          SET student_id = NULL,
+              status = CASE WHEN status IN ('booked','pending','verified','absent') THEN 'open' ELSE status END,
+              verified_at = NULL,
+              verified_by = NULL,
+              updated_at = now()
+        WHERE student_id IS NOT NULL`
+    );
+    await client.query("COMMIT");
+    return { deleted, count: deleted.length };
+  } catch (e) {
+    await client.query("ROLLBACK").catch(() => {});
+    throw e;
+  } finally {
+    client.release();
+  }
+}
+
+module.exports = { deleteStudentsByAppNos, deleteAllStudents };

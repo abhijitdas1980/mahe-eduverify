@@ -3,14 +3,14 @@ const { CATEGORIES, PROFILES, isValidProfile, normalizeCategory } = require("../
 const {
   REQUIRED_FIELDS,
   GENDERS,
+  PARENT_RELATIONS,
   DATE_REGEX,
   DATE_DISPLAY_FORMAT,
   APPLICATION_NUMBER_REGEX,
   FIELD_LIMITS,
   DEFAULT_VERIFICATION_DATES,
 } = require("../constants/studentBulkUpload");
-
-const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const { normalizePhone, isValidEmail, isValidPhone } = require("./contact");
 
 function cellStr(v) {
   if (v === null || v === undefined) return "";
@@ -72,6 +72,9 @@ function validateRow(row, ctx) {
     verification_batch: null,
     email: null,
     phone: null,
+    parent_email: null,
+    parent_phone: null,
+    parent_relation: null,
   };
 
   const r = normalizeRow(row);
@@ -191,14 +194,45 @@ function validateRow(row, ctx) {
   if (r.email) {
     if (r.email.length > FIELD_LIMITS.email) {
       errors.push(`email must be at most ${FIELD_LIMITS.email} characters.`);
-    } else if (!EMAIL_REGEX.test(r.email)) {
+    } else if (!isValidEmail(r.email)) {
       errors.push("email is not valid.");
-    } else normalized.email = r.email;
+    } else normalized.email = r.email.trim().toLowerCase();
   }
   if (r.phone) {
-    if (r.phone.length > FIELD_LIMITS.phone) {
+    const phone = normalizePhone(r.phone);
+    if (phone.length > FIELD_LIMITS.phone) {
       errors.push(`phone must be at most ${FIELD_LIMITS.phone} characters.`);
-    } else normalized.phone = r.phone;
+    } else if (!isValidPhone(r.phone)) {
+      errors.push("phone is not valid (use 10–15 digits).");
+    } else normalized.phone = phone;
+  }
+
+  const parentMail = r.parent_mail || r.parent_email;
+  if (parentMail) {
+    const mail = parentMail.trim().toLowerCase();
+    if (mail.length > FIELD_LIMITS.parent_mail) {
+      errors.push(`parent_mail must be at most ${FIELD_LIMITS.parent_mail} characters.`);
+    } else if (!isValidEmail(mail)) {
+      errors.push("parent_mail is not valid.");
+    } else normalized.parent_email = mail;
+  }
+  if (r.parent_phone) {
+    const parentPhone = normalizePhone(r.parent_phone);
+    if (parentPhone.length > FIELD_LIMITS.parent_phone) {
+      errors.push(`parent_phone must be at most ${FIELD_LIMITS.parent_phone} characters.`);
+    } else if (!isValidPhone(r.parent_phone)) {
+      errors.push("parent_phone is not valid (use 10–15 digits).");
+    } else normalized.parent_phone = parentPhone;
+  }
+  const relationship = r.relationship || r.parent_relation;
+  if (relationship) {
+    if (relationship.length > FIELD_LIMITS.relationship) {
+      errors.push(`relationship must be at most ${FIELD_LIMITS.relationship} characters.`);
+    } else {
+      const match = PARENT_RELATIONS.find((rel) => rel.toLowerCase() === relationship.toLowerCase());
+      if (!match) errors.push(`relationship must be one of: ${PARENT_RELATIONS.join(", ")}.`);
+      else normalized.parent_relation = match;
+    }
   }
 
   const valid = errors.length === 0;

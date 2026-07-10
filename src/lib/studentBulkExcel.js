@@ -5,6 +5,7 @@ const {
   COLUMNS,
   REQUIRED_HEADERS,
   GENDERS,
+  PARENT_RELATIONS,
   DATE_DISPLAY_FORMAT,
   DEFAULT_VERIFICATION_DATES,
 } = require("../constants/studentBulkUpload");
@@ -28,6 +29,9 @@ const SAMPLE_ROWS = [
     verification_batch: "1",
     email: "aarav@example.com",
     phone: "9000000001",
+    parent_mail: "parent.sharma@example.com",
+    parent_phone: "9000000011",
+    relationship: "Father",
   },
   {
     application_number: "2026101003",
@@ -45,6 +49,9 @@ const SAMPLE_ROWS = [
     verification_batch: "2",
     email: "priya@example.com",
     phone: "9000000002",
+    parent_mail: "parent.menon@example.com",
+    parent_phone: "9000000022",
+    relationship: "Mother",
   },
 ];
 
@@ -73,6 +80,7 @@ async function buildTemplateBuffer() {
   const genderCol = COLUMNS.indexOf("gender") + 1;
   const profileCol = COLUMNS.indexOf("profile") + 1;
   const categoryCol = COLUMNS.indexOf("category") + 1;
+  const relationshipCol = COLUMNS.indexOf("relationship") + 1;
 
   const verificationDateCol = COLUMNS.indexOf("verification_date") + 1;
 
@@ -110,6 +118,14 @@ async function buildTemplateBuffer() {
       errorTitle: "Invalid category",
       error: "Choose a category from the list (optional).",
     };
+    ws.getCell(r, relationshipCol).dataValidation = {
+      type: "list",
+      allowBlank: true,
+      formulae: [`"${PARENT_RELATIONS.join(",")}"`],
+      showErrorMessage: true,
+      errorTitle: "Invalid relationship",
+      error: `Choose one of: ${PARENT_RELATIONS.join(", ")} (optional).`,
+    };
     ws.getCell(r, verificationDateCol).dataValidation = {
       type: "list",
       allowBlank: true,
@@ -128,7 +144,7 @@ async function buildTemplateBuffer() {
   }
 
   const noteRow = ws.addRow([]);
-  noteRow.getCell(1).value = `Required: application_number (digits only, e.g. 2026101001), full_name, date_of_birth, gender, profile (UG or PG), program, verification_date (dd-mm-yyyy, e.g. 20-07-2026). verification_batch (1–4) is optional and auto-filled from the date when omitted. Date format: ${DATE_DISPLAY_FORMAT}. File type: .xlsx only.`;
+  noteRow.getCell(1).value = `Required: application_number (digits only, e.g. 2026101001), full_name, date_of_birth, gender, profile (UG or PG), program, verification_date (dd-mm-yyyy, e.g. 20-07-2026). Optional: verification_batch (1–4), email, phone, parent_mail, parent_phone, relationship (Father/Mother/Guardian/Other). Date format: ${DATE_DISPLAY_FORMAT}. File type: .xlsx only.`;
   noteRow.getCell(1).font = { italic: true, color: { argb: "FF64748B" } };
   ws.mergeCells(noteRow.number, 1, noteRow.number, COLUMNS.length);
 

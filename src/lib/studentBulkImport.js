@@ -20,7 +20,7 @@ async function bulkInsertStudents(rows) {
       const params = [];
 
       chunk.forEach((row, idx) => {
-        const base = idx * 15;
+        const base = idx * 18;
         params.push(
           row.application_number,
           row.full_name,
@@ -36,12 +36,15 @@ async function bulkInsertStudents(rows) {
           row.verification_date,
           row.verification_batch,
           row.email,
-          row.phone
+          row.phone,
+          row.parent_email,
+          row.parent_phone,
+          row.parent_relation
         );
         values.push(
           `($${base + 1},$${base + 2},$${base + 3},$${base + 4},$${base + 5},$${base + 6},` +
           `$${base + 7},$${base + 8},$${base + 9},$${base + 10},$${base + 11},$${base + 12},` +
-          `$${base + 13},$${base + 14},$${base + 15})`
+          `$${base + 13},$${base + 14},$${base + 15},$${base + 16},$${base + 17},$${base + 18})`
         );
       });
 
@@ -49,7 +52,7 @@ async function bulkInsertStudents(rows) {
         INSERT INTO students
           (app_no, name, dob, gender, profile, program, department, section, batch,
            category, orientation_date, assigned_verification_date, assigned_batch,
-           email, phone)
+           email, phone, parent_email, parent_phone, parent_relation)
         VALUES ${values.join(",")}
         ON CONFLICT (app_no) DO NOTHING
         RETURNING id, app_no, profile`;
