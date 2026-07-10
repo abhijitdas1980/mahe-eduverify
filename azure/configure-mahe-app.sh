@@ -66,4 +66,4 @@ echo "Restarting web app..."
 az webapp restart --resource-group "$AZURE_RG" --name "$AZURE_WEBAPP"
 
 echo "Done. Check health:"
-echo "  curl -s https://${AZURE_WEBAPP,,}.azurewebsites.net/api/health"
+echo "  curl -s https://maheblreduverify.manipal.edu/api/health"

@@ -7,6 +7,11 @@ on:
         description: Type "deploy-prod" to confirm production deployment
         required: true
         type: string
+      skip_health_check:
+        description: Skip /api/health check (use if DATABASE_URL not configured yet)
+        required: false
+        default: false
+        type: boolean
 
 concurrency:
   group: mahe-prod-deploy
@@ -14,7 +19,7 @@ concurrency:
 
 env:
   AZURE_WEBAPP_NAME: MAHE-CI-DOC-PRD-APP01
-  AZURE_WEBAPP_HOST: mahe-ci-doc-prd-app01.azurewebsites.net
+  AZURE_WEBAPP_HOST: maheblreduverify.manipal.edu
   NODE_VERSION: '20'
 
 jobs:
@@ -48,14 +53,32 @@ jobs:
           package: .
 
       - name: Health check
+        if: ${{ inputs.skip_health_check != true }}
         run: |
           URL="https://${{ env.AZURE_WEBAPP_HOST }}/api/health"
+          echo "Checking $URL"
           for i in 1 2 3 4 5 6 8 10; do
-            BODY=$(curl -fsS "$URL" 2>/dev/null || true)
+            BODY=$(curl -sS "$URL" 2>/dev/null || true)
+            echo "Attempt $i: $BODY"
             if echo "$BODY" | grep -q '"db":"up"'; then
-              echo "Production health OK"
+              echo "Production health OK — database connected"
               exit 0
+            fi
+            if echo "$BODY" | grep -q '"db":"down"'; then
+              echo "App is reachable but database is down — set DATABASE_URL on MAHE-CI-DOC-PRD-APP01"
+              exit 1
             fi
             sleep 20
           done
+          echo "Health check failed — host unreachable or app not started"
           exit 1
+
+      - name: Deployment summary
+        if: always()
+        run: |
+          echo "### MAHE Production deployment" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **App Service:** \`${{ env.AZURE_WEBAPP_NAME }}\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **URL:** https://${{ env.AZURE_WEBAPP_HOST }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **Health:** https://${{ env.AZURE_WEBAPP_HOST }}/api/health" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **Admin login:** Verification Cell → ADM-001" >> "$GITHUB_STEP_SUMMARY"
