@@ -63,8 +63,9 @@ Repo → **Settings → Secrets and variables → Actions** → **New repository
 
 | Secret | How to get it |
 |--------|----------------|
-| `AZURE_WEBAPP_PUBLISH_PROFILE` | App Service → **Download publish profile** (see below) |
-| `AZURE_CREDENTIALS` | _(Optional)_ Service principal JSON — requires **Application Administrator** or ask infra |
+| `AZURE_WEBAPP_PUBLISH_PROFILE` | UAT: App Service **MAHE-CI-DOC-UAT-APP01** → Download publish profile |
+| `AZURE_WEBAPP_PUBLISH_PROFILE_PRD` | Prod: App Service **MAHE-CI-DOC-PRD-APP01** → Download publish profile |
+| `AZURE_CREDENTIALS` | _(Optional)_ Service principal JSON — only if a workflow uses `azure/login` |
 
 #### Publish profile (recommended if `az ad sp create-for-rbac` fails)
 
@@ -73,6 +74,8 @@ Repo → **Settings → Secrets and variables → Actions** → **New repository
 3. GitHub repo → **Settings → Secrets → Actions** → **New secret**
 4. Name: `AZURE_WEBAPP_PUBLISH_PROFILE`
 5. Value: paste the **entire** `.PublishSettings` XML file contents
+
+**Production:** repeat for **MAHE-CI-DOC-PRD-APP01** → secret name `AZURE_WEBAPP_PUBLISH_PROFILE_PRD`
 
 Optional: **Settings → Environments** → create `uat` and `production` with reviewers.
 
