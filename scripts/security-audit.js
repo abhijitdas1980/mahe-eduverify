@@ -46,7 +46,7 @@ async function buildOneRowUploadBuffer(appNo) {
   ws.addRow(COLUMNS);
   ws.addRow([
     appNo, "Audit Bulk", "01-01-2010", "Male", "UG", "BSc CS", "CS", "A", "2026", "General",
-    "", "20-07-2026", "1", "audit-bulk@test.local", "9000000099", "", "", "",
+    "", "20-07-2026", "1", "audit-bulk@test.local", "9000000099", "", "", "", "",
   ]);
   return Buffer.from(await wb.xlsx.writeBuffer());
 }

@@ -11,6 +11,7 @@
     "start": "node server.js",
     "setup": "node src/db/setup.js",
     "reset-admin": "node scripts/reset-admin-password.js",
+    "security-audit": "node scripts/security-audit.js",
     "dev": "node server.js"
   },
   "dependencies": {

@@ -100,6 +100,7 @@ function buildBulkRowFromBody(b) {
       : (b.verification_batch != null && b.verification_batch !== "" ? String(b.verification_batch).trim() : ""),
     email: b.email ? String(b.email).trim() : "",
     phone: b.phone ? String(b.phone).trim() : "",
+    parent_name: (b.parentName || b.parent_name || "").toString().trim(),
     parent_mail: (b.parentMail || b.parent_mail || b.parentEmail || b.parent_email || "").toString().trim(),
     parent_phone: (b.parentPhone || b.parent_phone || "").toString().trim(),
     relationship: (b.relationship || b.parentRelation || b.parent_relation || "").toString().trim(),

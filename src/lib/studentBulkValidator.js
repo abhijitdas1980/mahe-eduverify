@@ -72,6 +72,7 @@ function validateRow(row, ctx) {
     verification_batch: null,
     email: null,
     phone: null,
+    parent_name: null,
     parent_email: null,
     parent_phone: null,
     parent_relation: null,
@@ -208,6 +209,12 @@ function validateRow(row, ctx) {
   }
 
   const parentMail = r.parent_mail || r.parent_email;
+  const parentName = r.parent_name;
+  if (parentName) {
+    if (parentName.length > FIELD_LIMITS.parent_name) {
+      errors.push(`parent_name must be at most ${FIELD_LIMITS.parent_name} characters.`);
+    } else normalized.parent_name = parentName;
+  }
   if (parentMail) {
     const mail = parentMail.trim().toLowerCase();
     if (mail.length > FIELD_LIMITS.parent_mail) {

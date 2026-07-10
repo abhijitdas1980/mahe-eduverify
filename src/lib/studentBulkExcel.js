@@ -29,6 +29,7 @@ const SAMPLE_ROWS = [
     verification_batch: "1",
     email: "aarav@example.com",
     phone: "9000000001",
+    parent_name: "Rajesh Sharma",
     parent_mail: "parent.sharma@example.com",
     parent_phone: "9000000011",
     relationship: "Father",
@@ -49,6 +50,7 @@ const SAMPLE_ROWS = [
     verification_batch: "2",
     email: "priya@example.com",
     phone: "9000000002",
+    parent_name: "Lakshmi Menon",
     parent_mail: "parent.menon@example.com",
     parent_phone: "9000000022",
     relationship: "Mother",
@@ -144,7 +146,7 @@ async function buildTemplateBuffer() {
   }
 
   const noteRow = ws.addRow([]);
-  noteRow.getCell(1).value = `Required: application_number (digits only, e.g. 2026101001), full_name, date_of_birth, gender, profile (UG or PG), program, verification_date (dd-mm-yyyy, e.g. 20-07-2026). Optional: verification_batch (1–4), email, phone, parent_mail, parent_phone, relationship (Father/Mother/Guardian/Other). Date format: ${DATE_DISPLAY_FORMAT}. File type: .xlsx only.`;
+  noteRow.getCell(1).value = `Required: application_number (digits only, e.g. 2026101001), full_name, date_of_birth, gender, profile (UG or PG), program, verification_date (dd-mm-yyyy, e.g. 20-07-2026). Optional: verification_batch (1–4), email, phone, parent_name, parent_mail, parent_phone, relationship (Father/Mother/Guardian/Other). Date format: ${DATE_DISPLAY_FORMAT}. File type: .xlsx only.`;
   noteRow.getCell(1).font = { italic: true, color: { argb: "FF64748B" } };
   ws.mergeCells(noteRow.number, 1, noteRow.number, COLUMNS.length);
 

@@ -19,6 +19,7 @@ const COLUMNS = [
   "verification_batch",
   "email",
   "phone",
+  "parent_name",
   "parent_mail",
   "parent_phone",
   "relationship",
@@ -27,6 +28,7 @@ const COLUMNS = [
 /** Headers that may be omitted in older templates. */
 const OPTIONAL_COLUMNS = [
   "verification_batch",
+  "parent_name",
   "parent_mail",
   "parent_phone",
   "relationship",
@@ -61,6 +63,7 @@ const FIELD_LIMITS = {
   category: 20,
   email: 160,
   phone: 20,
+  parent_name: 120,
   parent_mail: 160,
   parent_phone: 20,
   relationship: 30,
