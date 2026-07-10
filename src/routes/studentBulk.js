@@ -39,7 +39,7 @@ router.post("/validate", requireSupervisor, singleExcel("file"), async (req, res
     const validation = validateRows(parsedRows, existingAppNos);
 
     const sessionId = validation.validRows.length
-      ? createSession(validation.validRows)
+      ? createSession(validation.validRows, req.admin.staffId)
       : null;
 
     res.json({
@@ -69,6 +69,11 @@ router.post("/confirm", requireSupervisor, async (req, res, next) => {
     const session = getSession(sessionId);
     if (!session?.validRows?.length) {
       return res.status(400).json({ error: "Upload session expired or has no valid rows. Please validate again." });
+    }
+    if (session.staffId && session.staffId !== req.admin.staffId) {
+      return res.status(403).json({
+        error: "This upload session belongs to another staff member. Please validate the file again.",
+      });
     }
 
     const appNos = session.validRows.map((r) => r.application_number);

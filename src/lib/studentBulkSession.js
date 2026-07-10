@@ -11,10 +11,15 @@ function purgeExpired() {
   }
 }
 
-function createSession(validRows) {
+/** @param {object[]} validRows @param {string} staffId — supervisor who validated the file */
+function createSession(validRows, staffId) {
   purgeExpired();
   const sessionId = crypto.randomUUID();
-  sessions.set(sessionId, { validRows, createdAt: Date.now() });
+  sessions.set(sessionId, {
+    validRows,
+    staffId: String(staffId || "").trim(),
+    createdAt: Date.now(),
+  });
   return sessionId;
 }
 

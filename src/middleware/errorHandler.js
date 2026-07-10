@@ -1,6 +1,4 @@
 /* Central error handler — keeps internal details out of API responses. */
-const { debugLog } = require("../lib/debugLog");
-
 function isDbUnavailable(err) {
   const code = err && err.code;
   const msg = String((err && err.message) || "");
@@ -16,21 +14,6 @@ function isDbUnavailable(err) {
 
 module.exports = function errorHandler(err, req, res, _next) {
   console.error("ERROR:", err.stack || err.message || err);
-
-  // #region agent log
-  debugLog({
-    hypothesisId: "H2",
-    location: "errorHandler.js",
-    message: "error_handler_invoked",
-    data: {
-      path: req?.path,
-      code: err?.code || null,
-      isDb: isDbUnavailable(err),
-      status: err?.status || null,
-    },
-    runId: "audit",
-  });
-  // #endregion
 
   if (isDbUnavailable(err)) {
     return res.status(503).json({
