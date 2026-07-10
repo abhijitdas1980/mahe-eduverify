@@ -1197,7 +1197,7 @@ function StudentLogin({ onAuth, back }) {
 
         {step === "identify" && (
           <form onSubmit={check} className="mt-5 space-y-4">
-            <Field label="Application Number"><input value={appNo} onChange={e => setAppNo(e.target.value)} placeholder="e.g. CSE2026001" required className="ev-input" /></Field>
+            <Field label="Application Number"><input value={appNo} onChange={e => setAppNo(e.target.value)} placeholder="e.g. 123456789" required className="ev-input" /></Field>
             <Field label="Date of Birth"><input type="date" value={dob} onChange={e => setDob(e.target.value)} required className="ev-input" /></Field>
             <ErrorNote msg={err} />
             <PrimaryBtn busy={busy}>Continue →</PrimaryBtn>
@@ -1230,7 +1230,7 @@ function StudentLogin({ onAuth, back }) {
             <div className="text-xs text-slate-600 bg-[#fdf5f4] dark:bg-[#281412] border border-[#ead9d6] dark:border-[#3d201d] rounded-md p-2">
               A 6-digit code will be sent to the <b>email address provided during admission</b> for this application.
             </div>
-            <Field label="Application Number"><input value={appNo} onChange={e => setAppNo(e.target.value)} required className="ev-input" /></Field>
+            <Field label="Application Number"><input value={appNo} onChange={e => setAppNo(e.target.value)} placeholder="e.g. 123456789" required className="ev-input" /></Field>
             <Field label="Date of Birth"><input type="date" value={dob} onChange={e => setDob(e.target.value)} required className="ev-input" /></Field>
             <ErrorNote msg={err} />
             <PrimaryBtn busy={busy}>{busy ? "Sending…" : "Send verification code →"}</PrimaryBtn>
