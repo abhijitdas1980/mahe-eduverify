@@ -2,7 +2,12 @@
 const { pool } = require("../config/db");
 
 const DEFAULT_DATES = ["2026-07-20", "2026-07-21", "2026-07-22", "2026-07-23"];
-const DEFAULT_ROOMS = Array.from({ length: 15 }, (_, i) => "AB4-" + String(101 + i));
+/** AB4 verification rooms (Sl 1–15): 2nd fl 203–207, 3rd fl 310–317, 5th fl 501–502 */
+const DEFAULT_ROOMS = [
+  "AB4-205", "AB4-204", "AB4-203", "AB4-206", "AB4-207",
+  "AB4-310", "AB4-311", "AB4-312", "AB4-313", "AB4-314",
+  "AB4-315", "AB4-316", "AB4-317", "AB4-501", "AB4-502",
+];
 const DEFAULT_START_MINUTES = 13 * 60;
 const DEFAULT_SLOT_MINUTES = 10;
 const DEFAULT_SLOTS_PER_ROOM = 32;
