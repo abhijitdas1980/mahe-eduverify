@@ -175,7 +175,6 @@ const DOC_CATALOG = {
   PASSPORT:   { copies:1, formats:"PDF only (max 6MB)", mistakes:["Only front page uploaded","Expired passport","Not a clear copy of passport"] },
   VISA:       { copies:1, formats:"PDF only (max 6MB)", mistakes:["Tourist visa uploaded","Visa expiry before course end","Not a clear copy of visa"] },
   EQUIV:      { copies:1, formats:"PDF only (max 6MB)", mistakes:["Provisional letter uploaded instead","Not on AIU letterhead"] },
-  ENGLISH:    { copies:1, formats:"PDF only (max 6MB)", mistakes:["Score expired","Score report image not official"] },
 };
 const catalog = (code) => DOC_CATALOG[code] || { copies:1, formats:"PDF only (max 6MB)", mistakes:[] };
 

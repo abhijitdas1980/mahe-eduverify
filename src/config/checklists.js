@@ -4,6 +4,7 @@
        PAN     (Student PAN Card)
        CASTE   (Caste Certificate)
        MEDICAL (Medical Fitness Certificate)
+       ENGLISH (English Proficiency IELTS/TOEFL — was Dual Degree only)
    - OPTIONAL (student may skip, admin can still view if uploaded):
        MIGRATION (Migration Certificate — from Last Institution Studied)
    - TC is mandatory for all profiles (v33).
@@ -11,7 +12,7 @@
    - v35: student profile is UG or PG only; category drives international/extra docs.
    - v36: PG — 10th/12th marks cards are not mandatory; 10th marksheet optional (DoB proof only).
    - v37: PG — Parent/Guardian Anti-Ragging Undertaking (ANTI_RAG_P) is mandatory.
-   - v38: English Proficiency (ENGLISH) mandatory only when program name includes Dual Degree.
+   - v38: English Proficiency (ENGLISH) was mandatory for Dual Degree programs — retired (v41).
    - v39: NRI Sponsored — Passport Copy and Visa Copy mandatory (with category name normalization).
    - v40: Foreign / NRI / NRI Sponsored — AIU / Equivalence Certificate (EQUIV) optional online.
    Legacy doc rows on existing students remain in the DB but are filtered
@@ -40,7 +41,6 @@ const DOC_META = {
   PASSPORT:   { name: "Passport Copy",                                                 original: true,  needsInstitution: false, imageOnly: false, optional: false },
   VISA:       { name: "Visa Copy",                                                     original: true,  needsInstitution: false, imageOnly: false, optional: false },
   EQUIV:      { name: "AIU / Equivalence Certificate (optional — upload if available)", original: true,  needsInstitution: true,  imageOnly: false, optional: true },
-  ENGLISH:    { name: "English Proficiency (IELTS/TOEFL)",                             original: false, needsInstitution: true,  imageOnly: false, optional: false },
 };
 
 /** Allowed values for new students (bulk upload, add student). */
@@ -102,11 +102,6 @@ const CATEGORY_MANDATORY = {
   Foreign: ["PASSPORT", "VISA"],
 };
 
-/* Program-specific mandatory documents (matched against students.program). */
-const PROGRAM_MANDATORY = {
-  dualDegree: ["ENGLISH"],
-};
-
 /* OPTIONAL documents shown to every student. Student can submit without them. */
 const OPTIONAL_DOCS = ["MIGRATION"];
 
@@ -116,9 +111,8 @@ const COUNT_EXCLUDE_OPTIONAL = [
   ...new Set(Object.values(CATEGORY_OPTIONAL).flat()),
 ];
 
-/* Codes removed in v8. Existing student rows for these are filtered out of
-   listings, stats and reports — without being deleted. */
-const LEGACY_DOC_CODES = ["PAN", "BANK", "CASTE", "MEDICAL"];
+/* Retired doc codes — rows kept in DB but hidden from checklists, stats, and views. */
+const LEGACY_DOC_CODES = ["PAN", "BANK", "CASTE", "MEDICAL", "ENGLISH"];
 
 /* Canonical category dropdown — v8 adds NRI Sponsored, Foreign, OCI. */
 const CATEGORIES = ["General", "NRI", "NRI Sponsored", "Foreign", "OCI", "AICTE"];
@@ -166,15 +160,6 @@ function categoryMandatoryFor(category) {
   return CATEGORY_MANDATORY[key] || [];
 }
 
-/** True when program field mentions Dual Degree (any casing/spacing). */
-function isDualDegreeProgram(program) {
-  return /dual\s*degree/i.test(String(program || "").trim());
-}
-
-function programMandatoryFor(program) {
-  return isDualDegreeProgram(program) ? PROGRAM_MANDATORY.dualDegree.slice() : [];
-}
-
 function categoryOptionalFor(category) {
   const key = normalizeCategory(category);
   if (!key) return [];
@@ -184,7 +169,7 @@ function categoryOptionalFor(category) {
 function checklistFor(profile, category, program) {
   const p = normalizeProfile(profile);
   const base = CHECKLISTS[p] || CHECKLISTS.UG;
-  const extra = [...categoryMandatoryFor(category), ...programMandatoryFor(program)];
+  const extra = [...categoryMandatoryFor(category)];
   const seen = new Set(base);
   const out = [...base];
   for (const code of extra) {
@@ -235,9 +220,9 @@ function isMandatoryForStudent(docCode, profile, category, program) {
 }
 
 module.exports = {
-  DOC_META, CHECKLISTS, CATEGORY_MANDATORY, CATEGORY_OPTIONAL, CATEGORY_DOC_META, PROGRAM_MANDATORY, PROFILE_OPTIONAL, PROFILE_DOC_META,
+  DOC_META, CHECKLISTS, CATEGORY_MANDATORY, CATEGORY_OPTIONAL, CATEGORY_DOC_META, PROFILE_OPTIONAL, PROFILE_DOC_META,
   OPTIONAL_DOCS, COUNT_EXCLUDE_OPTIONAL, LEGACY_DOC_CODES, CATEGORIES, PROFILES,
-  normalizeProfile, normalizeCategory, isValidProfile, isDualDegreeProgram,
-  checklistFor, categoryMandatoryFor, categoryOptionalFor, programMandatoryFor, optionalDocsFor, fullDocSetFor, docMetaFor,
+  normalizeProfile, normalizeCategory, isValidProfile,
+  checklistFor, categoryMandatoryFor, categoryOptionalFor, optionalDocsFor, fullDocSetFor, docMetaFor,
   isLegacyCode, isOptionalCode, isMandatoryForStudent,
 };
