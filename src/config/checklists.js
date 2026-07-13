@@ -13,6 +13,7 @@
    - v37: PG — Parent/Guardian Anti-Ragging Undertaking (ANTI_RAG_P) is mandatory.
    - v38: English Proficiency (ENGLISH) mandatory only when program name includes Dual Degree.
    - v39: NRI Sponsored — Passport Copy and Visa Copy mandatory (with category name normalization).
+   - v40: Foreign / NRI / NRI Sponsored — AIU / Equivalence Certificate (EQUIV) optional online.
    Legacy doc rows on existing students remain in the DB but are filtered
    out of all student/admin views (see lib/docs.js + routes).
 */
@@ -38,7 +39,7 @@ const DOC_META = {
   NRI_AFFIDAVIT: { name: "NRI Affidavit (format enclosed; mandatory document for NRI/NRI Sponsored students)", original: true, needsInstitution: false, imageOnly: false, optional: false },
   PASSPORT:   { name: "Passport Copy",                                                 original: true,  needsInstitution: false, imageOnly: false, optional: false },
   VISA:       { name: "Visa Copy",                                                     original: true,  needsInstitution: false, imageOnly: false, optional: false },
-  EQUIV:      { name: "AIU / Equivalence Certificate",                                 original: true,  needsInstitution: true,  imageOnly: false, optional: false },
+  EQUIV:      { name: "AIU / Equivalence Certificate (optional — upload if available)", original: true,  needsInstitution: true,  imageOnly: false, optional: true },
   ENGLISH:    { name: "English Proficiency (IELTS/TOEFL)",                             original: false, needsInstitution: true,  imageOnly: false, optional: false },
 };
 
@@ -72,23 +73,33 @@ const CATEGORY_DOC_META = {
   NRI: {
     PASSPORT: { name: "Passport Copy" },
     VISA: { name: "Visa Copy" },
+    EQUIV: { name: "AIU / Equivalence Certificate (optional — upload if available)" },
   },
   "NRI Sponsored": {
     PASSPORT: { name: "Passport Copy" },
     VISA: { name: "Visa Copy" },
+    EQUIV: { name: "AIU / Equivalence Certificate (optional — upload if available)" },
   },
   Foreign: {
     PASSPORT: { name: "Passport Copy" },
     VISA: { name: "Visa Copy" },
+    EQUIV: { name: "AIU / Equivalence Certificate (optional — upload if available)" },
   },
+};
+
+/* Category-specific optional documents (shown but do not block declaration). */
+const CATEGORY_OPTIONAL = {
+  NRI: ["EQUIV"],
+  "NRI Sponsored": ["EQUIV"],
+  Foreign: ["EQUIV"],
 };
 
 /* Category-specific mandatory documents (added to profile checklist). */
 const CATEGORY_MANDATORY = {
   AICTE: ["ITR_PARENTS"],
-  NRI: ["NRI_AFFIDAVIT", "PASSPORT", "VISA", "EQUIV"],
-  "NRI Sponsored": ["NRI_AFFIDAVIT", "PASSPORT", "VISA", "EQUIV"],
-  Foreign: ["PASSPORT", "VISA", "EQUIV"],
+  NRI: ["NRI_AFFIDAVIT", "PASSPORT", "VISA"],
+  "NRI Sponsored": ["NRI_AFFIDAVIT", "PASSPORT", "VISA"],
+  Foreign: ["PASSPORT", "VISA"],
 };
 
 /* Program-specific mandatory documents (matched against students.program). */
@@ -98,6 +109,12 @@ const PROGRAM_MANDATORY = {
 
 /* OPTIONAL documents shown to every student. Student can submit without them. */
 const OPTIONAL_DOCS = ["MIGRATION"];
+
+/** Optional codes excluded from admin mandatory doc counts (global + category-only). */
+const COUNT_EXCLUDE_OPTIONAL = [
+  ...OPTIONAL_DOCS,
+  ...new Set(Object.values(CATEGORY_OPTIONAL).flat()),
+];
 
 /* Codes removed in v8. Existing student rows for these are filtered out of
    listings, stats and reports — without being deleted. */
@@ -158,6 +175,12 @@ function programMandatoryFor(program) {
   return isDualDegreeProgram(program) ? PROGRAM_MANDATORY.dualDegree.slice() : [];
 }
 
+function categoryOptionalFor(category) {
+  const key = normalizeCategory(category);
+  if (!key) return [];
+  return CATEGORY_OPTIONAL[key] || [];
+}
+
 function checklistFor(profile, category, program) {
   const p = normalizeProfile(profile);
   const base = CHECKLISTS[p] || CHECKLISTS.UG;
@@ -173,7 +196,7 @@ function checklistFor(profile, category, program) {
   return out;
 }
 
-function optionalDocsFor(profile) {
+function optionalDocsFor(profile, category) {
   const p = normalizeProfile(profile);
   const seen = new Set(OPTIONAL_DOCS);
   const out = OPTIONAL_DOCS.slice();
@@ -183,10 +206,16 @@ function optionalDocsFor(profile) {
       seen.add(code);
     }
   }
+  for (const code of categoryOptionalFor(category)) {
+    if (!seen.has(code)) {
+      out.push(code);
+      seen.add(code);
+    }
+  }
   return out;
 }
 function fullDocSetFor(profile, category, program) {
-  return [...checklistFor(profile, category, program), ...optionalDocsFor(profile)];
+  return [...checklistFor(profile, category, program), ...optionalDocsFor(profile, category)];
 }
 function docMetaFor(code, profile, category) {
   const base = DOC_META[code] || {};
@@ -195,7 +224,10 @@ function docMetaFor(code, profile, category) {
   return { ...base, ...profileOverride, ...categoryOverride };
 }
 function isLegacyCode(code) { return LEGACY_DOC_CODES.includes(code); }
-function isOptionalCode(code) { return OPTIONAL_DOCS.includes(code); }
+function isOptionalCode(code, category) {
+  if (OPTIONAL_DOCS.includes(code)) return true;
+  return categoryOptionalFor(category).includes(code);
+}
 
 function isMandatoryForStudent(docCode, profile, category, program) {
   if (isLegacyCode(docCode)) return false;
@@ -203,9 +235,9 @@ function isMandatoryForStudent(docCode, profile, category, program) {
 }
 
 module.exports = {
-  DOC_META, CHECKLISTS, CATEGORY_MANDATORY, CATEGORY_DOC_META, PROGRAM_MANDATORY, PROFILE_OPTIONAL, PROFILE_DOC_META,
-  OPTIONAL_DOCS, LEGACY_DOC_CODES, CATEGORIES, PROFILES,
+  DOC_META, CHECKLISTS, CATEGORY_MANDATORY, CATEGORY_OPTIONAL, CATEGORY_DOC_META, PROGRAM_MANDATORY, PROFILE_OPTIONAL, PROFILE_DOC_META,
+  OPTIONAL_DOCS, COUNT_EXCLUDE_OPTIONAL, LEGACY_DOC_CODES, CATEGORIES, PROFILES,
   normalizeProfile, normalizeCategory, isValidProfile, isDualDegreeProgram,
-  checklistFor, categoryMandatoryFor, programMandatoryFor, optionalDocsFor, fullDocSetFor, docMetaFor,
+  checklistFor, categoryMandatoryFor, categoryOptionalFor, programMandatoryFor, optionalDocsFor, fullDocSetFor, docMetaFor,
   isLegacyCode, isOptionalCode, isMandatoryForStudent,
 };

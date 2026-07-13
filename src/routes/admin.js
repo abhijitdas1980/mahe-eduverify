@@ -20,8 +20,8 @@ const {
   DOC_SELECT_WITH_VERIFIER, DOC_JOIN_VERIFIER,
 } = require("../lib/docs");
 const {
-  CHECKLISTS, DOC_META, CATEGORIES, OPTIONAL_DOCS, LEGACY_DOC_CODES, PROFILES, isValidProfile,
-  normalizeCategory, checklistFor,
+  CHECKLISTS, DOC_META, CATEGORIES, COUNT_EXCLUDE_OPTIONAL, LEGACY_DOC_CODES, PROFILES, isValidProfile,
+  normalizeCategory, normalizeProfile, checklistFor,
 } = require("../config/checklists");
 const { fetchAssetBuffer } = require("../config/storage");
 const { streamDoc } = require("../lib/docStream");
@@ -81,6 +81,44 @@ function isoToBulkDate(iso) {
   return `${d}-${m}-${y}`;
 }
 
+function studentDateIso(v) {
+  if (!v) return null;
+  if (v instanceof Date && !Number.isNaN(v.getTime())) return v.toISOString().slice(0, 10);
+  const s = String(v).slice(0, 10);
+  return isDate(s) ? s : null;
+}
+
+/** Merge existing student + PATCH body into a bulk-upload row for validation. */
+function buildStudentUpdateRow(existing, body) {
+  const b = body || {};
+  const dobIso = b.dob !== undefined ? (isDate(b.dob) ? b.dob : "") : (studentDateIso(existing.dob) || "");
+  const orientIso = b.orientationDate !== undefined
+    ? (isDate(b.orientationDate) ? b.orientationDate : "")
+    : (studentDateIso(existing.orientation_date) || "");
+  const verifyIso = b.verificationDate !== undefined
+    ? (isDate(b.verificationDate) ? b.verificationDate : "")
+    : (studentDateIso(existing.assigned_verification_date) || "");
+  return buildBulkRowFromBody({
+    appNo: existing.app_no,
+    name: b.name !== undefined ? String(b.name).trim() : existing.name,
+    dob: dobIso,
+    gender: b.gender !== undefined ? String(b.gender).trim() : (existing.gender || ""),
+    profile: b.profile !== undefined ? String(b.profile).trim() : existing.profile,
+    program: b.program !== undefined ? String(b.program).trim() : existing.program,
+    department: b.department !== undefined ? String(b.department).trim() : (existing.department || ""),
+    section: b.section !== undefined ? String(b.section).trim() : (existing.section || ""),
+    batch: b.batch !== undefined ? String(b.batch).trim() : (existing.batch || ""),
+    category: b.category !== undefined ? String(b.category).trim() : (existing.category || ""),
+    orientationDate: orientIso,
+    verificationDate: verifyIso,
+    verificationBatch: b.verificationBatch !== undefined && b.verificationBatch !== ""
+      ? String(b.verificationBatch).trim()
+      : (existing.assigned_batch != null ? String(existing.assigned_batch) : ""),
+    email: b.email !== undefined ? String(b.email).trim() : (existing.email || ""),
+    phone: b.phone !== undefined ? String(b.phone).trim() : (existing.phone || ""),
+  });
+}
+
 function buildBulkRowFromBody(b) {
   return {
     application_number: String(b.appNo || b.application_number || "").trim(),
@@ -109,7 +147,7 @@ function buildBulkRowFromBody(b) {
 
 /* v8 — codes excluded from totals/counts (legacy + optional). Used in SQL via
    d.doc_code <> ALL($::text[]) to keep mandatory-only stats. */
-const EXCLUDE_FROM_COUNTS = [...LEGACY_DOC_CODES, ...OPTIONAL_DOCS];
+const EXCLUDE_FROM_COUNTS = [...LEGACY_DOC_CODES, ...COUNT_EXCLUDE_OPTIONAL];
 
 function parseTime(t) {
   if (!t) return null;
@@ -817,7 +855,7 @@ router.get("/students/:appNo", async (req, res, next) => {
     }
     res.json({
       student: {
-        appNo: s.app_no, name: s.name, dob: s.dob, email: s.email, phone: s.phone,
+        appNo: s.app_no, name: s.name, dob: s.dob, gender: s.gender, email: s.email, phone: s.phone,
         program: s.program, department: s.department, batch: s.batch,
         category: s.category, section: s.section, profile: s.profile,
         portalAccess: s.portal_access || "default",
@@ -952,22 +990,75 @@ router.patch("/students/:appNo", requireSupervisor, async (req, res, next) => {
     const sr = await pool.query("SELECT * FROM students WHERE LOWER(app_no)=LOWER($1)", [req.params.appNo]);
     const s = sr.rows[0];
     if (!s) return res.status(404).json({ error: "Student not found." });
-    const b = req.body || {};
+
+    const bulkRow = buildStudentUpdateRow(s, req.body || {});
+    const result = validateRow(bulkRow, {
+      seenAppNos: new Set([String(bulkRow.application_number || "").toLowerCase()].filter(Boolean)),
+      existingAppNos: new Set(),
+    });
+    if (!result.valid) {
+      return res.status(400).json({
+        error: result.errors[0] || "Invalid student data.",
+        errors: result.errors,
+      });
+    }
+
+    const n = result.normalized;
+    const warnings = [...(result.warnings || [])];
+
+    const profileChanged = normalizeProfile(s.profile) !== normalizeProfile(n.profile);
+    const categoryChanged = normalizeCategory(s.category) !== normalizeCategory(n.category);
+    const verifyDateChanged = studentDateIso(s.assigned_verification_date) !== n.verification_date;
+    const dobChanged = studentDateIso(s.dob) !== n.date_of_birth;
+
+    if ((profileChanged || categoryChanged) && s.declared) {
+      warnings.push(
+        "Category or profile changed — the document checklist was updated. Self-declaration was already signed; check if new mandatory documents are required."
+      );
+    }
+    if (verifyDateChanged && s.verify_schedule_id) {
+      warnings.push(
+        "Verification date changed and a slot is already assigned — reassign the verification slot if the new date applies."
+      );
+    }
+    if (dobChanged) {
+      warnings.push("Date of birth changed — student login identity (application number + DOB) will use the new value.");
+    }
+
     await pool.query(
-      `UPDATE students SET name=COALESCE($1,name), email=COALESCE($2,email), phone=COALESCE($3,phone),
-         program=COALESCE($4,program), department=COALESCE($5,department), batch=COALESCE($6,batch),
-         category=COALESCE($7,category), section=COALESCE($8,section),
-         orientation_date=COALESCE($9,orientation_date) WHERE id=$10`,
-      [b.name || null, b.email || null, b.phone || null, b.program || null,
-       b.department || null, b.batch || null,
-       b.category ? normalizeCategory(String(b.category).trim()) : null,
-       b.section || null,
-       isDate(b.orientationDate) ? b.orientationDate : null, s.id]
+      `UPDATE students SET
+         name=$1, dob=$2, gender=$3, profile=$4, program=$5, department=$6, section=$7, batch=$8,
+         category=$9, orientation_date=$10, assigned_verification_date=$11, assigned_batch=$12,
+         email=$13, phone=$14
+       WHERE id=$15`,
+      [
+        n.full_name,
+        n.date_of_birth,
+        n.gender,
+        n.profile,
+        n.program,
+        n.department || null,
+        n.section || null,
+        n.batch || null,
+        n.category || null,
+        n.orientation_date || null,
+        n.verification_date || null,
+        n.verification_batch || null,
+        n.email || null,
+        n.phone || null,
+        s.id,
+      ]
     );
-    const fresh = await pool.query("SELECT profile, category, program FROM students WHERE id=$1", [s.id]);
-    await ensureDocuments(s.id, fresh.rows[0].profile, fresh.rows[0].category, fresh.rows[0].program);
-    await audit(req, "admin", req.admin.staffId, "STUDENT_EDITED", s.app_no);
-    res.json({ ok: true });
+
+    await ensureDocuments(s.id, n.profile, n.category, n.program);
+    await audit(
+      req,
+      "admin",
+      req.admin.staffId,
+      "STUDENT_EDITED",
+      `${s.app_no} profile=${n.profile} category=${n.category || ""}`
+    );
+    res.json({ ok: true, warnings });
   } catch (e) { next(e); }
 });
 

@@ -49,7 +49,7 @@ function docOptionalFlag(d, ctx) {
   if (ctx?.profile) {
     return !isMandatoryForStudent(d.doc_code, ctx.profile, ctx.category, ctx.program);
   }
-  return !!DOC_META[d.doc_code]?.optional || isOptionalCode(d.doc_code);
+  return !!DOC_META[d.doc_code]?.optional || isOptionalCode(d.doc_code, ctx?.category);
 }
 
 function docUrls(d, role) {

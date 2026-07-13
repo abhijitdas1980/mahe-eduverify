@@ -224,6 +224,8 @@ function VerifyApp({ auth }) {
   const [refreshing, setRefreshing] = useState(false);
   const [pauseRefresh, setPauseRefresh] = useState(false);
   const [err, setErr] = useState("");
+  const [showGenerate, setShowGenerate] = useState(false);
+  const [generateMsg, setGenerateMsg] = useState("");
 
   const reload = useCallback(async () => {
     setRefreshing(true);
@@ -283,14 +285,42 @@ function VerifyApp({ auth }) {
                 {l}
               </button>
             ))}
-            <div className="ml-auto py-2 text-xs text-[#6e5350] dark:text-[#c9a9a5]">{refreshing ? "Refreshing…" : <button onClick={reload} className="hover:underline">↻ Refresh</button>}</div>
+            <div className="ml-auto py-2 flex items-center gap-2 text-xs">
+              {isSupervisor && (
+                <button type="button" onClick={()=>setShowGenerate(true)} className="text-sm bg-crimson text-white px-3 py-1.5 rounded-lg hover:bg-crimson-deep shadow-sm shadow-crimson/20">
+                  Generate schedule
+                </button>
+              )}
+              <span className="text-[#6e5350] dark:text-[#c9a9a5]">{refreshing ? "Refreshing…" : <button onClick={reload} className="hover:underline">↻ Refresh</button>}</span>
+            </div>
           </nav>
         </div>
       </header>
 
       <main className="flex-1 max-w-7xl mx-auto w-full px-4 sm:px-6 py-6">
         {err && <div className="text-sm text-red-700 bg-red-50 border border-red-200 rounded p-2 mb-3">{err}</div>}
-        {tab === "overview" && <Overview stats={stats} />}
+        {generateMsg && (
+          <div className="text-sm text-emerald-800 bg-emerald-50 border border-emerald-200 rounded p-3 mb-3 flex items-start justify-between gap-3">
+            <span>{generateMsg}</span>
+            <button type="button" onClick={()=>setGenerateMsg("")} className="text-emerald-600 hover:text-emerald-900 shrink-0">×</button>
+          </div>
+        )}
+        {showGenerate && (
+          <GenerateScheduleModal
+            close={()=>setShowGenerate(false)}
+            onDone={(r) => {
+              const legacySlots = r.legacyRetired?.deletedSlots || 0;
+              const released = (r.legacyRetired?.releasedStudents || []).length;
+              const reallocOk = (r.reallocated || []).filter(x => x.allocated).length;
+              setGenerateMsg(
+                `Schedule updated: ${r.inserted} new slot(s) added (${r.capacity} total capacity across ${r.dates?.length || 4} days).` +
+                (legacySlots ? ` Retired ${legacySlots} legacy room slot(s); ${released} student(s) released, ${reallocOk} re-allocated.` : "")
+              );
+              reload();
+            }}
+          />
+        )}
+        {tab === "overview" && <Overview stats={stats} isSupervisor={isSupervisor} onGenerate={()=>setShowGenerate(true)} />}
         {tab === "day"      && <DayDetail stats={stats} meta={meta} reload={reload} isSupervisor={isSupervisor} pauseRefresh={pauseRefresh} setPauseRefresh={setPauseRefresh} />}
         {tab === "export"   && <ExportTab meta={meta} />}
       </main>
@@ -302,8 +332,41 @@ function VerifyApp({ auth }) {
   );
 }
 
+/* ====================== Generate schedule ====================== */
+function GenerateScheduleModal({ close, onDone }) {
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState("");
+  const run = async () => {
+    setBusy(true);
+    setErr("");
+    try {
+      const r = await post("/api/admin/verify/generate", {});
+      onDone(r);
+      close();
+    } catch (e) { setErr(e.message); }
+    setBusy(false);
+  };
+  return (
+    <div className="fixed inset-0 z-50 bg-black/40 grid place-items-center p-4" onClick={close}>
+      <div className="bg-white dark:bg-[#281412] border border-[#ead9d6] dark:border-[#3d201d] rounded-2xl p-5 shadow-xl w-full max-w-lg" onClick={e=>e.stopPropagation()}>
+        <div className="text-lg font-heading font-bold text-[#2a1311] dark:text-[#f7ecea]">Generate verification schedule</div>
+        <div className="text-sm text-[#6e5350] dark:text-[#c9a9a5] mt-2 space-y-2">
+          <p>This builds the empty orientation-week grid: <b>4 days</b>, <b>15 rooms</b> (AB4-203…502), <b>32 slots per room</b> starting at 1:00 PM.</p>
+          <p>Existing booked or verified slots are <b>not</b> changed. Only missing open slots are added.</p>
+          <p>Legacy rooms <b>AB4-101…115</b> are removed and affected students are re-allocated to current rooms.</p>
+        </div>
+        {err && <div className="text-sm text-red-700 bg-red-50 border border-red-200 rounded p-2 mt-3">{err}</div>}
+        <div className="mt-5 flex justify-end gap-2">
+          <button type="button" onClick={close} disabled={busy} className="text-sm px-4 py-2 rounded-lg border border-slate-300 text-slate-700 hover:bg-slate-50 disabled:opacity-50">Cancel</button>
+          <button type="button" onClick={run} disabled={busy} className="text-sm px-4 py-2 rounded-lg bg-crimson text-white hover:bg-crimson-deep disabled:opacity-50">{busy ? "Generating…" : "Generate schedule"}</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /* ====================== Overview ====================== */
-function Overview({ stats }) {
+function Overview({ stats, isSupervisor, onGenerate }) {
   if (!stats) return <Spinner label="Loading statistics…" />;
   const o = stats.overall;
   return (
@@ -325,7 +388,16 @@ function Overview({ stats }) {
       <section>
         <h2 className="text-lg font-bold text-slate-800">Day-wise breakdown</h2>
         <div className="grid md:grid-cols-2 xl:grid-cols-4 gap-3 mt-3">
-          {stats.byDate.length === 0 && <div className="text-sm text-[#6e5350] dark:text-[#c9a9a5]">No schedule data yet. Add students with a <b>verification_date</b> via <a href="/" className="text-crimson underline">Bulk Upload</a> on the main portal.</div>}
+          {stats.byDate.length === 0 && (
+            <div className="text-sm text-[#6e5350] dark:text-[#c9a9a5]">
+              No schedule data yet.
+              {isSupervisor ? (
+                <> Click <button type="button" onClick={onGenerate} className="text-crimson underline font-medium">Generate schedule</button> to create the 4-day room grid, or add students with a <b>verification_date</b> via <a href="/" className="text-crimson underline">Bulk Upload</a> on the main portal.</>
+              ) : (
+                <> Add students with a <b>verification_date</b> via <a href="/" className="text-crimson underline">Bulk Upload</a> on the main portal, or ask a supervisor to generate the schedule.</>
+              )}
+            </div>
+          )}
           {stats.byDate.map((d) => (
             <div key={d.date} className="border border-slate-200 bg-white rounded-2xl p-4">
               <div className="flex items-center justify-between">

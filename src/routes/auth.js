@@ -1,8 +1,8 @@
 /* ===========================================================
    Authentication routes  ->  /api/auth/*
-   Students: application number + date of birth, then a password
-             they set themselves. Forgot password uses a 6-digit OTP
-             sent to the admission email on file.
+   Students: application number + date of birth OR admission email,
+             then a password they set themselves. Forgot password uses
+             a 6-digit OTP sent to the admission email on file.
    Admins:   staff ID + password.
    =========================================================== */
 const express = require("express");
@@ -22,6 +22,66 @@ const router = express.Router();
 router.use(authLimiter); // brute-force protection on every auth route
 
 const isDate = (v) => /^\d{4}-\d{2}-\d{2}$/.test(v || "");
+
+function isValidEmail(v) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(v || "").trim());
+}
+
+function parseStudentIdentity(body) {
+  const appNo = String(body.appNo || "").trim();
+  const dobRaw = String(body.dob || "").trim();
+  const emailRaw = String(body.email || "").trim();
+  const hasDob = isDate(dobRaw);
+  const hasEmail = isValidEmail(emailRaw);
+
+  if (!appNo) {
+    return { error: "Enter your application number." };
+  }
+  if (!hasDob && !hasEmail) {
+    if (dobRaw || emailRaw) {
+      return { error: "Enter a valid date of birth or admission email address." };
+    }
+    return { error: "Enter your date of birth or admission email address." };
+  }
+  if (dobRaw && !hasDob) {
+    return { error: "Enter a valid date of birth (YYYY-MM-DD) or use your admission email instead." };
+  }
+  if (emailRaw && !hasEmail && !hasDob) {
+    return { error: "Enter a valid admission email address or use your date of birth instead." };
+  }
+  return {
+    appNo,
+    dob: hasDob ? dobRaw : null,
+    email: hasEmail ? emailRaw.toLowerCase() : null,
+  };
+}
+
+const STUDENT_NOT_FOUND_MSG =
+  "No admitted student found for that application number and details.";
+
+async function findStudentByAppNoAndCredential(appNo, { dob, email }) {
+  let query;
+  let params;
+  if (dob && email) {
+    query = `SELECT * FROM students
+              WHERE LOWER(app_no)=LOWER($1) AND (dob=$2 OR LOWER(TRIM(email))=$3)`;
+    params = [appNo, dob, email];
+  } else if (dob) {
+    query = "SELECT * FROM students WHERE LOWER(app_no)=LOWER($1) AND dob=$2";
+    params = [appNo, dob];
+  } else {
+    query = `SELECT * FROM students
+              WHERE LOWER(app_no)=LOWER($1) AND LOWER(TRIM(email))=$2`;
+    params = [appNo, email];
+  }
+  const r = await pool.query(query, params);
+  if (r.rows.length > 1) {
+    const err = new Error("Multiple students share this email. Contact the verification cell for help.");
+    err.status = 409;
+    throw err;
+  }
+  return r.rows[0] || null;
+}
 
 async function assertStudentPortalOpen(student) {
   const access = await resolveStudentPortalAccess({
@@ -61,48 +121,38 @@ function studentSummary(s) {
   return { appNo: s.app_no, name: s.name, program: s.program, profile: s.profile };
 }
 
-/* STEP 1 - check application number + DOB. */
+/* STEP 1 - check application number + DOB or admission email. */
 router.post("/student/check", async (req, res, next) => {
   try {
-    const appNo = String(req.body.appNo || "").trim();
-    const dob = String(req.body.dob || "").trim();
-    if (!appNo || !isDate(dob)) {
-      return res.status(400).json({ error: "Enter your application number and date of birth." });
-    }
-    const r = await pool.query(
-      "SELECT app_no,name,password_hash,portal_access FROM students WHERE LOWER(app_no)=LOWER($1) AND dob=$2",
-      [appNo, dob]
-    );
-    if (!r.rows.length) {
-      return res.status(404).json({ error: "No admitted student found for that application number and date of birth." });
+    const id = parseStudentIdentity(req.body || {});
+    if (id.error) return res.status(400).json({ error: id.error });
+    const s = await findStudentByAppNoAndCredential(id.appNo, id);
+    if (!s) {
+      return res.status(404).json({ error: STUDENT_NOT_FOUND_MSG });
     }
     try {
-      await assertStudentPortalOpen(r.rows[0]);
+      await assertStudentPortalOpen(s);
     } catch (e) {
       return sendPortalError(res, e);
     }
-    res.json({ firstLogin: !r.rows[0].password_hash, name: r.rows[0].name });
-  } catch (e) { next(e); }
+    res.json({ firstLogin: !s.password_hash, name: s.name });
+  } catch (e) {
+    if (e.status) return res.status(e.status).json({ error: e.message });
+    next(e);
+  }
 });
 
 /* STEP 2a - first login: set a password. */
 router.post("/student/register", async (req, res, next) => {
   try {
-    const appNo = String(req.body.appNo || "").trim();
-    const dob = String(req.body.dob || "").trim();
+    const id = parseStudentIdentity(req.body || {});
+    if (id.error) return res.status(400).json({ error: id.error });
     const password = String(req.body.password || "");
-    if (!appNo || !isDate(dob)) {
-      return res.status(400).json({ error: "Missing application number or date of birth." });
-    }
     if (password.length < 8) {
       return res.status(400).json({ error: "Choose a password of at least 8 characters." });
     }
-    const r = await pool.query(
-      "SELECT * FROM students WHERE LOWER(app_no)=LOWER($1) AND dob=$2",
-      [appNo, dob]
-    );
-    if (!r.rows.length) return res.status(404).json({ error: "Student record not found." });
-    const s = r.rows[0];
+    const s = await findStudentByAppNoAndCredential(id.appNo, id);
+    if (!s) return res.status(404).json({ error: "Student record not found." });
     if (s.password_hash) {
       return res.status(409).json({ error: "A password is already set. Please log in instead." });
     }
@@ -115,7 +165,10 @@ router.post("/student/register", async (req, res, next) => {
     await pool.query("UPDATE students SET password_hash=$1 WHERE id=$2", [hash, s.id]);
     await audit(req, "student", s.app_no, "PASSWORD_SET", "First-login password created");
     res.json({ token: sign({ type: "student", id: s.id, appNo: s.app_no }), student: studentSummary(s) });
-  } catch (e) { next(e); }
+  } catch (e) {
+    if (e.status) return res.status(e.status).json({ error: e.message });
+    next(e);
+  }
 });
 
 /* STEP 2b - returning login. */
@@ -142,29 +195,18 @@ router.post("/student/login", async (req, res, next) => {
   } catch (e) { next(e); }
 });
 
-async function findStudentByAppNoDob(appNo, dob) {
-  const r = await pool.query(
-    "SELECT * FROM students WHERE LOWER(app_no)=LOWER($1) AND dob=$2",
-    [appNo, dob]
-  );
-  return r.rows[0] || null;
-}
-
 /* FORGOT PASSWORD — send 6-digit OTP to admission email on file. */
 router.post("/student/forgot-password/send-otp", resetPasswordLimiter, async (req, res, next) => {
   try {
-    const appNo = String(req.body.appNo || "").trim();
-    const dob = String(req.body.dob || "").trim();
-    if (!appNo || !isDate(dob)) {
-      return res.status(400).json({ error: "Enter your application number and date of birth." });
-    }
-    const s = await findStudentByAppNoDob(appNo, dob);
+    const id = parseStudentIdentity(req.body || {});
+    if (id.error) return res.status(400).json({ error: id.error });
+    const s = await findStudentByAppNoAndCredential(id.appNo, id);
     if (!s) {
-      return res.status(404).json({ error: "Application number and date of birth do not match our records." });
+      return res.status(404).json({ error: STUDENT_NOT_FOUND_MSG });
     }
     if (!s.password_hash) {
       return res.status(400).json({
-        error: "You have not set a password yet. Use your application number and date of birth on the login screen to create one.",
+        error: "You have not set a password yet. Use your application number with your date of birth or admission email on the login screen to create one.",
       });
     }
     try {
@@ -176,6 +218,7 @@ router.post("/student/forgot-password/send-otp", resetPasswordLimiter, async (re
     await audit(req, "student", s.app_no, "PASSWORD_OTP_SENT", maskedEmail);
     res.json({ ok: true, maskedEmail, name: s.name });
   } catch (e) {
+    if (e.status) return res.status(e.status).json({ error: e.message });
     if (e.message && !e.status) return res.status(400).json({ error: e.message });
     next(e);
   }
@@ -184,20 +227,17 @@ router.post("/student/forgot-password/send-otp", resetPasswordLimiter, async (re
 /* FORGOT PASSWORD — verify OTP and set new password. */
 router.post("/student/forgot-password/reset", resetPasswordLimiter, async (req, res, next) => {
   try {
-    const appNo = String(req.body.appNo || "").trim();
-    const dob = String(req.body.dob || "").trim();
+    const id = parseStudentIdentity(req.body || {});
+    if (id.error) return res.status(400).json({ error: id.error });
     const otp = String(req.body.otp || "").trim();
     const password = String(req.body.password || "");
-    if (!appNo || !isDate(dob)) {
-      return res.status(400).json({ error: "Enter your application number and date of birth." });
-    }
     if (!otp) return res.status(400).json({ error: "Enter the verification code from your email." });
     if (password.length < 8) {
       return res.status(400).json({ error: "Choose a new password of at least 8 characters." });
     }
-    const s = await findStudentByAppNoDob(appNo, dob);
+    const s = await findStudentByAppNoAndCredential(id.appNo, id);
     if (!s) {
-      return res.status(404).json({ error: "Application number and date of birth do not match our records." });
+      return res.status(404).json({ error: STUDENT_NOT_FOUND_MSG });
     }
     try {
       await assertStudentPortalOpen(s);
@@ -211,6 +251,7 @@ router.post("/student/forgot-password/reset", resetPasswordLimiter, async (req, 
       student: studentSummary(s),
     });
   } catch (e) {
+    if (e.status) return res.status(e.status).json({ error: e.message });
     if (e.message && !e.status) return res.status(400).json({ error: e.message });
     next(e);
   }
