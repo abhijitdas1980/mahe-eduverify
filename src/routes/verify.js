@@ -28,13 +28,18 @@ router.use(requireActiveAdmin);
 const {
   DEFAULT_DATES,
   DEFAULT_ROOMS,
+  ALLOWED_VERIFY_ROOMS,
   DEFAULT_START_MINUTES,
   DEFAULT_SLOT_MINUTES,
   DEFAULT_SLOTS_PER_ROOM,
   generateEmptySchedule,
   findOrCreateOpenSlot,
   normalizeTimeLabel,
+  isLegacyVerifyRoom,
+  retireLegacyVerifyRoomSlots,
+  assertNotLegacyVerifyRoom,
 } = require("../lib/verifySchedule");
+const { tryAllocateVerifySlot } = require("../lib/verifyAlloc");
 
 const STATUSES = ["open", "booked", "pending", "verified", "absent", "reassigned"];
 
@@ -97,11 +102,16 @@ router.post("/generate", requireSupervisor, async (req, res, next) => {
     if (!dates.length) return res.status(400).json({ error: "At least one valid date is required." });
     if (slotMinutes < 1 || slotMinutes > 240) return res.status(400).json({ error: "Slot duration must be 1–240 minutes." });
     if (slotsPerRoom < 1 || slotsPerRoom > 500) return res.status(400).json({ error: "Slots per room must be 1–500." });
+    if (rooms.some(isLegacyVerifyRoom)) {
+      return res.status(400).json({ error: "AB4-101 through AB4-115 are retired. Use the current AB4 room list only." });
+    }
 
     const client = await pool.connect();
     let result;
+    let retired = { releasedStudents: [], deletedSlots: 0 };
     try {
       await client.query("BEGIN");
+      retired = await retireLegacyVerifyRoomSlots(client);
       result = await generateEmptySchedule(client, {
         dates, rooms, startMinutes, slotMinutes, slotsPerRoom,
       });
@@ -113,9 +123,19 @@ router.post("/generate", requireSupervisor, async (req, res, next) => {
       client.release();
     }
 
+    const reallocated = [];
+    for (const row of retired.releasedStudents) {
+      try {
+        const out = await tryAllocateVerifySlot(row.student_id);
+        reallocated.push({ appNo: row.app_no, ...out });
+      } catch (err) {
+        reallocated.push({ appNo: row.app_no, allocated: false, reason: err.message });
+      }
+    }
+
     await audit(req, "admin", req.admin.staffId, "VERIFY_SCHEDULE_GENERATED",
-      `dates=${dates.length} rooms=${rooms.length} slots/room=${slotsPerRoom} inserted=${result.inserted}`);
-    res.json({ ok: true, ...result });
+      `dates=${dates.length} rooms=${rooms.length} slots/room=${slotsPerRoom} inserted=${result.inserted} legacyRemoved=${retired.deletedSlots}`);
+    res.json({ ok: true, ...result, legacyRetired: retired, reallocated });
   } catch (e) { next(e); }
 });
 
@@ -439,7 +459,15 @@ router.post("/assignment/:id/reassign", async (req, res, next) => {
     if (b.targetId) {
       const tr = await client.query("SELECT * FROM verify_schedule WHERE id=$1 FOR UPDATE", [parseInt(b.targetId, 10)]);
       target = tr.rows[0];
+      if (target && isLegacyVerifyRoom(target.room)) {
+        await client.query("ROLLBACK");
+        return res.status(400).json({ error: `${target.room} is retired. Choose a current AB4 room.` });
+      }
     } else if (isDate(b.date) && b.room && b.startTime) {
+      try { assertNotLegacyVerifyRoom(b.room); } catch (err) {
+        await client.query("ROLLBACK");
+        return res.status(400).json({ error: err.message });
+      }
       target = await findOrCreateOpenSlot(client, {
         date: b.date,
         room: b.room,
@@ -448,6 +476,10 @@ router.post("/assignment/:id/reassign", async (req, res, next) => {
         slotNo: Number.isFinite(Number(b.slotNo)) ? Number(b.slotNo) : undefined,
       });
     } else if (isDate(b.date) && b.room && Number.isFinite(Number(b.slotNo))) {
+      try { assertNotLegacyVerifyRoom(b.room); } catch (err) {
+        await client.query("ROLLBACK");
+        return res.status(400).json({ error: err.message });
+      }
       const tr = await client.query(
         "SELECT * FROM verify_schedule WHERE schedule_date=$1 AND room=$2 AND slot_no=$3 FOR UPDATE",
         [b.date, String(b.room).trim(), Number(b.slotNo)]
@@ -462,17 +494,21 @@ router.post("/assignment/:id/reassign", async (req, res, next) => {
       if (assignedDate) {
         const tr = await client.query(
           `SELECT * FROM verify_schedule
-            WHERE schedule_date=$1 AND status IN ('open', 'reassigned') AND student_id IS NULL
+            WHERE schedule_date=$1
+              AND room = ANY($2::text[])
+              AND status IN ('open', 'reassigned') AND student_id IS NULL
             ORDER BY slot_no, room LIMIT 1 FOR UPDATE`,
-          [assignedDate]
+          [assignedDate, ALLOWED_VERIFY_ROOMS]
         );
         target = tr.rows[0];
       }
       if (!target) {
         const tr = await client.query(
           `SELECT * FROM verify_schedule
-            WHERE status IN ('open', 'reassigned') AND student_id IS NULL
-            ORDER BY schedule_date, room, slot_no LIMIT 1 FOR UPDATE`
+            WHERE room = ANY($1::text[])
+              AND status IN ('open', 'reassigned') AND student_id IS NULL
+            ORDER BY schedule_date, room, slot_no LIMIT 1 FOR UPDATE`,
+          [ALLOWED_VERIFY_ROOMS]
         );
         target = tr.rows[0];
       }
@@ -532,6 +568,34 @@ router.post("/assignment/:id/reassign", async (req, res, next) => {
   }
 });
 
+router.post("/retire-legacy-rooms", requireSupervisor, async (req, res, next) => {
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    const retired = await retireLegacyVerifyRoomSlots(client);
+    await client.query("COMMIT");
+
+    const reallocated = [];
+    for (const row of retired.releasedStudents) {
+      try {
+        const out = await tryAllocateVerifySlot(row.student_id);
+        reallocated.push({ appNo: row.app_no, ...out });
+      } catch (err) {
+        reallocated.push({ appNo: row.app_no, allocated: false, reason: err.message });
+      }
+    }
+
+    await audit(req, "admin", req.admin.staffId, "VERIFY_LEGACY_ROOMS_RETIRED",
+      `deleted=${retired.deletedSlots} released=${retired.releasedStudents.length}`);
+    res.json({ ok: true, legacyRetired: retired, reallocated });
+  } catch (e) {
+    await client.query("ROLLBACK").catch(() => {});
+    next(e);
+  } finally {
+    client.release();
+  }
+});
+
 /* ============================================================================
    ROOMS / DATES META — used by the frontend for dropdowns.
    ============================================================================ */
@@ -539,9 +603,14 @@ router.get("/meta", async (_req, res, next) => {
   try {
     const d = await pool.query("SELECT DISTINCT schedule_date FROM verify_schedule ORDER BY schedule_date");
     const r = await pool.query("SELECT DISTINCT room FROM verify_schedule ORDER BY room");
+    const rooms = [...new Set([
+      ...DEFAULT_ROOMS,
+      ...r.rows.map((x) => x.room).filter((room) => !isLegacyVerifyRoom(room)),
+    ])].sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
     res.json({
       dates: d.rows.map((x) => x.schedule_date),
-      rooms: r.rows.map((x) => x.room),
+      rooms,
+      legacyRoomsRetired: true,
       statuses: STATUSES,
       defaultDates: DEFAULT_DATES,
       defaultRooms: DEFAULT_ROOMS,

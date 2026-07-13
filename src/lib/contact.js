@@ -44,6 +44,34 @@ function validateContactPayload(body, opts = {}) {
   };
 }
 
+/** True when a validated bulk-import row has all contact fields (staff-equivalent). */
+function hasCompleteContactFromBulkRow(row) {
+  if (!row) return false;
+  return validateContactPayload(
+    {
+      email: row.email,
+      phone: row.phone,
+      parentName: row.parent_name,
+      parentRelation: row.parent_relation,
+      parentEmail: row.parent_email,
+      parentPhone: row.parent_phone,
+    },
+    { staff: true }
+  ).ok;
+}
+
+function hasAnyBulkContactField(row) {
+  if (!row) return false;
+  return !!(
+    row.email
+    || row.phone
+    || row.parent_name
+    || row.parent_email
+    || row.parent_phone
+    || row.parent_relation
+  );
+}
+
 function serializeContact(row) {
   if (!row) return null;
   return {
@@ -66,5 +94,7 @@ module.exports = {
   isValidEmail,
   isValidPhone,
   validateContactPayload,
+  hasCompleteContactFromBulkRow,
+  hasAnyBulkContactField,
   serializeContact,
 };

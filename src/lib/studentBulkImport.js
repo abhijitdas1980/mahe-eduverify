@@ -1,8 +1,10 @@
 /* Transactional bulk insert for validated student rows. */
 const { pool } = require("../config/db");
 const { fullDocSetFor } = require("../config/checklists");
+const { hasCompleteContactFromBulkRow } = require("./contact");
 
 const BATCH = 50;
+const COLS_PER_ROW = 20;
 
 async function bulkInsertStudents(rows) {
   if (!rows.length) return { inserted: 0, appNos: [] };
@@ -20,7 +22,8 @@ async function bulkInsertStudents(rows) {
       const params = [];
 
       chunk.forEach((row, idx) => {
-        const base = idx * 19;
+        const base = idx * COLS_PER_ROW;
+        const contactComplete = hasCompleteContactFromBulkRow(row);
         params.push(
           row.application_number,
           row.full_name,
@@ -40,12 +43,13 @@ async function bulkInsertStudents(rows) {
           row.parent_name,
           row.parent_email,
           row.parent_phone,
-          row.parent_relation
+          row.parent_relation,
+          contactComplete ? new Date() : null
         );
         values.push(
           `($${base + 1},$${base + 2},$${base + 3},$${base + 4},$${base + 5},$${base + 6},` +
           `$${base + 7},$${base + 8},$${base + 9},$${base + 10},$${base + 11},$${base + 12},` +
-          `$${base + 13},$${base + 14},$${base + 15},$${base + 16},$${base + 17},$${base + 18},$${base + 19})`
+          `$${base + 13},$${base + 14},$${base + 15},$${base + 16},$${base + 17},$${base + 18},$${base + 19},$${base + 20})`
         );
       });
 
@@ -53,7 +57,8 @@ async function bulkInsertStudents(rows) {
         INSERT INTO students
           (app_no, name, dob, gender, profile, program, department, section, batch,
            category, orientation_date, assigned_verification_date, assigned_batch,
-           email, phone, parent_name, parent_email, parent_phone, parent_relation)
+           email, phone, parent_name, parent_email, parent_phone, parent_relation,
+           contact_completed_at)
         VALUES ${values.join(",")}
         ON CONFLICT (app_no) DO NOTHING
         RETURNING id, app_no, profile`;

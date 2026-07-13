@@ -10,7 +10,7 @@ const {
   FIELD_LIMITS,
   DEFAULT_VERIFICATION_DATES,
 } = require("../constants/studentBulkUpload");
-const { normalizePhone, isValidEmail, isValidPhone } = require("./contact");
+const { normalizePhone, isValidEmail, isValidPhone, hasCompleteContactFromBulkRow, hasAnyBulkContactField } = require("./contact");
 
 function cellStr(v) {
   if (v === null || v === undefined) return "";
@@ -243,6 +243,11 @@ function validateRow(row, ctx) {
   }
 
   const valid = errors.length === 0;
+  if (valid && !hasCompleteContactFromBulkRow(normalized) && hasAnyBulkContactField(normalized)) {
+    warnings.push(
+      "Contact details are incomplete — student will show as Contact missing until email, phone, parent name, parent email, parent phone, and relationship are all valid."
+    );
+  }
   return { valid, errors, warnings, normalized };
 }
 

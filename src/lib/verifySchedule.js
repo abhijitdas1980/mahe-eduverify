@@ -8,9 +8,61 @@ const DEFAULT_ROOMS = [
   "AB4-310", "AB4-311", "AB4-312", "AB4-313", "AB4-314",
   "AB4-315", "AB4-316", "AB4-317", "AB4-501", "AB4-502",
 ];
+/** Retired demo rooms — never allocate (AB4-101 … AB4-115). */
+const LEGACY_VERIFY_ROOMS = Array.from({ length: 15 }, (_, i) => `AB4-${101 + i}`);
+const ALLOWED_VERIFY_ROOMS = DEFAULT_ROOMS;
 const DEFAULT_START_MINUTES = 13 * 60;
 const DEFAULT_SLOT_MINUTES = 10;
 const DEFAULT_SLOTS_PER_ROOM = 32;
+
+function isLegacyVerifyRoom(room) {
+  return LEGACY_VERIFY_ROOMS.includes(String(room || "").trim());
+}
+
+function isAllowedVerifyRoom(room) {
+  return ALLOWED_VERIFY_ROOMS.includes(String(room || "").trim());
+}
+
+function assertNotLegacyVerifyRoom(room) {
+  const name = String(room || "").trim();
+  if (isLegacyVerifyRoom(name)) {
+    throw new Error(`${name} is retired. Use current AB4 rooms (203–207, 310–317, 501–502) only.`);
+  }
+}
+
+/** Release students from AB4-101…115 slots and delete those schedule rows. */
+async function retireLegacyVerifyRoomSlots(client) {
+  const booked = await client.query(
+    `SELECT s.id AS student_id, s.app_no, vs.id AS slot_id, vs.room
+       FROM students s
+       INNER JOIN verify_schedule vs ON vs.id = s.verify_schedule_id
+       WHERE vs.room = ANY($1::text[])`,
+    [LEGACY_VERIFY_ROOMS]
+  );
+
+  for (const row of booked.rows) {
+    await client.query(
+      `UPDATE verify_schedule
+          SET student_id=NULL, status='open', verified_at=NULL, verified_by=NULL, updated_at=now()
+        WHERE id=$1`,
+      [row.slot_id]
+    );
+    await client.query(
+      "UPDATE students SET verify_schedule_id=NULL WHERE id=$1",
+      [row.student_id]
+    );
+  }
+
+  const del = await client.query(
+    "DELETE FROM verify_schedule WHERE room = ANY($1::text[]) RETURNING id",
+    [LEGACY_VERIFY_ROOMS]
+  );
+
+  return {
+    releasedStudents: booked.rows,
+    deletedSlots: del.rowCount,
+  };
+}
 
 function minsToLabel(m) {
   const h24 = Math.floor(m / 60) % 24;
@@ -57,6 +109,7 @@ function addMinutesToLabel(label, minutes) {
 async function findOrCreateOpenSlot(client, { date, room, startTime, endTime, slotNo, slotMinutes = DEFAULT_SLOT_MINUTES }) {
   const roomName = String(room || "").trim();
   if (!roomName) throw new Error("Room is required.");
+  assertNotLegacyVerifyRoom(roomName);
   const st = normalizeTimeLabel(startTime);
   if (!st) throw new Error("Start time is required.");
   const et = normalizeTimeLabel(endTime) || addMinutesToLabel(st, slotMinutes);
@@ -171,9 +224,15 @@ async function purgeLegacyReportingSlots(client) {
 module.exports = {
   DEFAULT_DATES,
   DEFAULT_ROOMS,
+  ALLOWED_VERIFY_ROOMS,
+  LEGACY_VERIFY_ROOMS,
   DEFAULT_START_MINUTES,
   DEFAULT_SLOT_MINUTES,
   DEFAULT_SLOTS_PER_ROOM,
+  isLegacyVerifyRoom,
+  isAllowedVerifyRoom,
+  assertNotLegacyVerifyRoom,
+  retireLegacyVerifyRoomSlots,
   minsToLabel,
   parseTimeLabel,
   normalizeTimeLabel,

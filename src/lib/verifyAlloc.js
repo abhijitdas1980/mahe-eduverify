@@ -3,6 +3,7 @@
 */
 const { pool } = require("../config/db");
 const { checklistFor } = require("../config/checklists");
+const { ALLOWED_VERIFY_ROOMS } = require("./verifySchedule");
 
 async function releaseVerifySlotForStudent(client, studentId) {
   const sr = await client.query(
@@ -84,10 +85,12 @@ async function tryAllocateVerifySlot(studentId) {
 
     const slotR = await client.query(
       `SELECT id FROM verify_schedule
-        WHERE schedule_date=$1 AND status IN ('open', 'reassigned') AND student_id IS NULL
+        WHERE schedule_date=$1
+          AND room = ANY($2::text[])
+          AND status IN ('open', 'reassigned') AND student_id IS NULL
         ORDER BY slot_no ASC, room ASC
         LIMIT 1 FOR UPDATE SKIP LOCKED`,
-      [s.assigned_verification_date]
+      [s.assigned_verification_date, ALLOWED_VERIFY_ROOMS]
     );
     if (!slotR.rows.length) {
       await client.query("ROLLBACK");

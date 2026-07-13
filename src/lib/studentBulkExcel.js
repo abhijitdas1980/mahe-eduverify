@@ -146,7 +146,7 @@ async function buildTemplateBuffer() {
   }
 
   const noteRow = ws.addRow([]);
-  noteRow.getCell(1).value = `Required: application_number (digits only, e.g. 2026101001), full_name, date_of_birth, gender, profile (UG or PG), program, verification_date (dd-mm-yyyy, e.g. 20-07-2026). Optional: verification_batch (1–4), email, phone, parent_name, parent_mail, parent_phone, relationship (Father/Mother/Guardian/Other). Date format: ${DATE_DISPLAY_FORMAT}. File type: .xlsx only.`;
+  noteRow.getCell(1).value = `Required: application_number (digits only, e.g. 2026101001), full_name, date_of_birth, gender, profile (UG or PG), program, verification_date (dd-mm-yyyy, e.g. 20-07-2026). Optional: verification_batch (1–4), email, phone, parent_name, parent_mail, parent_phone, relationship (Father/Mother/Guardian/Other). If all contact fields are valid, contact status is set to Awaiting campus check on import. Date format: ${DATE_DISPLAY_FORMAT}. File type: .xlsx only.`;
   noteRow.getCell(1).font = { italic: true, color: { argb: "FF64748B" } };
   ws.mergeCells(noteRow.number, 1, noteRow.number, COLUMNS.length);
 
