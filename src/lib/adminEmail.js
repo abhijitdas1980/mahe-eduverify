@@ -14,6 +14,7 @@ const HELPDESK_EMAIL = "admissions.maheblr@manipal.edu";
 
 const PLACEHOLDERS = [
   "{{StudentName}}", "{{AppNo}}", "{{Program}}", "{{Department}}", "{{Batch}}", "{{Section}}",
+  "{{DateOfBirth}}", "{{DOB}}", "{{StudentEmail}}", "{{Email}}",
   "{{OrientationDate}}", "{{VerificationDate}}", "{{VerificationTime}}", "{{VerificationRoom}}",
   "{{ReportingSlotDate}}", "{{ReportingSlotTime}}", "{{PortalUrl}}", "{{HelpDeskPhone}}", "{{HelpDeskEmail}}",
   "{{ParentName}}",
@@ -173,6 +174,8 @@ ${reporting}
 
 function buildContext(student, { verifySlot, slot } = {}) {
   const verifyDate = verifySlot?.date || student.assigned_verification_date || student.orientation_date;
+  const dobLabel = student.dob ? fmtDate(student.dob) : "—";
+  const studentEmail = String(student.email || "").trim() || "—";
   return {
     StudentName: student.name || "Student",
     AppNo: student.app_no || "—",
@@ -180,6 +183,10 @@ function buildContext(student, { verifySlot, slot } = {}) {
     Department: student.department || "—",
     Batch: student.batch || "—",
     Section: student.section || "—",
+    DateOfBirth: dobLabel,
+    DOB: dobLabel,
+    StudentEmail: studentEmail,
+    Email: studentEmail,
     OrientationDate: fmtDate(student.orientation_date),
     VerificationDate: fmtDate(verifyDate),
     VerificationTime: verifySlot ? fmtTimeRange(verifySlot.start_time, verifySlot.end_time) : "To be announced",

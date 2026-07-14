@@ -2075,7 +2075,7 @@ function AdminSendEmailPanel({ appNo, appNos, student, onSent, compact }) {
           <input value={customSubject} onChange={(e) => setCustomSubject(e.target.value)} className="ev-input" placeholder="Email subject" />
         </Field>
         <Field label="Message body">
-          <textarea value={customBody} onChange={(e) => setCustomBody(e.target.value)} rows={compact ? 6 : 8} className="ev-input font-mono text-xs" placeholder="Use placeholders like {{StudentName}}, {{VerificationDate}}, {{ScheduleBlock}}" />
+          <textarea value={customBody} onChange={(e) => setCustomBody(e.target.value)} rows={compact ? 6 : 8} className="ev-input font-mono text-xs" placeholder="Use placeholders like {{StudentName}}, {{DateOfBirth}}, {{StudentEmail}}, {{VerificationDate}}" />
         </Field>
         <div className="flex flex-wrap gap-4 text-sm">
           <label className="flex items-center gap-2"><input type="checkbox" checked={sendToStudent} onChange={(e) => setSendToStudent(e.target.checked)} className="accent-indigo-600" /> Student email</label>

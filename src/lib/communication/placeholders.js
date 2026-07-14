@@ -7,7 +7,8 @@ const VENUE_DEFAULT = "MIT Bengaluru Auditorium";
 
 const PLACEHOLDER_LIST = [
   "{{StudentName}}", "{{ApplicationNo}}", "{{AppNo}}", "{{Program}}", "{{Department}}",
-  "{{Batch}}", "{{Section}}", "{{OrientationDate}}", "{{OrientationBatch}}",
+  "{{Batch}}", "{{Section}}", "{{DateOfBirth}}", "{{DOB}}", "{{StudentEmail}}", "{{Email}}",
+  "{{OrientationDate}}", "{{OrientationBatch}}",
   "{{ReportingDate}}", "{{ReportingTime}}", "{{VerificationDate}}", "{{VerificationSlot}}",
   "{{VerificationTime}}", "{{VerificationRoom}}", "{{Venue}}", "{{StudentId}}",
   "{{ParentName}}", "{{ParentRelation}}", "{{PortalUrl}}", "{{HelpDeskPhone}}",
@@ -108,6 +109,8 @@ function buildContext(student, { verifySlot, slot } = {}, role = "student") {
   const reportingDate = slot?.slot_date || verifyDate;
   const reportingTimeVal = slot?.slot_time || (verifySlot?.start_time ? reportingTime(verifySlot.start_time) : "To be announced");
 
+  const dobLabel = student.dob ? fmtDate(student.dob) : "—";
+  const studentEmail = String(student.email || "").trim() || "—";
   const ctx = {
     StudentName: student.name || "Student",
     ApplicationNo: student.app_no || "—",
@@ -117,6 +120,10 @@ function buildContext(student, { verifySlot, slot } = {}, role = "student") {
     Department: student.department || "—",
     Batch: student.batch || "—",
     Section: student.section || "—",
+    DateOfBirth: dobLabel,
+    DOB: dobLabel,
+    StudentEmail: studentEmail,
+    Email: studentEmail,
     OrientationDate: fmtDate(student.orientation_date),
     OrientationBatch: student.assigned_batch || student.batch || "—",
     ReportingDate: fmtDate(reportingDate),
