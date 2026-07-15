@@ -93,12 +93,15 @@ function validateRow(row, ctx) {
       errors.push(`application_number must be at most ${FIELD_LIMITS.application_number} characters.`);
     }
     const key = appNo.toLowerCase();
-    if (ctx.seenAppNos.has(key)) {
+    const allowSelf = ctx.allowExistingAppNo
+      ? String(ctx.allowExistingAppNo).toLowerCase() === key
+      : false;
+    if (!allowSelf && ctx.seenAppNos.has(key)) {
       errors.push("Duplicate application_number within this file.");
-    } else {
+    } else if (!allowSelf) {
       ctx.seenAppNos.add(key);
     }
-    if (ctx.existingAppNos.has(key)) {
+    if (!allowSelf && ctx.existingAppNos.has(key)) {
       errors.push("A student with this application_number already exists in the database.");
     }
     normalized.application_number = appNo;

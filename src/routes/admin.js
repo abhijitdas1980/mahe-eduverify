@@ -992,9 +992,11 @@ router.patch("/students/:appNo", requireSupervisor, async (req, res, next) => {
     if (!s) return res.status(404).json({ error: "Student not found." });
 
     const bulkRow = buildStudentUpdateRow(s, req.body || {});
+    // Edit: keep the same application number (must not treat it as a bulk duplicate).
     const result = validateRow(bulkRow, {
-      seenAppNos: new Set([String(bulkRow.application_number || "").toLowerCase()].filter(Boolean)),
+      seenAppNos: new Set(),
       existingAppNos: new Set(),
+      allowExistingAppNo: String(s.app_no || "").toLowerCase(),
     });
     if (!result.valid) {
       return res.status(400).json({
